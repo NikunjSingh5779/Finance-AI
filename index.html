@@ -179,6 +179,8 @@
           <div class="full-header">
             <div class="full-title">All Transactions</div>
             <button class="add-btn" onclick="openModal()">+ Add transaction</button>
+            <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg2);color:var(--text1);border:1px solid var(--border1)">📁 Import CSV</button>
+            <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
           </div>
           <div class="add-form-grid">
             <div class="fg"><label>Type</label><select id="t-type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
@@ -208,7 +210,13 @@
 
       <!-- ACCOUNTS PAGE -->
       <div class="page" id="page-accounts">
-        <div class="empty-state" style="padding:80px;font-size:15px;color:var(--text2)">🏦 Accounts coming soon</div>
+        <div class="full-card">
+          <div class="full-header">
+            <div class="full-title">Accounts</div>
+            <button class="add-btn" onclick="openAccountModal()">+ Add account</button>
+          </div>
+          <div class="accounts-grid" id="accounts-list"><div class="empty-state">No accounts yet</div></div>
+        </div>
       </div>
 
       <div class="page" id="page-ai-page">
@@ -275,12 +283,88 @@
     <input type="date" id="m-date">
   </div>
 
+  <div class="fg" style="grid-column:1/-1">
+    <label>Account (optional)</label>
+    <select id="m-account">
+      <option value="">— None —</option>
+    </select>
+  </div>
+
 </div>
 
 <div class="modal-footer">
   <button class="btn-cancel" onclick="closeModal()">Cancel</button>
   <button class="btn-submit" onclick="submitModal()">Add Transaction</button>
 </div>
+  </div>
+</div>
+
+<!-- EDIT TRANSACTION MODAL -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal">
+    <div class="modal-title">Edit Transaction</div>
+    <div class="modal-grid">
+      <div class="fg">
+        <label>Type</label>
+        <select id="me-type">
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Amount (₹)</label>
+        <input type="number" id="me-amount" step="0.01">
+      </div>
+      <div class="fg">
+        <label>Category</label>
+        <input type="text" id="me-category">
+      </div>
+      <div class="fg">
+        <label>Date</label>
+        <input type="date" id="me-date">
+      </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Account (optional)</label>
+        <select id="me-account">
+          <option value="">— None —</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-submit" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT MODAL -->
+<div class="modal-overlay" id="modal-account">
+  <div class="modal">
+    <div class="modal-title" id="account-modal-title">Add Account</div>
+    <div class="modal-grid">
+      <div class="fg">
+        <label>Account Name</label>
+        <input type="text" id="ac-name" placeholder="HDFC Savings...">
+      </div>
+      <div class="fg">
+        <label>Balance (₹)</label>
+        <input type="number" id="ac-balance" step="0.01" placeholder="0">
+      </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Type</label>
+        <select id="ac-type">
+          <option value="checking">Checking</option>
+          <option value="savings">Savings</option>
+          <option value="credit">Credit Card</option>
+          <option value="cash">Cash</option>
+          <option value="investment">Investment</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeAccountModal()">Cancel</button>
+      <button class="btn-submit" onclick="saveAccount()">Save Account</button>
+    </div>
   </div>
 </div>
 

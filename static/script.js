@@ -315,9 +315,10 @@ function txnRow(t, showDel=false) {
   const inc = t.type==='income';
   const icon = getIcon(t.category);
   const bg = inc ? 'rgba(34,197,94,0.1)' : `rgba(${hashColor(t.category)},0.1)`;
+  const aname = getAccountName(t.account_id);
   return `<div class="txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category} • ${t.date}</div></div>
+    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
     <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':''}<span class="txn-trend">${inc?'↗':'↗'}</span>${inc?'+':'-'}${fmtDec(t.amount)}</span>
   </div>`;
 }
@@ -326,11 +327,13 @@ function fullTxnRow(t) {
   const inc = t.type==='income';
   const icon = getIcon(t.category);
   const bg = inc ? 'rgba(34,197,94,0.1)' : `rgba(${hashColor(t.category)},0.1)`;
+  const aname = getAccountName(t.account_id);
   return `<div class="full-txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category} • ${t.date}</div></div>
-    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${t.category}</span>
+    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
+    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${aname || t.category}</span>
     <span class="txn-amount ${inc?'inc':''}" style="${!inc?'color:var(--text)':''}">${inc?'+':'-'}${fmtDec(t.amount)}</span>
+    <button class="edit-btn" onclick="openEditModal(${t.id})" title="Edit">✏️</button>
     <button class="del-btn" onclick="deleteTxn(${t.id})">Delete</button>
   </div>`;
 }
@@ -492,16 +495,168 @@ else {
     : '<div class="empty-state">Add transactions to see insights</div>';
 }
 
+// ── Accounts CRUD ──────────────────────────────────────────
+let accountsData = [];
+
+async function loadAccounts() {
+  try {
+    accountsData = await apiFetch('/accounts');
+    renderAccounts();
+  } catch(e) { console.error('loadAccounts error', e); }
+}
+
+function renderAccounts() {
+  const el = document.getElementById('accounts-list');
+  if (!el) return;
+  if (!accountsData.length) {
+    el.innerHTML = '<div class="empty-state">No accounts yet</div>';
+    return;
+  }
+  el.innerHTML = accountsData.map(a => `
+    <div class="account-card">
+      <div class="account-top">
+        <span class="account-name">${a.name}</span>
+        <span class="account-badge">${a.type}</span>
+      </div>
+      <div class="account-bal">${fmtDec(a.balance)}</div>
+      <div class="account-actions">
+        <button class="edit-btn" onclick="editAccount(${a.id})" title="Edit">✏️</button>
+        <button class="del-btn" onclick="deleteAccount(${a.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+let editingAccountId = null;
+
+function openAccountModal(data) {
+  editingAccountId = data ? data.id : null;
+  document.getElementById('account-modal-title').textContent = data ? 'Edit Account' : 'Add Account';
+  document.getElementById('ac-name').value = data ? data.name : '';
+  document.getElementById('ac-balance').value = data ? data.balance : '';
+  document.getElementById('ac-type').value = data ? data.type : 'checking';
+  document.getElementById('modal-account').classList.add('open');
+}
+
+function closeAccountModal() {
+  document.getElementById('modal-account').classList.remove('open');
+  editingAccountId = null;
+}
+
+async function saveAccount() {
+  const name = document.getElementById('ac-name').value.trim();
+  const balance = parseFloat(document.getElementById('ac-balance').value);
+  const type = document.getElementById('ac-type').value;
+  if (!name) { alert('Enter account name'); return; }
+  if (editingAccountId) {
+    await apiFetch('/accounts/' + editingAccountId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, balance, type}) });
+  } else {
+    await apiFetch('/accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, balance, type}) });
+  }
+  closeAccountModal();
+  await loadAccounts();
+  await loadSummary();
+}
+
+async function deleteAccount(id) {
+  if (!confirm('Delete this account?')) return;
+  await apiFetch('/accounts/' + id, { method:'DELETE' });
+  await loadAccounts();
+  await loadSummary();
+}
+
+async function editAccount(id) {
+  const a = accountsData.find(x => x.id === id);
+  if (a) openAccountModal(a);
+}
+
+document.getElementById('modal-account')?.addEventListener('click', e => { if (e.target === document.getElementById('modal-account')) closeAccountModal(); });
+
+// ── Edit Transaction Modal ─────────────────────────────────
+let editingTxnId = null;
+
+function openEditModal(id) {
+  editingTxnId = id;
+  const t = txnsData.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('me-type').value = t.type;
+  document.getElementById('me-amount').value = t.amount;
+  document.getElementById('me-category').value = t.category;
+  document.getElementById('me-date').value = t.date;
+  populateAccountSelect('me-account', t.account_id);
+  document.getElementById('modal-edit').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('modal-edit').classList.remove('open');
+  editingTxnId = null;
+}
+
+async function saveEdit() {
+  const type = document.getElementById('me-type').value;
+  const amount = parseFloat(document.getElementById('me-amount').value);
+  const category = document.getElementById('me-category').value.trim();
+  const date = document.getElementById('me-date').value;
+  const aid = document.getElementById('me-account').value;
+  if (!amount || !category || !date) { alert('Fill all fields'); return; }
+  await apiFetch('/transactions/' + editingTxnId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type, amount, category, date, account_id: aid || null}) });
+  closeEditModal();
+  refreshCurrentPage();
+}
+
+document.getElementById('modal-edit')?.addEventListener('click', e => { if (e.target === document.getElementById('modal-edit')) closeEditModal(); });
+
+// ── CSV Import ─────────────────────────────────────────────
+async function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  const lines = text.split('\n').filter(l => l.trim());
+  const results = [];
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',').map(v => v.trim());
+    const row = {};
+    headers.forEach((h, idx) => row[h] = vals[idx]);
+    if (!row.amount || !row.category) continue;
+    results.push({
+      type: row.type || 'expense',
+      amount: parseFloat(row.amount) || 0,
+      category: row.category,
+      desc: row.description || row.desc || '',
+      date: row.date || new Date().toISOString().slice(0,10)
+    });
+  }
+  if (!results.length) { alert('No valid rows found in CSV'); input.value = ''; return; }
+  await apiFetch('/transactions/import', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(results) });
+  input.value = '';
+  refreshCurrentPage();
+}
+
+function getAccountName(id) {
+  const a = accountsData.find(x => x.id === id);
+  return a ? a.name : '';
+}
+
+function populateAccountSelect(selectId, selectedId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— None —</option>' +
+    accountsData.map(a => `<option value="${a.id}"${selectedId && a.id === selectedId ? ' selected' : ''}>${a.name}${a.type ? ' ('+a.type+')' : ''}</option>`).join('');
+}
+
 function openModal() {
   document.getElementById('modal').classList.add('open');
   document.getElementById('m-date').value = new Date().toISOString().slice(0,10);
+  populateAccountSelect('m-account');
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); }
 async function submitModal() {
   const type=document.getElementById('m-type').value, amount=parseFloat(document.getElementById('m-amount').value);
   const category=document.getElementById('m-category').value.trim(), date=document.getElementById('m-date').value;
+  const aid=document.getElementById('m-account').value;
   if(!amount||!category||!date){alert('Fill all fields');return;}
-  await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date})});
+  await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date,account_id:aid||null})});
   closeModal();
   document.getElementById('m-amount').value=''; document.getElementById('m-category').value='';
   refreshCurrentPage();
@@ -533,10 +688,11 @@ document.getElementById('search-input').addEventListener('input', ()=>renderAllT
 async function initApp() {
   await loadTransactions();
   await loadBudgets();
+  await loadAccounts();
   await loadSummary();
 }
 async function refreshAll() {
-  await Promise.all([loadSummary(), loadTransactions(), loadBudgets()]);
+  await Promise.all([loadSummary(), loadTransactions(), loadBudgets(), loadAccounts()]);
 }
 
 document.getElementById('t-date').value = new Date().toISOString().slice(0,10);
@@ -597,6 +753,8 @@ function refreshCurrentPage() {
   } else if (currentPage === 'budgets') {
     loadBudgets();
     renderBudgets();
+  } else if (currentPage === 'accounts') {
+    loadAccounts();
   } else if (currentPage === 'dashboard') {
     loadTransactions().then(() => loadSummary());
   } else {

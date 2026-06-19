@@ -8,11 +8,12 @@ AI-powered personal finance manager — track expenses, set budgets, and get sma
 
 ## Features
 
-- **Transaction tracking** — income and expense entries with categories and dates
+- **Transaction tracking** — income and expense entries with categories and dates; edit or delete any transaction
+- **Accounts management** — add, edit, delete accounts (checking, savings, credit, cash) with real-time balance tracking
+- **CSV import** — bulk-import transactions from CSV files
 - **AI advisor** — get contextual financial advice via Claude, OpenAI, or OpenRouter with automatic fallback
 - **Interactive charts** — spending breakdown by category, monthly trends (Chart.js)
 - **Budget management** — per-category spending limits with progress tracking
-- **CSV import** — bulk-import transactions from CSV files
 - **ML prediction** — estimated monthly spending using linear regression (scikit-learn)
 - **Dark / light theme** — toggleable UI preference
 
@@ -52,11 +53,13 @@ AI-powered personal finance manager — track expenses, set budgets, and get sma
 │   ├── style.css        # All CSS
 │   └── script.js        # All JS
 ├── tests/
-│   └── test_core.py     # API endpoint tests
+│   ├── test_core.py     # API endpoint tests
+│   └── test_accounts.py # Accounts endpoint tests
 ├── requirements.txt     # Python dependencies
 ├── pyproject.toml       # Project metadata
 ├── Dockerfile           # Container image
 ├── .env.example         # Environment variable template
+├── AGENTS.md            # AI agent instructions
 └── .github/workflows/ci.yml  # CI pipeline
 ```
 
@@ -78,19 +81,25 @@ Open `http://localhost:8000` in a browser.
 
 ## API endpoints
 
-| Method | Path                | Description                         |
-|--------|---------------------|-------------------------------------|
-| GET    | `/`                 | Serve frontend                      |
-| GET    | `/health`           | Health check                        |
-| GET    | `/transactions`     | List all transactions               |
-| POST   | `/transactions`     | Add a transaction                   |
-| DELETE | `/transactions/{id}`| Delete a transaction                |
-| GET    | `/summary`          | Monthly income / expense / savings  |
-| GET    | `/budgets`          | List budgets                        |
-| POST   | `/budgets`          | Create / update budget              |
-| DELETE | `/budgets/{cat}`    | Delete budget for a category        |
-| POST   | `/ai/advice`        | Get AI financial advice             |
-| GET    | `/predict-expense`  | Predict next month's expenses       |
+| Method | Path                     | Description                         |
+|--------|--------------------------|-------------------------------------|
+| GET    | `/`                      | Serve frontend                      |
+| GET    | `/health`                | Health check                        |
+| GET    | `/transactions`          | List all transactions               |
+| POST   | `/transactions`          | Add a transaction                   |
+| PUT    | `/transactions/{id}`     | Edit a transaction                  |
+| DELETE | `/transactions/{id}`     | Delete a transaction                |
+| GET    | `/summary`               | Monthly income / expense / savings  |
+| GET    | `/budgets`               | List budgets                        |
+| POST   | `/budgets`               | Create / update budget              |
+| DELETE | `/budgets/{cat}`         | Delete budget for a category        |
+| GET    | `/accounts`              | List all accounts                   |
+| POST   | `/accounts`              | Add an account                      |
+| PUT    | `/accounts/{id}`         | Edit an account                     |
+| DELETE | `/accounts/{id}`         | Delete an account                   |
+| POST   | `/ai/advice`             | Get AI financial advice             |
+| GET    | `/predict-expense`       | Predict next month's expenses       |
+| POST   | `/import-csv`            | Bulk-import transactions from CSV   |
 
 ## Running with Docker
 

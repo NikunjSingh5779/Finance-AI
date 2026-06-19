@@ -9,6 +9,7 @@ from routes.transactions import router as transactions_router
 from routes.budgets import router as budgets_router
 from routes.analysis import router as analysis_router
 from routes.general import router as general_router
+from routes.accounts import router as accounts_router
 
 load_dotenv()
 
@@ -28,6 +29,7 @@ app.include_router(transactions_router)
 app.include_router(budgets_router)
 app.include_router(analysis_router)
 app.include_router(general_router)
+app.include_router(accounts_router)
 
 init_db()
 

@@ -8,6 +8,7 @@ class TransactionIn(BaseModel):
     desc: str = Field(max_length=200)
     category: str = Field(min_length=1, max_length=50)
     date: str
+    account_id: int | None = None
 
     @field_validator("type")
     @classmethod
@@ -23,6 +24,45 @@ class TransactionIn(BaseModel):
             datetime.strptime(v, "%Y-%m-%d")
         except ValueError:
             raise ValueError("date must be YYYY-MM-DD")
+        return v
+
+
+class AccountIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    balance: float = 0.0
+    type: str = 'checking'
+
+
+class AccountOut(BaseModel):
+    id: int
+    name: str
+    balance: float
+    type: str
+
+
+class TransactionUpdate(BaseModel):
+    type: str | None = None
+    amount: float | None = Field(default=None, gt=0)
+    desc: str | None = Field(default=None, max_length=200)
+    category: str | None = Field(default=None, min_length=1, max_length=50)
+    date: str | None = None
+    account_id: int | None = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v):
+        if v is not None and v not in ("income", "expense"):
+            raise ValueError("type must be 'income' or 'expense'")
+        return v
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v):
+        if v is not None:
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                raise ValueError("date must be YYYY-MM-DD")
         return v
 
 

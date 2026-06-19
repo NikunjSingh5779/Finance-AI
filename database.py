@@ -26,6 +26,20 @@ def init_db():
             category  TEXT    UNIQUE NOT NULL,
             limit_amt REAL    NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS accounts (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            name      TEXT    NOT NULL,
+            balance   REAL    NOT NULL DEFAULT 0.0,
+            type      TEXT    NOT NULL DEFAULT 'checking'
+        );
     """)
+    # migrations for existing DBs
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
+    if 'account_id' not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id)")
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+    if 'type' not in cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN type TEXT NOT NULL DEFAULT 'checking'")
     conn.commit()
     conn.close()
