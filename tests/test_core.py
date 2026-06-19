@@ -63,23 +63,23 @@ def test_summary_calculation(client):
 
 
 def test_add_transaction_validation(client):
-    # Invalid type
+    # Invalid type (Pydantic returns 422)
     resp = client.post("/transactions", json={
         "type": "invalid", "amount": 100, "desc": "Test", "category": "Misc", "date": "2024-01-01"
     })
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
     # Negative amount
     resp = client.post("/transactions", json={
         "type": "expense", "amount": -50, "desc": "Test", "category": "Misc", "date": "2024-01-01"
     })
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
     # Zero amount
     resp = client.post("/transactions", json={
         "type": "expense", "amount": 0, "desc": "Test", "category": "Misc", "date": "2024-01-01"
     })
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_delete_transaction(client):

@@ -3,7 +3,6 @@ import requests
 
 
 def _load_key():
-    # order of preference: CLAUDE > OPENAI > OPENROUTER
     if os.getenv("CLAUDE_API_KEY"):
         return "claude", os.getenv("CLAUDE_API_KEY")
     if os.getenv("OPENAI_API_KEY"):
@@ -13,19 +12,20 @@ def _load_key():
     raise RuntimeError("No LLM API key found in environment variables")
 
 
-def ask_ai(prompt: str, max_tokens: int = 150) -> str:
+def ask_ai(system_message: str = "", user_message: str = "", max_tokens: int = 150) -> str:
     provider, key = _load_key()
+    messages = []
+    if system_message:
+        messages.append({"role": "system", "content": system_message})
+    messages.append({"role": "user", "content": user_message})
 
     if provider == "claude":
-        # Claude endpoint (via anthropic.com)
         url = "https://api.anthropic.com/v1/messages"
         payload = {
             "model": "claude-3-5-sonnet-20240620",
             "max_tokens": max_tokens,
             "temperature": 0.6,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": [{"role": "user", "content": user_message}]
         }
         headers = {
             "x-api-key": key,
@@ -39,7 +39,7 @@ def ask_ai(prompt: str, max_tokens: int = 150) -> str:
             "model": "gpt-4o-mini",
             "max_tokens": max_tokens,
             "temperature": 0.6,
-            "messages": [{"role": "user", "content": prompt}]
+            "messages": messages
         }
         headers = {
             "Authorization": f"Bearer {key}",
@@ -49,10 +49,10 @@ def ask_ai(prompt: str, max_tokens: int = 150) -> str:
     elif provider == "openrouter":
         url = "https://openrouter.ai/api/v1/chat/completions"
         payload = {
-            "model": "google/gemini-pro",
+            "model": "deepseek/deepseek-chat",
             "max_tokens": max_tokens,
             "temperature": 0.6,
-            "messages": [{"role": "user", "content": prompt}]
+            "messages": messages
         }
         headers = {
             "Authorization": f"Bearer {key}",
@@ -63,12 +63,9 @@ def ask_ai(prompt: str, max_tokens: int = 150) -> str:
         raise RuntimeError(f"Unsupported provider: {provider}")
 
     try:
-        response = requests.post(
-            url, json=payload, headers=headers, timeout=30
-        )
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         data = response.json()
-        # Different APIs have slightly different shapes
         if provider == "claude":
             return data["content"][0]["text"]
         else:

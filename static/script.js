@@ -1,5 +1,5 @@
 let currentPage = 'dashboard';
-const API = 'http://localhost:8000';
+const API = '';
 const fmt = v => '₹' + Number(v).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtDec = v => '₹' + Number(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 let page = 1;
@@ -345,7 +345,7 @@ async function addTransaction() {
   const category=document.getElementById('t-category').value.trim(), date=document.getElementById('t-date').value;
   if(!amount||!category||!date){alert('Fill all fields');return;}
   await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date})});
-  document.getElementById('t-amount').value=''; document.getElementById('t-category').value=''; document.getElementById('t-desc').value='';
+  document.getElementById('t-amount').value=''; document.getElementById('t-category').value='';
   refreshCurrentPage();
 }
 
@@ -503,7 +503,7 @@ async function submitModal() {
   if(!amount||!category||!date){alert('Fill all fields');return;}
   await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date})});
   closeModal();
-  document.getElementById('m-amount').value=''; document.getElementById('m-category').value=''; document.getElementById('m-desc').value='';
+  document.getElementById('m-amount').value=''; document.getElementById('m-category').value='';
   refreshCurrentPage();
 }
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal'))closeModal();});
@@ -593,14 +593,14 @@ function updateBadge(id, value) {
 }
 function refreshCurrentPage() {
   if (currentPage === 'transactions') {
-    loadTransactions(); 
-  } 
-  else if (currentPage === 'budgets') {
+    loadTransactions();
+  } else if (currentPage === 'budgets') {
     loadBudgets();
     renderBudgets();
-  } 
-  else if (currentPage === 'dashboard') {
-    loadSummary();
+  } else if (currentPage === 'dashboard') {
+    loadTransactions().then(() => loadSummary());
+  } else {
+    loadTransactions();
   }
 }
 window.onload = async () => {
@@ -687,7 +687,7 @@ async function sendChat() {
   chat.scrollTop = chat.scrollHeight;
 
   try {
-    const res = await fetch("http://localhost:8000/ai/advice", {
+    const res = await fetch("/ai/advice", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
