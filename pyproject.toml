@@ -1,0 +1,32 @@
+[project]
+name = "finance-ai"
+version = "1.0.0"
+description = "AI-powered personal finance manager — track expenses, budgets, and get smart financial advice."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Nikunj Singh" }]
+keywords = ["finance", "ai", "fastapi", "budget", "expense-tracker"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.9",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+    "scikit-learn>=1.5",
+    "numpy>=2.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/NikunjSingh5779/Finance-AI"
+Repository = "https://github.com/NikunjSingh5779/Finance-AI"
+Issues = "https://github.com/NikunjSingh5779/Finance-AI/issues"

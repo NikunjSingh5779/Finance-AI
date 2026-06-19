@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import sqlite3
-import anthropic
 import os
 from dotenv import load_dotenv
 
@@ -12,6 +12,8 @@ import numpy as np
 
 app = FastAPI(title="Finance Management API")
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,9 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "finance.db"
+DB_PATH = os.getenv("DB_PATH", "finance.db")
 import requests
-import os
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -245,15 +246,6 @@ def delete_budget(category: str):
 
 
 # ── AI Advisor ─────────────────────────────────────────────
-from pydantic import BaseModel
-import random
-
-class AIQuery(BaseModel):
-    question: str
-    transactions: list = []
-    summary: dict = {}
-    budgets: list = []
-
 @app.post("/ai/advice")
 def ai_advice(query: AIQuery):
     q = query.question.lower().strip()
@@ -353,9 +345,9 @@ Reduce this category to improve savings and investment capacity.
 
     # ───── DEFAULT AI ─────
     else:
-     detailed = "explain" in q or "detailed" in q
+        detailed = "explain" in q or "detailed" in q
 
-    prompt = f"""
+        prompt = f"""
 You are a professional financial advisor.
 
 Give a COMPLETE but CONCISE answer.
@@ -372,9 +364,15 @@ Savings Rate: {savings}%
 User Question: {query.question}
 """
 
-    max_tokens = 300 if detailed else 180
+        max_tokens = 300 if detailed else 180
 
-    return {"advice": ask_ai(prompt, max_tokens)}
+        return {"advice": ask_ai(prompt, max_tokens)}
+
+# ── Serve Frontend ──────────────────────────────────────────────────────────────
+@app.get("/")
+def serve_index():
+    from fastapi.responses import FileResponse
+    return FileResponse("index.html")
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 @app.get("/health")

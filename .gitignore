@@ -8,12 +8,33 @@ __pycache__/
 .dist-info/
 build/
 *.log
+
+# Environment files
 .env
-.env.*
-# VSCode settings
+.env.local
+.env.production
+
+# Secrets
+.env.local
+.env.production
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE / editor
 .vscode/
-# MacOS
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
 .DS_Store
-# Windows
 Thumbs.db
 
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
