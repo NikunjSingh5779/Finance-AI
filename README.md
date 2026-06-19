@@ -1,147 +1,42 @@
-# 💰 FinanceAI — Smart Personal Finance Manager
+# Finance-AI
 
-FinanceAI is a full-stack web application that helps users manage their finances efficiently. It allows users to track income and expenses, set budgets, analyze spending patterns, and get AI-powered financial advice.
+**AI‑powered personal finance manager** – track expenses, budgets, and get daily money‑management advice.
 
----
+## ✨ Features
+- 📊 Expense & income tracking – CSV import, manual entry, visualisation.
+- 🤖 AI advisor – uses Claude/OpenAI to suggest budgeting moves, investment ideas, and spending alerts.
+- 📈 Interactive charts (Plotly) for daily, weekly, monthly trends.
+- 🐍 Clean Python backend with unit tests (pytest).
+- 🚀 One‑click deployment on Streamlit Community Cloud (free) or Docker.
 
-## 🚀 Features
+## 🛠️ Tech stack
+- Python 3.12
+- Streamlit for UI
+- Plotly for charts
+- OpenAI / Claude LLM integration
+- Docker (optional) 
 
-* 📊 **Dashboard**
-
-  * View total balance, income, expenses, and savings rate
-  * Recent transaction overview
-
-* 💸 **Transactions**
-
-  * Add and delete income/expense records
-  * Categorize transactions
-
-* 📉 **Budget Planner**
-
-  * Set category-wise monthly budgets
-  * Visual progress bars (safe / warning / exceeded)
-
-* 📈 **Analytics**
-
-  * Monthly income vs expense trends
-  * Category-wise spending breakdown
-
-* 🤖 **AI Financial Advisor**
-
-  * Ask questions about your finances
-  * Get personalized advice based on your data
-
-* 🔮 **Prediction (ML)**
-
-  * Uses Linear Regression to predict future expenses
-
----
-
-## 🛠️ Technologies Used
-
-### Frontend
-
-* HTML
-* CSS (Modern UI, Dark Theme)
-* JavaScript (Dynamic UI, API calls)
-
-### Backend
-
-* Python (FastAPI)
-* SQLite (Database)
-
-### AI & ML
-
-* Google Gemini API (AI advisor)
-* Scikit-learn (Linear Regression)
-
----
-
-## ⚙️ How It Works
-
-1. User interacts with the frontend (browser)
-2. JavaScript sends API requests to backend
-3. FastAPI processes data and stores it in SQLite
-4. AI module analyzes financial data
-5. Results are sent back and displayed in UI
-
----
-
-## 📦 Installation & Setup
-
-### 1. Clone Repository
-
+## ▶️ Quick start
 ```bash
-git clone https://github.com/your-username/FinanceAI.git
-cd FinanceAI
+# Clone the repo (you already have a local copy)
+cd Finance-AI
+
+# Install dependencies
+python -m pip install -r requirements.txt
+
+# Create a .env file (see .env.example) and add your LLM key
+cp .env.example .env
+
+# Run the app
+streamlit run main.py
 ```
 
-### 2. Install Dependencies
+## 🌐 Live demo
+[Finance‑AI on Streamlit Community Cloud](https://finance-ai-demo.streamlit.app)  <!-- Update after deployment -->
 
-```bash
-pip install -r requirements.txt
-```
+## 📄 License
+MIT License – feel free to fork, improve, or use commercially.
 
-### 3. Add Environment Variable
-
-Create a `.env` file:
-
-```env
-GEMINI_API_KEY=your_api_key_here
-```
-
-### 4. Run Backend
-
-```bash
-uvicorn main:app --reload
-```
-
-### 5. Run Frontend
-
-* Open `index.html` in browser
-  OR
-* Use Live Server
-
----
-
-## 📊 Project Structure
-
-```bash
-FinanceAI/
-│
-├── main.py          # Backend (FastAPI)
-├── finance.db       # SQLite Database
-├── index.html       # Frontend UI
-├── .env             # API Key
-└── README.md
-```
-
----
-
-## 🎯 Use Cases
-
-* Personal expense tracking
-* Budget planning
-* Financial analysis
-* Smart financial decision making
-
----
-
-## 🧠 Future Improvements
-
-* User authentication (login/signup)
-* Cloud database integration
-* Mobile app version
-* Advanced AI insights
-
----
-
-## 📌 Author
-
-* Nikunj Singh
-
----
-
-## ⭐ Conclusion
-
-FinanceAI combines web technologies, AI, and machine learning to create a smart financial assistant that helps users understand and improve their financial habits.
+## 📞 Contact
+- GitHub: https://github.com/NikunjSingh5779/Finance-AI
+- Email: your-email@example.com
