@@ -54,7 +54,14 @@ async function apiFetch(path, opts={}) {
   const r = await fetch(API + path, opts);
   if (!r.ok) {
     let msg = r.statusText;
-    try { const j = await r.json(); msg = j.detail || j.message || msg; } catch(_) {}
+    try {
+      const j = await r.json();
+      if (Array.isArray(j.detail)) {
+        msg = j.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+      } else {
+        msg = j.detail || j.message || msg;
+      }
+    } catch(_) {}
     throw new Error(msg);
   }
   return r.json();
@@ -652,6 +659,28 @@ function parseCSVLine(line) {
   return result;
 }
 
+function normalizeDate(raw) {
+  if (!raw) return new Date().toISOString().slice(0, 10);
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  // M/D/YY or M/D/YYYY or MM/DD/YY or MM/DD/YYYY
+  const slashMatch = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slashMatch) {
+    let [, m, d, y] = slashMatch;
+    if (y.length === 2) {
+      const yi = parseInt(y);
+      y = (yi > 50 ? '19' : '20') + y;
+    }
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // DD-MM-YYYY (try parse with Date)
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function importCSV(input) {
   const file = input.files[0];
   if (!file) return;
@@ -680,7 +709,7 @@ async function importCSV(input) {
       amount: Math.abs(amount),
       category,
       description: row.description || row.desc || row.note || category,
-      date: row.date || new Date().toISOString().slice(0, 10),
+      date: normalizeDate(row.date),
       account_id: row.account_id ? parseInt(row.account_id) : null
     });
   }
