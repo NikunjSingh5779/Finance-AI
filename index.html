@@ -51,10 +51,13 @@
     </div>
   </div>
 
+  <div class="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
   <!-- MAIN -->
   <div class="main">
     <!-- TOPBAR -->
     <div class="topbar">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle sidebar">☰</button>
       <div class="breadcrumb"><span>Workspace</span><span class="sep">/</span><span class="current" id="topbar-title">Overview</span></div>
       <div class="topbar-search">
         <span class="search-icon">🔍</span>
@@ -166,7 +169,7 @@
           <div class="budget-card">
             <div class="budget-card-header">
               <div><div class="txn-card-label">Budgets</div><div class="budget-count" id="budget-count-header">0 active budgets</div></div>
-              <span class="link-btn green" onclick="goPage('budgets',document.querySelectorAll('.nav-item')[3])">Manage</span>
+              <span class="link-btn green" onclick="goPage('budgets',document.querySelectorAll('.nav-item')[2])">Manage</span>
             </div>
             <div id="budget-items"><div class="empty-state">No budgets set</div></div>
           </div>
@@ -179,12 +182,13 @@
           <div class="full-header">
             <div class="full-title">All Transactions</div>
             <button class="add-btn" onclick="openModal()">+ Add transaction</button>
-            <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg2);color:var(--text1);border:1px solid var(--border1)">📁 Import CSV</button>
+            <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">📁 Import CSV</button>
             <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
           </div>
           <div class="add-form-grid">
             <div class="fg"><label>Type</label><select id="t-type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
             <div class="fg"><label>Amount (₹)</label><input type="number" id="t-amount" placeholder="0"></div>
+            <div class="fg"><label>Description</label><input type="text" id="t-desc" placeholder="Salary, Grocery shopping…"></div>
             <div class="fg"><label>Category</label><input type="text" id="t-category" placeholder="Food, Salary…"></div>
             <div class="fg"><label>Date</label><input type="date" id="t-date"></div>
             <button class="btn-add" onclick="addTransaction()">Add</button>
@@ -234,9 +238,9 @@
 
     <!-- QUICK BUTTONS -->
     <div class="quick-row">
-      <button class="quick-btn" onclick="quickAsk('How is my financial health?')">💚 Health</button>
+      <button class="quick-btn" onclick="quickAsk('How is my financial health?', this)">💚 Health</button>
       <button class="quick-btn" onclick="quickAsk('Show my spending analysis', this)">📊 Spending</button>
-      <button class="quick-btn" onclick="quickAsk('How can I improve savings?')">💰 Savings</button>
+      <button class="quick-btn" onclick="quickAsk('How can I improve savings?', this)">💰 Savings</button>
     </div>
 
     <!-- INPUT BAR -->
@@ -271,6 +275,11 @@
   <div class="fg">
     <label>Amount (₹)</label>
     <input type="number" id="m-amount">
+  </div>
+
+  <div class="fg" style="grid-column:1/-1">
+    <label>Description</label>
+    <input type="text" id="m-desc" placeholder="e.g. Grocery store, Freelance design">
   </div>
 
   <div class="fg">
@@ -314,6 +323,10 @@
       <div class="fg">
         <label>Amount (₹)</label>
         <input type="number" id="me-amount" step="0.01">
+      </div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Description</label>
+        <input type="text" id="me-desc" placeholder="e.g. Grocery store, Freelance design">
       </div>
       <div class="fg">
         <label>Category</label>

@@ -5,7 +5,7 @@ from datetime import datetime
 class TransactionIn(BaseModel):
     type: str
     amount: float = Field(gt=0)
-    desc: str = Field(max_length=200)
+    description: str = Field(max_length=200)
     category: str = Field(min_length=1, max_length=50)
     date: str
     account_id: int | None = None
@@ -43,7 +43,7 @@ class AccountOut(BaseModel):
 class TransactionUpdate(BaseModel):
     type: str | None = None
     amount: float | None = Field(default=None, gt=0)
-    desc: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=200)
     category: str | None = Field(default=None, min_length=1, max_length=50)
     date: str | None = None
     account_id: int | None = None

@@ -47,29 +47,8 @@ function filterThisMonth() {
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
   });
 
-  renderAllTxns(filtered);
 }
-async function loadMoreTxns() {
-  const data = await apiFetch(`/transactions?page=${page}&limit=${limit}`);
-  txnsData = [...txnsData, ...data];
-  renderAllTxns(txnsData);
-  page++;
-}
-function initAIChat() {
-  const chatBox = document.getElementById('chat-msgs');
-  if (!chatBox) return;
 
-  if (chatBox.innerHTML.trim() !== '') return;
-
-  chatBox.innerHTML = `
-    <div class="chat-msg ai">
-      <div class="chat-bubble ai">
-        👋 Hi! I'm your Finance AI.
-        How can I help you today?
-      </div>
-    </div>
-  `;
-}
 
 async function apiFetch(path, opts={}) {
   const r = await fetch(API + path, opts);
@@ -128,6 +107,10 @@ const expChange = calcChange(expense, prevExp);
     document.getElementById('s-inc').textContent = fmtDec(income);
     document.getElementById('s-exp').textContent = fmtDec(expense);
     document.getElementById('s-sav').textContent = savings_rate.toFixed(1) + '%';
+    updateBadge('badge-inc', incChange);
+    updateBadge('badge-exp', expChange);
+    const balPrev = prevInc - prevExp;
+    updateBadge('badge-bal', balPrev ? ((balance - balPrev) / balPrev) * 100 : 0);
     document.getElementById('cf-amount').textContent = fmtDec(balance);
     document.getElementById('leg-inc').textContent = fmt(income);
     document.getElementById('leg-exp').textContent = fmt(expense);
@@ -201,6 +184,19 @@ function setRange(range, el) {
   el.classList.add('active');
 
   updateDashboardByRange();
+}
+
+function updateDashboardByRange() {
+  const filtered = getFilteredTransactions();
+  const cats = getCategoryTotals(filtered);
+
+  renderCatChart(cats);
+  updateBudgetUI(filtered);
+
+  document.getElementById('cat-period').textContent =
+    selectedRange === 'All'
+      ? 'All time'
+      : new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 function getFilteredTransactions() {
   const now = new Date();
@@ -301,7 +297,7 @@ function renderAllTxns(data = txnsData) {
 
   const filtered = search
     ? data.filter(t =>
-        (t.desc || '').toLowerCase().includes(search) ||
+        (t.description || t.desc || '').toLowerCase().includes(search) ||
         (t.category || '').toLowerCase().includes(search)
       )
     : data;
@@ -316,10 +312,11 @@ function txnRow(t, showDel=false) {
   const icon = getIcon(t.category);
   const bg = inc ? 'rgba(34,197,94,0.1)' : `rgba(${hashColor(t.category)},0.1)`;
   const aname = getAccountName(t.account_id);
+  const desc = t.description || t.desc || t.category;
   return `<div class="txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
-    <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':''}<span class="txn-trend">${inc?'↗':'↗'}</span>${inc?'+':'-'}${fmtDec(t.amount)}</span>
+    <div class="txn-info"><div class="txn-name">${desc}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
+    <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':'-'}<span class="txn-trend">${inc?'↗':'↘'}</span>${fmtDec(t.amount)}</span>
   </div>`;
 }
 
@@ -328,11 +325,12 @@ function fullTxnRow(t) {
   const icon = getIcon(t.category);
   const bg = inc ? 'rgba(34,197,94,0.1)' : `rgba(${hashColor(t.category)},0.1)`;
   const aname = getAccountName(t.account_id);
+  const desc = t.description || t.desc || t.category;
   return `<div class="full-txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${t.category}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
-    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${aname || t.category}</span>
-    <span class="txn-amount ${inc?'inc':''}" style="${!inc?'color:var(--text)':''}">${inc?'+':'-'}${fmtDec(t.amount)}</span>
+    <div class="txn-info"><div class="txn-name">${desc}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
+    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${t.category}</span>
+    <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':'-'}${fmtDec(t.amount)}</span>
     <button class="edit-btn" onclick="openEditModal(${t.id})" title="Edit">✏️</button>
     <button class="del-btn" onclick="deleteTxn(${t.id})">Delete</button>
   </div>`;
@@ -346,9 +344,11 @@ function hashColor(str) {
 async function addTransaction() {
   const type=document.getElementById('t-type').value, amount=parseFloat(document.getElementById('t-amount').value);
   const category=document.getElementById('t-category').value.trim(), date=document.getElementById('t-date').value;
+  const description=(document.getElementById('t-desc') ? document.getElementById('t-desc').value.trim() : '') || category;
   if(!amount||!category||!date){alert('Fill all fields');return;}
-  await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date})});
+  await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,description,category,date})});
   document.getElementById('t-amount').value=''; document.getElementById('t-category').value='';
+  if(document.getElementById('t-desc')) document.getElementById('t-desc').value='';
   refreshCurrentPage();
 }
 
@@ -468,7 +468,7 @@ async function addBudget() {
 async function deleteBudget(cat) {
   if(!confirm('Remove budget for '+cat+'?'))return;
   await apiFetch('/budgets/'+encodeURIComponent(cat),{method:'DELETE'});
-  await loadBudgets(); renderBudgets();
+  await loadBudgets();
 }
 
 function renderInsights(income, expense, savings_rate, cats) {
@@ -478,18 +478,18 @@ function renderInsights(income, expense, savings_rate, cats) {
     const pct = Math.round(top[1]/income*100);
     items.push({type:'warn', icon:'⚡', title:`You could save ${fmt(Math.max(0,top[1]*0.15))} this month`, body:`${top[0]} spend is ${pct}% of income. Cutting it by 15% would free up ${fmt(top[1]*0.15)} toward your emergency fund.`, action:'Adjust budget →'});
   }
+  let title, body;
   if (savings_rate >= 40) {
-  title = "Excellent savings rate 🚀";
-  body = `You're saving ${savings_rate.toFixed(1)}%. You're far ahead of the ideal 20%!`;
-}
-else if (savings_rate >= 20) {
-  title = "On track 👍";
-  body = `You're saving ${savings_rate.toFixed(1)}%. Keep it consistent.`;
-}
-else {
-  title = "Needs improvement ⚠️";
-  body = `Your savings rate is ${savings_rate.toFixed(1)}%. Aim for at least 20%.`;
-}
+    title = 'Excellent savings rate 🚀';
+    body = `You're saving ${savings_rate.toFixed(1)}%. You're far ahead of the ideal 20%!`;
+  } else if (savings_rate >= 20) {
+    title = 'On track 👍';
+    body = `You're saving ${savings_rate.toFixed(1)}%. Keep it consistent.`;
+  } else {
+    title = 'Needs improvement ⚠️';
+    body = `Your savings rate is ${savings_rate.toFixed(1)}%. Aim for at least 20%.`;
+  }
+  items.push({ type: savings_rate >= 20 ? 'ok' : 'warn', icon: '📊', title, body });
   document.getElementById('insights-list').innerHTML = items.length
     ? items.map(i=>`<div class="insight-item"><div class="insight-item-header"><div class="insight-bullet ${i.type}">${i.icon}</div><div><div class="insight-text-title">${i.title}</div><div class="insight-text-body">${i.body}</div>${i.action?`<span class="insight-action">${i.action}</span>`:''}</div></div></div>`).join('')
     : '<div class="empty-state">Add transactions to see insights</div>';
@@ -581,6 +581,7 @@ function openEditModal(id) {
   if (!t) return;
   document.getElementById('me-type').value = t.type;
   document.getElementById('me-amount').value = t.amount;
+  if (document.getElementById('me-desc')) document.getElementById('me-desc').value = t.description || t.desc || '';
   document.getElementById('me-category').value = t.category;
   document.getElementById('me-date').value = t.date;
   populateAccountSelect('me-account', t.account_id);
@@ -595,11 +596,16 @@ function closeEditModal() {
 async function saveEdit() {
   const type = document.getElementById('me-type').value;
   const amount = parseFloat(document.getElementById('me-amount').value);
+  const description = (document.getElementById('me-desc') ? document.getElementById('me-desc').value.trim() : '');
   const category = document.getElementById('me-category').value.trim();
   const date = document.getElementById('me-date').value;
   const aid = document.getElementById('me-account').value;
   if (!amount || !category || !date) { alert('Fill all fields'); return; }
-  await apiFetch('/transactions/' + editingTxnId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type, amount, category, date, account_id: aid || null}) });
+  await apiFetch('/transactions/' + editingTxnId, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type, amount, description: description || category, category, date, account_id: aid || null})
+  });
   closeEditModal();
   refreshCurrentPage();
 }
@@ -623,7 +629,7 @@ async function importCSV(input) {
       type: row.type || 'expense',
       amount: parseFloat(row.amount) || 0,
       category: row.category,
-      desc: row.description || row.desc || '',
+      description: row.description || row.desc || row.category || '',
       date: row.date || new Date().toISOString().slice(0,10)
     });
   }
@@ -648,17 +654,24 @@ function populateAccountSelect(selectId, selectedId) {
 function openModal() {
   document.getElementById('modal').classList.add('open');
   document.getElementById('m-date').value = new Date().toISOString().slice(0,10);
+  if (document.getElementById('m-desc')) document.getElementById('m-desc').value = '';
   populateAccountSelect('m-account');
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); }
 async function submitModal() {
   const type=document.getElementById('m-type').value, amount=parseFloat(document.getElementById('m-amount').value);
   const category=document.getElementById('m-category').value.trim(), date=document.getElementById('m-date').value;
+  const description=(document.getElementById('m-desc') ? document.getElementById('m-desc').value.trim() : '') || category;
   const aid=document.getElementById('m-account').value;
   if(!amount||!category||!date){alert('Fill all fields');return;}
-  await apiFetch('/transactions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,amount,desc:"",category,date,account_id:aid||null})});
+  await apiFetch('/transactions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type,amount,description,category,date,account_id:aid||null})
+  });
   closeModal();
   document.getElementById('m-amount').value=''; document.getElementById('m-category').value='';
+  if (document.getElementById('m-desc')) document.getElementById('m-desc').value='';
   refreshCurrentPage();
 }
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal'))closeModal();});
@@ -686,13 +699,12 @@ function goPage(name, el) {
 document.getElementById('search-input').addEventListener('input', ()=>renderAllTxns(txnsData));
 
 async function initApp() {
-  await loadTransactions();
-  await loadBudgets();
-  await loadAccounts();
+  await Promise.all([loadTransactions(), loadBudgets(), loadAccounts()]);
   await loadSummary();
 }
 async function refreshAll() {
-  await Promise.all([loadSummary(), loadTransactions(), loadBudgets(), loadAccounts()]);
+  await Promise.all([loadTransactions(), loadBudgets(), loadAccounts()]);
+  await loadSummary();
 }
 
 document.getElementById('t-date').value = new Date().toISOString().slice(0,10);
@@ -708,11 +720,8 @@ refreshAll();
 const container = document.getElementById('all-txns');
 
 if (container) {
-  container.addEventListener('scroll', () => {
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 50) {
-      console.log("Reached bottom (you can load more here)");
-    }
-  });
+  // Infinite scroll placeholder — backend pagination can be added later
+  // container.addEventListener('scroll', () => { … });
 }
 function toggleTheme() {
   const body = document.body;
@@ -724,6 +733,10 @@ function toggleTheme() {
     body.classList.add('light');
     localStorage.setItem('theme', 'light');
   }
+}
+
+function toggleSidebar() {
+  document.body.classList.toggle('sidebar-open');
 }
 function calcChange(current, previous) {
   if (!previous || previous === 0) return 0;
@@ -761,14 +774,6 @@ function refreshCurrentPage() {
     loadTransactions();
   }
 }
-window.onload = async () => {
-  setGreeting();
-
-  await loadTransactions();
-  await loadBudgets();
-
-  showMonthlyExpenses();
-};
 document.getElementById("view-all-expenses").addEventListener("click", () => {
   if (isAllView) {
     showMonthlyExpenses();

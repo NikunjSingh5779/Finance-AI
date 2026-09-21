@@ -1,9 +1,28 @@
+# Byte-compiled / optimized / DLL files
 __pycache__
 *.py[cod]
+
+# Environment files
 .env
+.env.local
+.env.production
+
+# Git
 .git
 .gitignore
+
+# Testing and IDE
 .pytest_cache
 .vscode
 *.md
 .DS_Store
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache and temporary folders
+graphify-out/
+.claude/
+Finance-AI/

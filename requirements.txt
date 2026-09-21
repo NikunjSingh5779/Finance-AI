@@ -5,3 +5,13 @@ requests==2.32.3
 python-dotenv==1.0.1
 scikit-learn==1.5.2
 numpy==2.1.3
+
+# Market data — stock prices, fundamentals (optional)
+yfinance>=0.1.70
+
+# Web search — financial news context (optional)
+duckduckgo-search>=8.0.0
+httpx>=0.27.0
+
+# ML price prediction — Kronos model (optional, see market_predictor.py)
+# pip install torch huggingface_hub safetensors einops

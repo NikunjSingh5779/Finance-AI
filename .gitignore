@@ -14,10 +14,6 @@ build/
 .env.local
 .env.production
 
-# Secrets
-.env.local
-.env.production
-
 # Database
 *.db
 *.sqlite
@@ -38,3 +34,10 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Tool output
+graphify-out/
+
+# AI tool configs
+.ai-os-link.json
+.claude/
