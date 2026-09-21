@@ -52,8 +52,29 @@ function filterThisMonth() {
 
 async function apiFetch(path, opts={}) {
   const r = await fetch(API + path, opts);
-  if (!r.ok) throw new Error(r.statusText);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { const j = await r.json(); msg = j.detail || j.message || msg; } catch(_) {}
+    throw new Error(msg);
+  }
   return r.json();
+}
+
+function showToast(msg, type='success') {
+  let toast = document.getElementById('app-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1c1c1f;color:#f0f0f2;padding:10px 22px;border-radius:10px;font-size:13px;z-index:9999;transition:transform .3s ease,opacity .3s ease;opacity:0;pointer-events:none;border:1px solid #303035;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.borderColor = type === 'error' ? '#ef4444' : '#22c55e';
+  toast.style.color = type === 'error' ? '#ef4444' : '#f0f0f2';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.transform = 'translateX(-50%) translateY(80px)'; toast.style.opacity = '0'; }, 3000);
 }
 
 function setGreeting() {
@@ -613,30 +634,77 @@ async function saveEdit() {
 document.getElementById('modal-edit')?.addEventListener('click', e => { if (e.target === document.getElementById('modal-edit')) closeEditModal(); });
 
 // ── CSV Import ─────────────────────────────────────────────
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      result.push(cur.trim()); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
 async function importCSV(input) {
   const file = input.files[0];
   if (!file) return;
-  const text = await file.text();
-  const lines = text.split('\n').filter(l => l.trim());
+  let text;
+  try { text = await file.text(); } catch(e) { showToast('Cannot read file', 'error'); input.value = ''; return; }
+
+  const rawLines = text.split(/\r?\n/).filter(l => l.trim());
+  if (rawLines.length < 2) { showToast('CSV has no data rows', 'error'); input.value = ''; return; }
+
+  const headers = parseCSVLine(rawLines[0]).map(h => h.toLowerCase().replace(/[^a-z_]/g,''));
   const results = [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',').map(v => v.trim());
+  const skipped = [];
+
+  for (let i = 1; i < rawLines.length; i++) {
+    const vals = parseCSVLine(rawLines[i]);
     const row = {};
-    headers.forEach((h, idx) => row[h] = vals[idx]);
-    if (!row.amount || !row.category) continue;
+    headers.forEach((h, idx) => { row[h] = (vals[idx] || '').trim(); });
+
+    const amount = parseFloat(row.amount);
+    const category = row.category || row.cat || '';
+    if (!amount || isNaN(amount) || !category) { skipped.push(i + 1); continue; }
+
+    const type = (row.type || 'expense').toLowerCase();
     results.push({
-      type: row.type || 'expense',
-      amount: parseFloat(row.amount) || 0,
-      category: row.category,
-      description: row.description || row.desc || row.category || '',
-      date: row.date || new Date().toISOString().slice(0,10)
+      type: ['income','expense'].includes(type) ? type : 'expense',
+      amount: Math.abs(amount),
+      category,
+      description: row.description || row.desc || row.note || category,
+      date: row.date || new Date().toISOString().slice(0, 10),
+      account_id: row.account_id ? parseInt(row.account_id) : null
     });
   }
-  if (!results.length) { alert('No valid rows found in CSV'); input.value = ''; return; }
-  await apiFetch('/transactions/import', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(results) });
+
   input.value = '';
-  refreshCurrentPage();
+
+  if (!results.length) {
+    showToast(`No valid rows found${skipped.length ? ' (rows skipped: ' + skipped.join(', ') + ')' : ''}`, 'error');
+    return;
+  }
+
+  try {
+    const res = await apiFetch('/transactions/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(results)
+    });
+    const msg = `✓ Imported ${res.imported} transaction${res.imported !== 1 ? 's' : ''}${skipped.length ? ' (' + skipped.length + ' rows skipped)' : ''}`;
+    showToast(msg);
+    await loadTransactions();
+    await loadSummary();
+  } catch(e) {
+    showToast('Import failed: ' + e.message, 'error');
+  }
 }
 
 function getAccountName(id) {
@@ -694,6 +762,9 @@ function goPage(name, el) {
   };
 
   document.getElementById('topbar-title').textContent = titles[name]||name;
+
+  // Always refresh data when navigating to a page
+  refreshCurrentPage();
 }
 
 document.getElementById('search-input').addEventListener('input', ()=>renderAllTxns(txnsData));
