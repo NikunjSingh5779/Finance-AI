@@ -6,17 +6,15 @@ load_dotenv()
 
 
 def _load_key():
-    if os.getenv("OPENCODE_API_KEY"):
-        return "opencode", os.getenv("OPENCODE_API_KEY")
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter", os.getenv("OPENROUTER_API_KEY")
     if os.getenv("CLAUDE_API_KEY"):
         return "claude", os.getenv("CLAUDE_API_KEY")
     if os.getenv("OPENAI_API_KEY"):
         return "openai", os.getenv("OPENAI_API_KEY")
-    if os.getenv("OPENROUTER_API_KEY"):
-        return "openrouter", os.getenv("OPENROUTER_API_KEY")
     raise RuntimeError(
         "No LLM API key configured. Please set at least one API key "
-        "(OPENROUTER_API_KEY, OPENCODE_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY) "
+        "(OPENROUTER_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY) "
         "in your .env file."
     )
 
@@ -32,20 +30,7 @@ def ask_ai(system_message: str = "", user_message: str = "", max_tokens: int = 1
         messages.append({"role": "system", "content": system_message})
     messages.append({"role": "user", "content": user_message})
 
-    if provider == "opencode":
-        url = "https://api.opencode.ai/v1/chat/completions"
-        payload = {
-            "model": "deepseek-v4-flash-free",
-            "max_tokens": max_tokens,
-            "temperature": 0.6,
-            "messages": messages
-        }
-        headers = {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json"
-        }
-
-    elif provider == "claude":
+    if provider == "claude":
         url = "https://api.anthropic.com/v1/messages"
         payload = {
             "model": "claude-3-5-sonnet-20240620",
@@ -73,13 +58,14 @@ def ask_ai(system_message: str = "", user_message: str = "", max_tokens: int = 1
         }
 
     elif provider == "openrouter":
+        # Try free models first (require credits on account but no per-token cost)
+        free_models = [
+            "meta-llama/llama-3.2-3b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "microsoft/phi-3-mini-128k-instruct:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+        ]
         url = "https://openrouter.ai/api/v1/chat/completions"
-        payload = {
-            "model": "deepseek/deepseek-v4-flash",
-            "max_tokens": max_tokens,
-            "temperature": 0.6,
-            "messages": messages
-        }
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -87,20 +73,36 @@ def ask_ai(system_message: str = "", user_message: str = "", max_tokens: int = 1
             "X-Title": "Finance AI"
         }
 
-    else:
-        return f"AI Configuration Error: Unsupported provider '{provider}'"
-
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        # If OpenRouter returns 402 (no credits), fall back to free model
-        if response.status_code == 402 and provider == "openrouter":
-            fallback = {
+        # Try each free model until one works
+        response = None
+        for model in free_models:
+            payload = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": 0.6,
+                "messages": messages
+            }
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                if response.ok:
+                    break
+            except Exception:
+                continue
+        
+        # All free models failed, try auto router as last resort
+        if response is None or not response.ok:
+            payload = {
                 "model": "openrouter/auto",
                 "max_tokens": max_tokens,
                 "temperature": 0.6,
                 "messages": messages
             }
-            response = requests.post(url, json=fallback, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+
+    else:
+        return f"AI Configuration Error: Unsupported provider '{provider}'"
+
+    try:
         if not response.ok:
             return f"AI Error ({provider}): HTTP {response.status_code} - {response.text[:300].strip()}"
         try:

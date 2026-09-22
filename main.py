@@ -39,15 +39,14 @@ app.include_router(market_router)
 init_db()
 
 supported_keys = [
-    "OPENCODE_API_KEY",
+    "OPENROUTER_API_KEY",
     "CLAUDE_API_KEY",
     "OPENAI_API_KEY",
-    "OPENROUTER_API_KEY",
 ]
 active_providers = [k for k in supported_keys if os.getenv(k)]
 if not active_providers:
     print(
         "WARNING: No LLM API key configured "
-        "(set OPENROUTER_API_KEY, OPENCODE_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY). "
+        "(set OPENROUTER_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY). "
         "AI advisor endpoints will not function."
     )
