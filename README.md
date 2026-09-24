@@ -25,7 +25,7 @@ AI-powered personal finance manager — track expenses, set budgets, analyze cas
 |------------|-----------------------------------------------------|
 | Backend    | Python 3.12+ + FastAPI + SQLite3                    |
 | Frontend   | Vanilla HTML / CSS / JS (Chart.js)                  |
-| AI Models  | OpenCode, Claude, OpenAI GPT, OpenRouter            |
+| AI Models  | Claude, OpenAI GPT, OpenRouter            |
 | Market Data| yfinance + Kronos ML predictor + DuckDuckGo search  |
 | ML         | scikit-learn linear regression for predictions      |
 | Deploy     | Docker or any VPS                                   |
