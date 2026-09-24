@@ -18,6 +18,16 @@ _OPENCODE_FREE_FALLBACK = [
     "auto",
 ]
 
+# Blacklisted OpenCode models that require environment access
+_OPENCODE_BLACKLISTED_MODELS = [
+    "ling-3.0-flash-fin-free",
+    "mimo-v2.6-flash-free",
+    "muse-spark-1.2-contributor-free",
+    "muse-spark-1.3-contributor-free",
+    "nemotron-3-ultra-free",
+    "nemotron-3.5-lightning-free",
+]
+
 _OPENROUTER_FREE_ROUTER = "openrouter/free"
 
 # ============================================================
@@ -55,7 +65,9 @@ def _is_successful_response(result: str) -> bool:
         'returned an unexpected non-JSON response',
         'could not complete',
         'timed out',
-        'is unreachable'
+        'is unreachable',
+        'requires access from within OpenCode environment',
+        'reasoning only or unsupported response format'
     ]
 
     return not any(indicator in result for indicator in failure_indicators)
@@ -137,10 +149,13 @@ def _get_opencode_models(key: str) -> list[str]:
 
                 # Model is free if both prompt and completion are zero
                 if (_is_zero_price(prompt_price) and _is_zero_price(completion_price)):
-                    free_models.append(model_id)
+                    # Skip blacklisted models that require environment access
+                    if model_id not in _OPENCODE_BLACKLISTED_MODELS:
+                        free_models.append(model_id)
                 elif "-free" in model_id and not pricing:
-                    # Allow -free models when pricing metadata is missing
-                    free_models.append(model_id)
+                    # Allow -free models when pricing metadata is missing (but check blacklist)
+                    if model_id not in _OPENCODE_BLACKLISTED_MODELS:
+                        free_models.append(model_id)
 
             if free_models:
                 logger.info(
@@ -287,6 +302,49 @@ def _build_messages(
 # RESPONSE TEXT EXTRACTION HELPER
 # ============================================================
 
+# ============================================================
+# RESPONSE TEXT EXTRACTION HELPER
+# ============================================================
+
+def _format_reasoning_as_advice(reasoning_text: str) -> str:
+    """
+    Transform reasoning-only content into structured financial advice format.
+
+    Extracts key financial recommendations from reasoning content and formats
+    them as actionable bullet points for the user.
+    """
+    lines = reasoning_text.split('\n')
+    advice_lines = []
+
+    # Look for actionable content in reasoning
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Extract lines that contain financial advice indicators
+        if any(indicator in line.lower() for indicator in [
+            'invest', 'saving', 'emergency fund', 'portfolio', 'allocation',
+            'mutual fund', 'equity', 'debt', 'sip', 'goal', 'return',
+            'diversif', 'risk', 'budget', 'expense', 'income'
+        ]):
+            # Clean up the line and add to advice
+            cleaned = line.replace('Need ', '').replace('need ', '').strip()
+            if cleaned and not cleaned.startswith('We ') and len(cleaned) > 10:
+                advice_lines.append(f"• {cleaned}")
+
+    if advice_lines:
+        header = "Based on your financial profile, here's my advice:\n\n"
+        return header + '\n'.join(advice_lines[:6])  # Limit to 6 key points
+
+    # Fallback: return first meaningful paragraph
+    meaningful_text = reasoning_text.strip()
+    if len(meaningful_text) > 50:
+        return f"Here's my financial analysis:\n\n{meaningful_text[:500]}..."
+
+    return reasoning_text
+
+
 def _extract_response_text(data: dict, provider: str) -> str | None:
     """
     Extract final response text from various provider response formats.
@@ -338,10 +396,11 @@ def _extract_response_text(data: dict, provider: str) -> str | None:
             if isinstance(reasoning, str):
                 text = reasoning.strip()
                 if text:
-                    logger.warning(
-                        f"{provider} returned only reasoning_content, no final content"
+                    logger.info(
+                        f"{provider} returned reasoning_content - extracting financial advice"
                     )
-                    return text
+                    # Transform reasoning into structured financial advice
+                    return _format_reasoning_as_advice(text)
 
     except (KeyError, IndexError, TypeError, AttributeError):
         pass
@@ -387,6 +446,18 @@ def _parse_openai_response(
             response.status_code,
             body,
         )
+
+        # Handle specific HTTP 403 FreeTierError for OpenCode
+        if response.status_code == 403 and "FreeTierError" in body:
+            if provider == "opencode":
+                logger.warning(
+                    "OpenCode model %s requires environment access - triggering provider fallback",
+                    model,
+                )
+                return (
+                    f'OpenCode model "{model}" requires access from within OpenCode environment. '
+                    f"This model is not accessible via API."
+                )
 
         # Make model-unavailable errors much more useful.
         if "Model is unavailable" in body:
@@ -556,6 +627,16 @@ def _ask_opencode(
             if _is_successful_response(result):
                 return result
 
+            # Check for FreeTierError - immediately fail OpenCode provider
+            if "requires access from within OpenCode environment" in result:
+                logger.error(
+                    "OpenCode FreeTierError detected - failing entire provider"
+                )
+                return (
+                    'AI provider "opencode" could not complete the request. '
+                    "Free tier models require access from within OpenCode environment."
+                )
+
             # Otherwise, this model failed - continue to next
             last_error = result
             logger.warning(
@@ -688,13 +769,25 @@ def _ask_openrouter(
                 return result
 
             # ------------------------------------------------
+            # HANDLE REASONING-ONLY RESPONSES
+            # ------------------------------------------------
+            if "reasoning only or unsupported response format" in result:
+                logger.warning(
+                    "OpenRouter model %s returned reasoning-only response, trying next model",
+                    model,
+                )
+                last_error = result
+                continue
+
+            # ------------------------------------------------
             # HANDLE SPECIFIC ERROR CASES FOR FALLBACK
             # ------------------------------------------------
             if response.status_code in [400, 403, 404, 429]:
                 last_error = result
                 logger.warning(
-                    "OpenRouter model %s failed, trying next: %s",
+                    "OpenRouter model %s failed (HTTP %s), trying next: %s",
                     model,
+                    response.status_code,
                     last_error,
                 )
                 continue
