@@ -192,6 +192,7 @@ def test_ask_ai_non_json_404_returns_clean_error(monkeypatch):
     import ai_provider
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-fake")
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 

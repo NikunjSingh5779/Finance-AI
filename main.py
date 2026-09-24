@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,9 +20,21 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Finance Management API")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files using absolute path relative to this script
+static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",")]
+origins = os.getenv("CORS_ORIGINS")
+if origins:
+    origins = [o.strip() for o in origins.split(",")]
+else:
+    # Require explicit CORS configuration for security
+    origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    logger.warning(
+        "CORS_ORIGINS not set. Using localhost defaults. "
+        "Set CORS_ORIGINS environment variable for production."
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -39,6 +52,7 @@ app.include_router(market_router)
 init_db()
 
 supported_keys = [
+    "OPENCODE_ZEN_API_KEY",
     "OPENROUTER_API_KEY",
     "CLAUDE_API_KEY",
     "OPENAI_API_KEY",
@@ -47,6 +61,6 @@ active_providers = [k for k in supported_keys if os.getenv(k)]
 if not active_providers:
     print(
         "WARNING: No LLM API key configured "
-        "(set OPENROUTER_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY). "
+        "(set OPENCODE_ZEN_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, or CLAUDE_API_KEY). "
         "AI advisor endpoints will not function."
     )

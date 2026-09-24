@@ -11,6 +11,7 @@ def get_db():
 def init_db():
     conn = get_db()
     try:
+        # Create tables with IF NOT EXISTS for safety
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,16 +36,31 @@ def init_db():
                 type      TEXT    NOT NULL DEFAULT 'checking'
             );
         """)
-        # migrations for existing DBs
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
-        if 'account_id' not in cols:
-            conn.execute("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id)")
-        # Rename 'desc' column to 'description' for existing DBs
-        if 'desc' in cols and 'description' not in cols:
-            conn.execute("ALTER TABLE transactions RENAME COLUMN desc TO description")
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
-        if 'type' not in cols:
-            conn.execute("ALTER TABLE accounts ADD COLUMN type TEXT NOT NULL DEFAULT 'checking'")
+
+        # Safe migrations for existing databases
+        _run_migrations(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _run_migrations(conn):
+    """Run database migrations safely with proper error handling."""
+    try:
+        # Migration 1: Add account_id column to transactions if missing
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
+        if 'account_id' not in cols:
+            conn.execute("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id)")
+
+        # Migration 2: Rename 'desc' column to 'description' for existing DBs
+        if 'desc' in cols and 'description' not in cols:
+            conn.execute("ALTER TABLE transactions RENAME COLUMN desc TO description")
+
+        # Migration 3: Add type column to accounts if missing
+        account_cols = [r[1] for r in conn.execute("PRAGMA table_info(accounts)").fetchall()]
+        if 'type' not in account_cols:
+            conn.execute("ALTER TABLE accounts ADD COLUMN type TEXT NOT NULL DEFAULT 'checking'")
+    except sqlite3.OperationalError as e:
+        # Log migration errors but don't crash - tables might be in unexpected state
+        print(f"Migration warning: {e}")
+        # Continue - tables might still be usable
