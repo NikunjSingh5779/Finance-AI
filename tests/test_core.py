@@ -311,7 +311,172 @@ def test_ask_ai_opencode_fallback_on_model_fetch_failure(monkeypatch):
     assert "auto" in models
 
 
-def test_provider_priority_order(monkeypatch):
+def test_opencode_http_200_empty_content_fallback():
+    """OpenCode HTTP 200 with empty content should continue to next model."""
+    import ai_provider
+    from unittest.mock import MagicMock, patch
+
+    fake_empty = MagicMock()
+    fake_empty.ok = True
+    fake_empty.status_code = 200
+    fake_empty.headers = {"content-type": "application/json"}
+    fake_empty.json.return_value = {"choices": [{"message": {"content": ""}}]}
+
+    fake_success = MagicMock()
+    fake_success.ok = True
+    fake_success.status_code = 200
+    fake_success.headers = {"content-type": "application/json"}
+    fake_success.json.return_value = {
+        "choices": [{"message": {"content": "Success from second model"}}]
+    }
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "empty-model", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "working-model", "pricing": {"prompt": "0", "completion": "0"}},
+        ]
+    }
+
+    call_count = {"n": 0}
+
+    def fake_post(url, **kwargs):
+        call_count["n"] += 1
+        model = kwargs.get("json", {}).get("model", "")
+        if model == "empty-model":
+            return fake_empty
+        elif model == "working-model":
+            return fake_success
+        return fake_empty
+
+    with patch("ai_provider.requests.post", side_effect=fake_post), \
+         patch("ai_provider.requests.get", return_value=fake_models_resp):
+        result = ai_provider._ask_opencode("test-key", [], 100)
+
+    assert "Success from second model" in result
+
+
+def test_openrouter_http_200_empty_content_fallback():
+    """OpenRouter HTTP 200 with empty content should continue to next model."""
+    import ai_provider
+    from unittest.mock import MagicMock, patch
+
+    fake_empty = MagicMock()
+    fake_empty.ok = True
+    fake_empty.status_code = 200
+    fake_empty.headers = {"content-type": "application/json"}
+    fake_empty.json.return_value = {"choices": [{"message": {"content": ""}}]}
+
+    fake_success = MagicMock()
+    fake_success.ok = True
+    fake_success.status_code = 200
+    fake_success.headers = {"content-type": "application/json"}
+    fake_success.json.return_value = {
+        "choices": [{"message": {"content": "Success from fallback model"}}]
+    }
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "working-free-model", "pricing": {"prompt": "0", "completion": "0"}},
+        ]
+    }
+
+    call_count = {"n": 0}
+
+    def fake_post(url, **kwargs):
+        call_count["n"] += 1
+        model = kwargs.get("json", {}).get("model", "")
+        if model == "openrouter/free":
+            return fake_empty
+        elif model == "working-free-model":
+            return fake_success
+        return fake_empty
+
+    with patch("ai_provider.requests.post", side_effect=fake_post), \
+         patch("ai_provider.requests.get", return_value=fake_models_resp):
+        result = ai_provider._ask_openrouter("test-key", [], 100)
+
+    assert "Success from fallback model" in result
+
+
+def test_is_zero_price_numeric_values():
+    """Test _is_zero_price helper with numeric values."""
+    import ai_provider
+
+    assert ai_provider._is_zero_price(0) is True
+    assert ai_provider._is_zero_price(0.0) is True
+    assert ai_provider._is_zero_price("0") is True
+    assert ai_provider._is_zero_price("0.0") is True
+    assert ai_provider._is_zero_price("0.00") is True
+    assert ai_provider._is_zero_price(1) is False
+    assert ai_provider._is_zero_price(0.01) is False
+    assert ai_provider._is_zero_price("0.01") is False
+    assert ai_provider._is_zero_price("invalid") is False
+    assert ai_provider._is_zero_price(None) is False
+
+
+def test_paid_completion_with_free_prompt():
+    """Test model with free prompt but paid completion is not selected."""
+    import ai_provider
+    from unittest.mock import MagicMock, patch
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "paid-completion", "pricing": {"prompt": "0", "completion": "0.01"}},
+            {"id": "truly-free", "pricing": {"prompt": "0", "completion": "0"}},
+        ]
+    }
+
+    with patch("ai_provider.requests.get", return_value=fake_models_resp):
+        models = ai_provider._get_opencode_models("test-key")
+
+    # Should only return the truly free model
+    assert models == ["truly-free"]
+
+
+def test_no_automatic_openrouter_auto():
+    """Test that openrouter/auto is not automatically added unless returned by API."""
+    import ai_provider
+    from unittest.mock import MagicMock, patch
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "some-free-model", "pricing": {"prompt": "0", "completion": "0"}},
+        ]
+    }
+
+    with patch("ai_provider.requests.get", return_value=fake_models_resp):
+        models = ai_provider._get_openrouter_free_models("test-key")
+
+    # Should have openrouter/free first, then discovered model, but NO auto
+    assert models == ["openrouter/free", "some-free-model"]
+    assert "openrouter/auto" not in models
+
+
+def test_string_pricing_value():
+    """Test string pricing values like '0.0' are handled correctly."""
+    import ai_provider
+    from unittest.mock import MagicMock, patch
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "string-zero", "pricing": {"prompt": "0.0", "completion": "0.0"}},
+        ]
+    }
+
+    with patch("ai_provider.requests.get", return_value=fake_models_resp):
+        models = ai_provider._get_opencode_models("test-key")
+
+    assert "string-zero" in models
     """Test that provider priority follows OPENCODE → OPENROUTER → CLAUDE → OPENAI order."""
     import ai_provider
 

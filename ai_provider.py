@@ -10,30 +10,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # FREE-ONLY AI CONFIGURATION
 # ============================================================
-#
-# This module intentionally supports ONLY:
-#
-#   1. OpenCode Zen free chat models
-#   2. OpenRouter free models
-#
-# Paid Claude/OpenAI models are NOT supported by this module.
-#
-# IMPORTANT:
-#   Jev is NOT included here because Jev uses:
-#       /v1/systemone
-#
-#   This file is for normal conversational AI:
-#       /v1/chat/completions
-# ============================================================
-
-
-# ============================================================
-# OPENCODE ZEN
-# ============================================================
-#
-# Static fallback list for OpenCode free models when API discovery fails.
-# Used only when the /v1/models endpoint is unavailable.
-# ============================================================
 
 _OPENCODE_FREE_FALLBACK = [
     "big-pickle",
@@ -42,21 +18,47 @@ _OPENCODE_FREE_FALLBACK = [
     "auto",
 ]
 
-
-# ============================================================
-# OPENROUTER
-# ============================================================
-#
-# OpenRouter provides:
-#
-#   openrouter/free
-#
-# which routes to currently available FREE models.
-#
-# This is preferable to hard-coding individual free models.
-# ============================================================
-
 _OPENROUTER_FREE_ROUTER = "openrouter/free"
+
+# ============================================================
+# PRICING HELPERS
+# ============================================================
+
+
+def _is_zero_price(value) -> bool:
+    """
+    Check if a pricing value represents zero cost.
+
+    Accepts: 0, 0.0, "0", "0.0"
+    Returns: True if value represents zero, False otherwise
+    """
+    try:
+        return float(value) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_successful_response(result: str) -> bool:
+    """
+    Check if a response indicates a successful, usable answer.
+
+    Returns False for diagnostic messages indicating failure.
+    """
+    failure_indicators = [
+        'AI provider',
+        'returned HTTP',
+        'is unavailable',
+        'returned no final text',
+        'returned no usable text',
+        'unsupported response format',
+        'returned malformed JSON',
+        'returned an unexpected non-JSON response',
+        'could not complete',
+        'timed out',
+        'is unreachable'
+    ]
+
+    return not any(indicator in result for indicator in failure_indicators)
 
 
 # ============================================================
@@ -100,10 +102,10 @@ def _get_opencode_models(key: str) -> list[str]:
 
     Logic:
     1. Read response["data"]
-    2. Keep model IDs with pricing.prompt equal to "0"
+    2. Keep model IDs with both pricing.prompt and pricing.completion equal to zero
     3. Also allow IDs containing "-free" when pricing metadata is missing
     4. Preserve API response ordering
-    5. Add "auto" at the end if not already present
+    5. Remove duplicates
     6. If discovery fails, return _OPENCODE_FREE_FALLBACK
     """
 
@@ -128,19 +130,17 @@ def _get_opencode_models(key: str) -> list[str]:
 
                 seen.add(model_id)
 
-                # Check if pricing indicates free model (prompt = "0")
+                # Check if pricing indicates free model (both prompt and completion = 0)
                 pricing = model.get("pricing", {})
-                prompt_price = str(pricing.get("prompt", "")).strip()
+                prompt_price = pricing.get("prompt")
+                completion_price = pricing.get("completion")
 
-                if prompt_price == "0":
+                # Model is free if both prompt and completion are zero
+                if (_is_zero_price(prompt_price) and _is_zero_price(completion_price)):
                     free_models.append(model_id)
                 elif "-free" in model_id and not pricing:
                     # Allow -free models when pricing metadata is missing
                     free_models.append(model_id)
-
-            # Add "auto" if not already present
-            if "auto" not in seen:
-                free_models.append("auto")
 
             if free_models:
                 logger.info(
@@ -180,15 +180,16 @@ def _get_opencode_models(key: str) -> list[str]:
 
 
 # ============================================================
-# OPENROUTER FREE MODEL CHECK
+# OPENROUTER FREE MODEL DISCOVERY
 # ============================================================
 
 def _get_openrouter_free_models(key: str) -> list[str]:
     """
     Discover available free models from OpenRouter's /v1/models API.
 
-    Returns models with pricing.prompt == "0", preserving API ordering.
-    Falls back to ["openrouter/free", "openrouter/auto"] if discovery fails.
+    Returns models with both pricing.prompt and pricing.completion == 0,
+    preserving API ordering. Always tries openrouter/free first.
+    Falls back to static list if discovery fails.
     """
 
     try:
@@ -205,7 +206,7 @@ def _get_openrouter_free_models(key: str) -> list[str]:
             free_models = []
             seen = set()
 
-            # Always try openrouter/free first
+            # Always try openrouter/free first if it might work
             free_models.append("openrouter/free")
             seen.add("openrouter/free")
 
@@ -215,19 +216,17 @@ def _get_openrouter_free_models(key: str) -> list[str]:
                 if not model_id or model_id in seen:
                     continue
 
-                # Check if pricing indicates free model (prompt = "0")
+                # Check if pricing indicates free model (both prompt and completion = 0)
                 pricing = model.get("pricing", {})
-                if isinstance(pricing, dict):
-                    prompt_price = str(pricing.get("prompt", "")).strip()
-                    if prompt_price == "0":
-                        free_models.append(model_id)
-                        seen.add(model_id)
+                prompt_price = pricing.get("prompt")
+                completion_price = pricing.get("completion")
 
-            # Add fallback models
-            for fallback in ["openrouter/auto"]:
-                if fallback not in seen:
-                    free_models.append(fallback)
+                # Model is free if both prompt and completion are zero
+                if (_is_zero_price(prompt_price) and _is_zero_price(completion_price)):
+                    free_models.append(model_id)
+                    seen.add(model_id)
 
+            # Do not automatically add openrouter/auto unless returned by API
             if len(free_models) > 1:  # More than just openrouter/free
                 logger.info(
                     "OpenRouter free models discovered: %s",
@@ -248,8 +247,8 @@ def _get_openrouter_free_models(key: str) -> list[str]:
             exc,
         )
 
-    # Static fallback when discovery fails
-    return ["openrouter/free", "openrouter/auto"]
+    # Static fallback when discovery fails - only openrouter/free
+    return ["openrouter/free"]
 
 
 # ============================================================
@@ -282,313 +281,6 @@ def _build_messages(
     )
 
     return messages
-
-
-# ============================================================
-# OPENCODE CHAT
-# ============================================================
-
-def _ask_opencode(
-    key: str,
-    messages: list[dict],
-    max_tokens: int,
-) -> str:
-    """
-    Call OpenCode Zen using only FREE chat-completion models.
-
-    Strategy:
-
-        1. Discover currently available free models.
-        2. Try them sequentially.
-        3. If one is unavailable, try the next.
-        4. Return detailed diagnostic information if all fail.
-    """
-
-    url = "https://opencode.ai/zen/v1/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-
-    models = _get_opencode_models(key)
-
-    last_status = None
-    last_error = ""
-
-    for model in models:
-
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": 0.6,
-            "messages": messages,
-        }
-
-        logger.info(
-            "Trying OpenCode FREE model: %s",
-            model,
-        )
-
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=60,
-            )
-
-            last_status = response.status_code
-
-            logger.info(
-                "OpenCode model=%s HTTP=%s",
-                model,
-                response.status_code,
-            )
-
-            # ------------------------------------------------
-            # SUCCESS
-            # ------------------------------------------------
-            if response.ok:
-                return _parse_openai_response(
-                    response=response,
-                    provider="opencode",
-                    model=model,
-                )
-
-            # ------------------------------------------------
-            # MODEL UNAVAILABLE
-            # ------------------------------------------------
-            body = response.text[:2000]
-
-            if "Model is unavailable" in body:
-                last_error = (
-                    f"Model {model} is unavailable. "
-                    "Trying the next FREE model."
-                )
-
-                logger.warning(
-                    "OpenCode: %s",
-                    last_error,
-                )
-
-                continue
-
-            # ------------------------------------------------
-            # RATE LIMIT
-            # ------------------------------------------------
-            if response.status_code == 429:
-                last_error = (
-                    f"Model {model} rate-limited: "
-                    f"{body}"
-                )
-
-                logger.warning(
-                    "OpenCode rate limit on %s",
-                    model,
-                )
-
-                continue
-
-            # ------------------------------------------------
-            # OTHER ERROR
-            # ------------------------------------------------
-            last_error = (
-                f"Model {model} returned HTTP "
-                f"{response.status_code}: {body}"
-            )
-
-            logger.warning(
-                "OpenCode model %s failed: %s",
-                model,
-                last_error,
-            )
-
-        except requests.exceptions.Timeout:
-
-            last_status = None
-            last_error = f"Model {model} timed out."
-
-            logger.warning(
-                "OpenCode model %s timed out.",
-                model,
-            )
-
-            continue
-
-        except requests.exceptions.ConnectionError:
-
-            return (
-                'AI provider "opencode" is unreachable. '
-                "Check your internet connection."
-            )
-
-        except Exception as exc:
-
-            last_error = (
-                f"Model {model} unexpected error: {exc}"
-            )
-
-            logger.exception(
-                "OpenCode model %s unexpected error.",
-                model,
-            )
-
-            continue
-
-    # --------------------------------------------------------
-    # ALL MODELS FAILED
-    # --------------------------------------------------------
-
-    return (
-        'AI provider "opencode" could not complete the request '
-        "using any currently available FREE chat model.\n"
-        f"Last HTTP status: {last_status}\n"
-        f"Last error: {last_error}"
-    )
-
-
-# ============================================================
-# OPENROUTER CHAT
-# ============================================================
-
-def _ask_openrouter(
-    key: str,
-    messages: list[dict],
-    max_tokens: int,
-) -> str:
-    """
-    Call OpenRouter using FREE models only.
-
-    Strategy:
-    1. Try openrouter/free first
-    2. If that fails with HTTP 404/400/403/429, discover free models from API
-    3. Try free models sequentially
-    4. Return detailed diagnostic information if all fail
-    """
-
-    url = "https://openrouter.ai/api/v1/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://finance-ai.app",
-        "X-Title": "Finance AI",
-    }
-
-    # Get available free models (includes openrouter/free first)
-    models = _get_openrouter_free_models(key)
-
-    last_status = None
-    last_error = ""
-
-    for model in models:
-
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": 0.6,
-            "messages": messages,
-        }
-
-        logger.info(
-            "Trying OpenRouter model: %s",
-            model,
-        )
-
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=60,
-            )
-
-            last_status = response.status_code
-
-            logger.info(
-                "OpenRouter model=%s HTTP=%s",
-                model,
-                response.status_code,
-            )
-
-            # ------------------------------------------------
-            # SUCCESS
-            # ------------------------------------------------
-            if response.ok:
-                return _parse_openai_response(
-                    response=response,
-                    provider="openrouter",
-                    model=model,
-                )
-
-            # ------------------------------------------------
-            # MODEL UNAVAILABLE OR ERROR - TRY NEXT
-            # ------------------------------------------------
-            body = response.text[:2000]
-
-            if response.status_code in [400, 403, 404, 429]:
-                last_error = (
-                    f"Model {model} returned HTTP "
-                    f"{response.status_code}: {body}"
-                )
-
-                logger.warning(
-                    "OpenRouter model %s failed, trying next: %s",
-                    model,
-                    last_error,
-                )
-                continue
-
-            # ------------------------------------------------
-            # OTHER ERROR
-            # ------------------------------------------------
-            last_error = (
-                f"Model {model} returned HTTP "
-                f"{response.status_code}: {body}"
-            )
-
-            logger.warning(
-                "OpenRouter model %s failed: %s",
-                model,
-                last_error,
-            )
-
-        except requests.exceptions.Timeout:
-            last_status = None
-            last_error = f"Model {model} timed out."
-
-            logger.warning(
-                "OpenRouter model %s timed out.",
-                model,
-            )
-            continue
-
-        except requests.exceptions.ConnectionError:
-            return (
-                'AI provider "openrouter" is unreachable. '
-                "Check your internet connection."
-            )
-
-        except Exception as exc:
-            last_error = (
-                f"Model {model} unexpected error: {exc}"
-            )
-
-            logger.exception(
-                "OpenRouter model %s unexpected error.",
-                model,
-            )
-            continue
-
-    # --------------------------------------------------------
-    # ALL MODELS FAILED
-    # --------------------------------------------------------
-
-    return (
-        f'AI provider "openrouter" returned HTTP {last_status}.\n'
-        f'Details: {last_error}'
-    )
 
 
 # ============================================================
@@ -791,6 +483,271 @@ def _parse_openai_response(
 
 
 # ============================================================
+# OPENCODE CHAT
+# ============================================================
+
+def _ask_opencode(
+    key: str,
+    messages: list[dict],
+    max_tokens: int,
+) -> str:
+    """
+    Call OpenCode Zen using only FREE chat-completion models.
+
+    Strategy:
+        1. Discover currently available free models.
+        2. Try them sequentially.
+        3. Continue to next model if HTTP 200 response contains no usable text
+        4. Return detailed diagnostic information if all fail.
+    """
+
+    url = "https://opencode.ai/zen/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+    models = _get_opencode_models(key)
+
+    last_status = None
+    last_error = ""
+
+    for model in models:
+
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": 0.6,
+            "messages": messages,
+        }
+
+        logger.info(
+            "Trying OpenCode FREE model: %s",
+            model,
+        )
+
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=60,
+            )
+
+            last_status = response.status_code
+
+            logger.info(
+                "OpenCode model=%s HTTP=%s",
+                model,
+                response.status_code,
+            )
+
+            # ------------------------------------------------
+            # PARSE RESPONSE (REGARDLESS OF STATUS CODE)
+            # ------------------------------------------------
+            result = _parse_openai_response(
+                response=response,
+                provider="opencode",
+                model=model,
+            )
+
+            # If the response contains usable text, return it
+            if _is_successful_response(result):
+                return result
+
+            # Otherwise, this model failed - continue to next
+            last_error = result
+            logger.warning(
+                "OpenCode model %s failed, trying next: %s",
+                model,
+                last_error,
+            )
+            continue
+
+        except requests.exceptions.Timeout:
+
+            last_status = None
+            last_error = f"Model {model} timed out."
+
+            logger.warning(
+                "OpenCode model %s timed out.",
+                model,
+            )
+
+            continue
+
+        except requests.exceptions.ConnectionError:
+
+            return (
+                'AI provider "opencode" is unreachable. '
+                "Check your internet connection."
+            )
+
+        except Exception as exc:
+
+            last_error = (
+                f"Model {model} unexpected error: {exc}"
+            )
+
+            logger.exception(
+                "OpenCode model %s unexpected error.",
+                model,
+            )
+
+            continue
+
+    # --------------------------------------------------------
+    # ALL MODELS FAILED
+    # --------------------------------------------------------
+
+    return (
+        'AI provider "opencode" could not complete the request '
+        "using any currently available FREE chat model.\n"
+        f"Last HTTP status: {last_status}\n"
+        f"Last error: {last_error}"
+    )
+
+
+# ============================================================
+# OPENROUTER CHAT
+# ============================================================
+
+def _ask_openrouter(
+    key: str,
+    messages: list[dict],
+    max_tokens: int,
+) -> str:
+    """
+    Call OpenRouter using FREE models only.
+
+    Strategy:
+    1. Try openrouter/free first
+    2. If that fails with HTTP 404/400/403/429, discover free models from API
+    3. Try free models sequentially
+    4. Continue to next model if HTTP 200 response contains no usable text
+    5. Return detailed diagnostic information if all fail
+    """
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://finance-ai.app",
+        "X-Title": "Finance AI",
+    }
+
+    # Get available free models (includes openrouter/free first)
+    models = _get_openrouter_free_models(key)
+
+    last_status = None
+    last_error = ""
+
+    for model in models:
+
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": 0.6,
+            "messages": messages,
+        }
+
+        logger.info(
+            "Trying OpenRouter model: %s",
+            model,
+        )
+
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=60,
+            )
+
+            last_status = response.status_code
+
+            logger.info(
+                "OpenRouter model=%s HTTP=%s",
+                model,
+                response.status_code,
+            )
+
+            # ------------------------------------------------
+            # PARSE RESPONSE (REGARDLESS OF STATUS CODE)
+            # ------------------------------------------------
+            result = _parse_openai_response(
+                response=response,
+                provider="openrouter",
+                model=model,
+            )
+
+            # If the response contains usable text, return it
+            if _is_successful_response(result):
+                return result
+
+            # ------------------------------------------------
+            # HANDLE SPECIFIC ERROR CASES FOR FALLBACK
+            # ------------------------------------------------
+            if response.status_code in [400, 403, 404, 429]:
+                last_error = result
+                logger.warning(
+                    "OpenRouter model %s failed, trying next: %s",
+                    model,
+                    last_error,
+                )
+                continue
+
+            # ------------------------------------------------
+            # OTHER ERRORS
+            # ------------------------------------------------
+            last_error = result
+            logger.warning(
+                "OpenRouter model %s failed: %s",
+                model,
+                last_error,
+            )
+            continue
+
+        except requests.exceptions.Timeout:
+            last_status = None
+            last_error = f"Model {model} timed out."
+
+            logger.warning(
+                "OpenRouter model %s timed out.",
+                model,
+            )
+            continue
+
+        except requests.exceptions.ConnectionError:
+            return (
+                'AI provider "openrouter" is unreachable. '
+                "Check your internet connection."
+            )
+
+        except Exception as exc:
+            last_error = (
+                f"Model {model} unexpected error: {exc}"
+            )
+
+            logger.exception(
+                "OpenRouter model %s unexpected error.",
+                model,
+            )
+            continue
+
+    # --------------------------------------------------------
+    # ALL MODELS FAILED
+    # --------------------------------------------------------
+
+    return (
+        f'AI provider "openrouter" returned HTTP {last_status}.\n'
+        f'Details: {last_error}'
+    )
+
+
+# ============================================================
 # PUBLIC API
 # ============================================================
 
@@ -918,18 +875,6 @@ def ask_ai(
         f"'{provider}'."
     )
 
-
-# ============================================================
-# OPTIONAL DEBUG TEST
-# ============================================================
-#
-# Run:
-#
-#   python your_file.py
-#
-# only if you want a direct command-line test.
-#
-# ============================================================
 
 if __name__ == "__main__":
 
