@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
 
 from database import init_db
 from main import app
@@ -182,3 +183,149 @@ def test_market_endpoints_structure(client):
 
     resp = client.get("/api/market/search?q=Apple")
     assert resp.status_code in (200, 503)
+
+
+# ── Bug 2 regression tests ──────────────────────────────────────────────────
+
+def test_ask_ai_non_json_404_returns_clean_error(monkeypatch):
+    """A non-JSON 404 from the provider must produce a readable error, not a raw exception."""
+    import ai_provider
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-fake")
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    fake_404 = MagicMock()
+    fake_404.ok = False
+    fake_404.status_code = 404
+    fake_404.text = "Not Found"
+    fake_404.headers = {"content-type": "text/plain"}
+
+    fake_ok = MagicMock()
+    fake_ok.ok = True
+    fake_ok.status_code = 200
+    fake_ok.headers = {"content-type": "application/json"}
+    fake_ok.json.return_value = {
+        "choices": [{"message": {"content": "Hello from fallback"}}]
+    }
+
+    # Model list fetch also goes through requests.get — return empty so static fallback is used
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = False
+
+    call_count = {"n": 0}
+
+    def fake_post(url, **kwargs):
+        call_count["n"] += 1
+        # First few calls (dead models) return 404; last call (auto) returns ok
+        model = kwargs.get("json", {}).get("model", "")
+        if model == "openrouter/auto" or call_count["n"] >= 5:
+            return fake_ok
+        return fake_404
+
+    with patch("ai_provider.requests.post", side_effect=fake_post), \
+         patch("ai_provider.requests.get", return_value=fake_models_resp):
+        result = ai_provider.ask_ai("system", "user question")
+
+    # Must not contain the raw "non-JSON response" string from the old code
+    assert "non-JSON response" not in result
+    # Must eventually return a real answer via the working fallback
+    assert "Hello from fallback" in result
+
+
+def test_ask_ai_valid_opencode_response_extracts_text(monkeypatch):
+    """A well-formed OpenCode-style JSON response must return the message content string."""
+    import ai_provider
+
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-opencode-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    fake_resp = MagicMock()
+    fake_resp.ok = True
+    fake_resp.status_code = 200
+    fake_resp.headers = {"content-type": "application/json"}
+    fake_resp.json.return_value = {
+        "choices": [{"message": {"content": "Your budget allocation looks optimal."}}]
+    }
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "big-pickle", "pricing": {"prompt": "0"}},
+            {"id": "deepseek-v4-flash-free", "pricing": {"prompt": "0"}},
+            {"id": "paid-model", "pricing": {"prompt": "0.001"}}
+        ]
+    }
+
+    with patch("ai_provider.requests.post", return_value=fake_resp), \
+         patch("ai_provider.requests.get", return_value=fake_models_resp):
+        result = ai_provider.ask_ai("You are a financial advisor.", "Analyze my budget")
+
+    assert result == "Your budget allocation looks optimal."
+
+
+def test_ask_ai_opencode_free_model_detection(monkeypatch):
+    """OpenCode should correctly identify free models from the /v1/models API."""
+    import ai_provider
+
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
+
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = True
+    fake_models_resp.json.return_value = {
+        "data": [
+            {"id": "big-pickle", "pricing": {"prompt": "0"}},
+            {"id": "mimo-v2.5-free", "pricing": {"prompt": "0"}},
+            {"id": "expensive-model", "pricing": {"prompt": "0.01"}},
+            {"id": "another-free-model", "pricing": {"prompt": "0"}},
+        ]
+    }
+
+    with patch("ai_provider.requests.get", return_value=fake_models_resp):
+        models = ai_provider._get_opencode_models("test-key")
+
+    # Should return free models plus auto fallback
+    expected_free_models = ["big-pickle", "mimo-v2.5-free", "another-free-model", "auto"]
+    assert models == expected_free_models
+
+
+def test_ask_ai_opencode_fallback_on_model_fetch_failure(monkeypatch):
+    """When OpenCode model fetch fails, should use static fallback list."""
+    import ai_provider
+
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "test-key")
+
+    # Simulate API failure
+    fake_models_resp = MagicMock()
+    fake_models_resp.ok = False
+
+    with patch("ai_provider.requests.get", return_value=fake_models_resp):
+        models = ai_provider._get_opencode_models("test-key")
+
+    # Should return static fallback
+    assert models == ai_provider._OPENCODE_FREE_FALLBACK
+    assert "auto" in models
+
+
+def test_provider_priority_order(monkeypatch):
+    """Test that provider priority follows OPENCODE → OPENROUTER → CLAUDE → OPENAI order."""
+    import ai_provider
+
+    # Set all keys to test priority
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "opencode-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
+    monkeypatch.setenv("CLAUDE_API_KEY", "claude-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+
+    provider, key = ai_provider._load_key()
+    assert provider == "opencode"
+    assert key == "opencode-key"
+
+    # Test fallback when OpenCode is missing
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY")
+    provider, key = ai_provider._load_key()
+    assert provider == "openrouter"
+    assert key == "openrouter-key"

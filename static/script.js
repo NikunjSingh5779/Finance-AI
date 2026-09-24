@@ -792,6 +792,16 @@ function goPage(name, el) {
 
   document.getElementById('topbar-title').textContent = titles[name]||name;
 
+  // AI page manages its own internal scroll; suppress .content scroll for it
+  const content = document.getElementById('content');
+  if (name === 'ai-page') {
+    content.style.overflow = 'hidden';
+    content.style.padding = '0';
+  } else {
+    content.style.overflow = '';
+    content.style.padding = '';
+  }
+
   // Always refresh data when navigating to a page
   refreshCurrentPage();
 }
