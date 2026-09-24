@@ -89,7 +89,7 @@ cd Finance-AI
 python -m pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env and configure at least one API key (OPENROUTER_API_KEY, OPENCODE_API_KEY, etc.)
+# Edit .env and configure at least one API key (OPENROUTER_API_KEY, OPENCODE_ZEN_API_KEY, etc.)
 
 uvicorn main:app --reload
 ```
