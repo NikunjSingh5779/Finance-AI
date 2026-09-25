@@ -2,6 +2,7 @@ let currentPage = 'dashboard';
 const API = '';
 const fmt = v => '₹' + Number(v).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtDec = v => '₹' + Number(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 let page = 1;
 let limit = 10;
 let summaryData = {}, txnsData = [], budgetsData = [];
@@ -37,16 +38,14 @@ const getIcon = (cat) => {
   return MAP[normalized] || '💳';
 };
 let isAllView = false;
+let isMonthFilterActive = false;
 function filterThisMonth() {
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-
-  const filtered = txnsData.filter(t => {
-    const d = new Date(t.date);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-
+  isMonthFilterActive = true;
+  if (currentPage !== 'transactions') {
+    goPage('transactions', document.querySelectorAll('.nav-item')[1]);
+  } else {
+    renderAllTxns();
+  }
 }
 
 
@@ -144,10 +143,10 @@ const expChange = calcChange(expense, prevExp);
     document.getElementById('leg-exp').textContent = fmt(expense);
     document.getElementById('cat-total').textContent = fmt(expense);
     const now = new Date();
-    document.getElementById('cat-period').textContent = now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    document.getElementById('cat-period').textContent = 'All time';
     document.getElementById('hero-sub').textContent = savings_rate >= 20
       ? `Your savings rate is ${savings_rate.toFixed(1)}% — great work! Keep it going with a few quick wins from FinanceAI.`
-      : `Your savings rate is ${savings_rate.toFixed(1)}% this month. Let's find ways to improve it together.`;
+      : `Your overall savings rate is ${savings_rate.toFixed(1)}%. Let's find ways to improve it together.`;
     const incArr = buildSparkFromMonthly(monthly,'income');
     const expArr = buildSparkFromMonthly(monthly,'expense');
     const balArr = incArr.map((v,i)=>v-(expArr[i]||0));
@@ -158,18 +157,11 @@ const expChange = calcChange(expense, prevExp);
       makeSparkline('spark-exp',expArr.length?expArr:[0,0,expense],'#ef4444');
       makeSparkline('spark-sav',savArr.length?savArr:[0,0,savings_rate],'#f59e0b');
     },100);
-const monthlyExpenses = txnsData.filter(t => {
-  const d = new Date(t.date);
-  return (
-    t.type === "expense" &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear()
-  );
-});
+const categoryExpenses = txnsData.filter(t => t.type === "expense");
 
 const grouped = {};
 
-monthlyExpenses.forEach(t => {
+categoryExpenses.forEach(t => {
   if (!grouped[t.category]) grouped[t.category] = 0;
   grouped[t.category] += Number(t.amount);
 });
@@ -264,7 +256,7 @@ function updateBudgetUI(filteredTxns) {
         <div class="budget-item-header">
           <div class="budget-item-left">
             <div class="budget-icon">${getIcon(b.category)}</div>
-            <span class="budget-name">${b.category}</span>
+            <span class="budget-name">${escapeHtml(b.category)}</span>
           </div>
 
           <div class="budget-amounts ${over ? 'over' : 'ok'}">
@@ -297,7 +289,7 @@ function renderCatChart(cats) {
   });
   document.getElementById('cat-list').innerHTML = entries.map((e,i)=>`
     <div class="cat-row">
-      <span class="cat-name"><span class="cat-dot" style="background:${CAT_COLORS[i]}"></span>${e[0]}</span>
+      <span class="cat-name"><span class="cat-dot" style="background:${CAT_COLORS[i]}"></span>${escapeHtml(e[0])}</span>
       <span class="cat-pct">${total>0?Math.round(e[1]/total*100):0}%</span>
       <span class="cat-amount">${fmt(e[1])}</span>
     </div>`).join('');
@@ -322,13 +314,20 @@ function renderRecentTxns(txns) {
 
 function renderAllTxns(data = txnsData) {
   const search = (document.getElementById('search-input') || {}).value?.toLowerCase() || '';
+  const now = new Date();
+  const periodData = isMonthFilterActive
+    ? data.filter(t => {
+        const date = new Date(t.date);
+        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      })
+    : data;
 
   const filtered = search
-    ? data.filter(t =>
+    ? periodData.filter(t =>
         (t.description || t.desc || '').toLowerCase().includes(search) ||
         (t.category || '').toLowerCase().includes(search)
       )
-    : data;
+    : periodData;
 
   document.getElementById('all-txns').innerHTML = filtered.length
     ? filtered.map(t => fullTxnRow(t)).join('')
@@ -343,7 +342,7 @@ function txnRow(t, showDel=false) {
   const desc = t.description || t.desc || t.category;
   return `<div class="txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${desc}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
+    <div class="txn-info"><div class="txn-name">${escapeHtml(desc)}</div><div class="txn-meta">${escapeHtml(t.category)}${aname ? ' · '+escapeHtml(aname) : ''} • ${escapeHtml(t.date)}</div></div>
     <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':'-'}<span class="txn-trend">${inc?'↗':'↘'}</span>${fmtDec(t.amount)}</span>
   </div>`;
 }
@@ -356,8 +355,8 @@ function fullTxnRow(t) {
   const desc = t.description || t.desc || t.category;
   return `<div class="full-txn-item">
     <div class="txn-icon" style="background:${bg}">${icon}</div>
-    <div class="txn-info"><div class="txn-name">${desc}</div><div class="txn-meta">${t.category}${aname ? ' · '+aname : ''} • ${t.date}</div></div>
-    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${t.category}</span>
+    <div class="txn-info"><div class="txn-name">${escapeHtml(desc)}</div><div class="txn-meta">${escapeHtml(t.category)}${aname ? ' · '+escapeHtml(aname) : ''} • ${escapeHtml(t.date)}</div></div>
+    <span class="cat-badge" style="background:var(--bg3);color:var(--text2);padding:3px 8px;border-radius:5px;font-size:11px">${escapeHtml(t.category)}</span>
     <span class="txn-amount ${inc?'inc':'exp'}">${inc?'+':'-'}${fmtDec(t.amount)}</span>
     <button class="edit-btn" onclick="openEditModal(${t.id})" title="Edit">✏️</button>
     <button class="del-btn" onclick="deleteTxn(${t.id})">Delete</button>
@@ -433,7 +432,7 @@ monthlyExpenses.forEach(t => {
       <div class="budget-item-header">
         <div class="budget-item-left">
           <div class="budget-icon">${getIcon(b.category)}</div>
-          <span class="budget-name">${b.category}</span>
+          <span class="budget-name">${escapeHtml(b.category)}</span>
         </div>
 
         <div class="budget-amounts ${over ? 'over' : 'ok'}">
@@ -464,8 +463,8 @@ const over = pct>=100;
 const remaining = b.limit_amt - spent;
     return `<div class="budget-page-item">
       <div class="bpi-header">
-        <div style="display:flex;align-items:center;gap:10px"><div class="budget-icon" style="width:32px;height:32px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">${getIcon(b.category)}</div><span class="bpi-name">${b.category}</span></div>
-        <button class="del-btn" onclick="deleteBudget('${b.category}')">Remove</button>
+        <div style="display:flex;align-items:center;gap:10px"><div class="budget-icon" style="width:32px;height:32px;background:var(--bg3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">${getIcon(b.category)}</div><span class="bpi-name">${escapeHtml(b.category)}</span></div>
+        <button class="del-btn" onclick="deleteBudget(decodeURIComponent('${encodeURIComponent(b.category).replace(/'/g, '%27')}'))">Remove</button>
       </div>
       <div class="bpi-amounts">
   <span>Spent: ${fmt(spent)}</span>
@@ -504,7 +503,7 @@ function renderInsights(income, expense, savings_rate, cats) {
   const items = [];
   if (top && income > 0) {
     const pct = Math.round(top[1]/income*100);
-    items.push({type:'warn', icon:'⚡', title:`You could save ${fmt(Math.max(0,top[1]*0.15))} this month`, body:`${top[0]} spend is ${pct}% of income. Cutting it by 15% would free up ${fmt(top[1]*0.15)} toward your emergency fund.`, action:'Adjust budget →'});
+    items.push({type:'warn', icon:'⚡', title:`You could save ${fmt(Math.max(0,top[1]*0.15))} this month`, body:`${escapeHtml(top[0])} spend is ${pct}% of income. Cutting it by 15% would free up ${fmt(top[1]*0.15)} toward your emergency fund.`, action:'Adjust budget →'});
   }
   let title, body;
   if (savings_rate >= 40) {
@@ -519,7 +518,7 @@ function renderInsights(income, expense, savings_rate, cats) {
   }
   items.push({ type: savings_rate >= 20 ? 'ok' : 'warn', icon: '📊', title, body });
   document.getElementById('insights-list').innerHTML = items.length
-    ? items.map(i=>`<div class="insight-item"><div class="insight-item-header"><div class="insight-bullet ${i.type}">${i.icon}</div><div><div class="insight-text-title">${i.title}</div><div class="insight-text-body">${i.body}</div>${i.action?`<span class="insight-action">${i.action}</span>`:''}</div></div></div>`).join('')
+    ? items.map(i=>`<div class="insight-item"><div class="insight-item-header"><div class="insight-bullet ${i.type}">${i.icon}</div><div><div class="insight-text-title">${escapeHtml(i.title)}</div><div class="insight-text-body">${escapeHtml(i.body)}</div>${i.action?`<span class="insight-action">${escapeHtml(i.action)}</span>`:''}</div></div></div>`).join('')
     : '<div class="empty-state">Add transactions to see insights</div>';
 }
 
@@ -543,8 +542,8 @@ function renderAccounts() {
   el.innerHTML = accountsData.map(a => `
     <div class="account-card">
       <div class="account-top">
-        <span class="account-name">${a.name}</span>
-        <span class="account-badge">${a.type}</span>
+        <span class="account-name">${escapeHtml(a.name)}</span>
+        <span class="account-badge">${escapeHtml(a.type)}</span>
       </div>
       <div class="account-bal">${fmtDec(a.balance)}</div>
       <div class="account-actions">
@@ -745,7 +744,7 @@ function populateAccountSelect(selectId, selectedId) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   sel.innerHTML = '<option value="">— None —</option>' +
-    accountsData.map(a => `<option value="${a.id}"${selectedId && a.id === selectedId ? ' selected' : ''}>${a.name}${a.type ? ' ('+a.type+')' : ''}</option>`).join('');
+    accountsData.map(a => `<option value="${a.id}"${selectedId && a.id === selectedId ? ' selected' : ''}>${escapeHtml(a.name)}${a.type ? ' (' + escapeHtml(a.type) + ')' : ''}</option>`).join('');
 }
 
 function openModal() {
@@ -945,7 +944,7 @@ async function sendChat() {
 
   chat.innerHTML += `
     <div class="chat-msg user">
-      <div class="chat-bubble user">${msg}</div>
+      <div class="chat-bubble user">${escapeHtml(msg)}</div>
     </div>
   `;
 
@@ -980,7 +979,7 @@ async function sendChat() {
     chat.innerHTML += `
       <div class="chat-msg ai">
         <div class="chat-bubble ai">
-          ${data.advice || "No response"}
+          ${escapeHtml(data.advice || "No response")}
         </div>
       </div>
     `;

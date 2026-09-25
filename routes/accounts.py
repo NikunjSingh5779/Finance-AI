@@ -64,6 +64,10 @@ def update_account(account_id: int, a: AccountIn):
 def delete_account(account_id: int):
     conn = get_db()
     try:
+        account = conn.execute("SELECT id FROM accounts WHERE id=?", (account_id,)).fetchone()
+        if not account:
+            raise HTTPException(404, "Not found")
+        conn.execute("UPDATE transactions SET account_id=NULL WHERE account_id=?", (account_id,))
         affected = conn.execute("DELETE FROM accounts WHERE id=?", (account_id,)).rowcount
         conn.commit()
         if not affected:

@@ -11,6 +11,7 @@ xai_finance_agent's DuckDuckGoTools integration.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -213,7 +214,7 @@ class DuckDuckGoSearcher:
         max_results: int = 5,
     ) -> list[dict[str, str]]:
         """Search for financial news about a specific symbol/ticker."""
-        query = f"{symbol} stock market news 2026"
+        query = f"{symbol} stock market news {datetime.now().year}"
         results = await self.search(query, max_results=max_results)
         return [r.to_dict() for r in results]
 
@@ -233,7 +234,7 @@ class DuckDuckGoSearcher:
         max_results: int = 5,
     ) -> list[dict[str, str]]:
         """Search for macroeconomic data or trends."""
-        query = f"{topic} economic data 2026"
+        query = f"{topic} economic data {datetime.now().year}"
         results = await self.search(query, max_results=max_results)
         return [r.to_dict() for r in results]
 

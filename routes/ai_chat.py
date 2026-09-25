@@ -1,10 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from fastapi.concurrency import run_in_threadpool
 from ai_provider import ask_ai
 
 logger = logging.getLogger(__name__)
@@ -26,7 +23,8 @@ class ChatResponse(BaseModel):
     success: bool
 
 
-SYSTEM_PROMPT = """You are a helpful personal finance assistant. Your role is to provide practical financial advice and spending suggestions based on user questions.
+SYSTEM_PROMPT = """You are a helpful personal finance assistant.
+Your role is to provide practical financial advice and spending suggestions based on user questions.
 
 When a user asks about spending money (e.g., "how can I spend my 10k on Shimla?"), provide:
 1. Budget breakdown suggestions
@@ -62,10 +60,15 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 conversation_context += f"{role}: {msg.content}\n"
 
         # Combine context with current question
-        full_message = (conversation_context + f"User: {request.question}") if conversation_context else request.question
+        full_message = (
+            conversation_context + f"User: {request.question}"
+            if conversation_context
+            else request.question
+        )
 
         # Call AI model with system prompt
-        response = ask_ai(
+        response = await run_in_threadpool(
+            ask_ai,
             system_message=SYSTEM_PROMPT,
             user_message=full_message,
             max_tokens=1024,
@@ -78,6 +81,6 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Error in chat endpoint")
+        raise HTTPException(status_code=500, detail="Unable to generate an AI response")

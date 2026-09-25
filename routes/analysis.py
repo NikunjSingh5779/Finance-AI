@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from database import get_db
 from models import AIQuery
 from rate_limiter import check_rate_limit
@@ -349,4 +350,6 @@ async def ai_advice_enhanced(query: AIQuery, request: Request):
 
     max_tokens = 600 if detailed else 400  # Increased for complete financial advice
 
-    return {"advice": ask_ai(system_prompt, user_prompt, max_tokens)}
+    return {"advice": await run_in_threadpool(
+        ask_ai, system_prompt, user_prompt, max_tokens
+    )}

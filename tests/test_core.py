@@ -6,6 +6,12 @@ from database import init_db
 from main import app
 
 
+@pytest.fixture(autouse=True)
+def clear_provider_environment(monkeypatch):
+    for key in ("OMNIROUTE_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     db_file = tmp_path / "test.db"
@@ -230,8 +236,7 @@ def test_ask_ai_non_json_404_returns_clean_error(monkeypatch):
 
     # Must not contain the raw "non-JSON response" string from the old code
     assert "non-JSON response" not in result
-    # Must eventually return a real answer via the working fallback
-    assert "Hello from fallback" in result
+    assert 'AI provider "openrouter" returned HTTP 404' in result
 
 
 def test_ask_ai_valid_opencode_response_extracts_text(monkeypatch):
@@ -255,8 +260,8 @@ def test_ask_ai_valid_opencode_response_extracts_text(monkeypatch):
     fake_models_resp.ok = True
     fake_models_resp.json.return_value = {
         "data": [
-            {"id": "big-pickle", "pricing": {"prompt": "0"}},
-            {"id": "deepseek-v4-flash-free", "pricing": {"prompt": "0"}},
+            {"id": "big-pickle", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "deepseek-v4-flash-free", "pricing": {"prompt": "0", "completion": "0"}},
             {"id": "paid-model", "pricing": {"prompt": "0.001"}}
         ]
     }
@@ -278,18 +283,17 @@ def test_ask_ai_opencode_free_model_detection(monkeypatch):
     fake_models_resp.ok = True
     fake_models_resp.json.return_value = {
         "data": [
-            {"id": "big-pickle", "pricing": {"prompt": "0"}},
-            {"id": "mimo-v2.5-free", "pricing": {"prompt": "0"}},
+            {"id": "big-pickle", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "mimo-v2.5-free", "pricing": {"prompt": "0", "completion": "0"}},
             {"id": "expensive-model", "pricing": {"prompt": "0.01"}},
-            {"id": "another-free-model", "pricing": {"prompt": "0"}},
+            {"id": "another-free-model", "pricing": {"prompt": "0", "completion": "0"}},
         ]
     }
 
     with patch("ai_provider.requests.get", return_value=fake_models_resp):
         models = ai_provider._get_opencode_models("test-key")
 
-    # Should return free models plus auto fallback
-    expected_free_models = ["big-pickle", "mimo-v2.5-free", "another-free-model", "auto"]
+    expected_free_models = ["big-pickle", "mimo-v2.5-free", "another-free-model"]
     assert models == expected_free_models
 
 
@@ -477,21 +481,56 @@ def test_string_pricing_value():
         models = ai_provider._get_opencode_models("test-key")
 
     assert "string-zero" in models
-    """Test that provider priority follows OPENCODE → OPENROUTER → CLAUDE → OPENAI order."""
+
+
+def test_provider_priority(monkeypatch):
+    """Provider priority follows OmniRoute, OpenCode, then OpenRouter."""
     import ai_provider
 
-    # Set all keys to test priority
     monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "opencode-key")
     monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
-    monkeypatch.setenv("CLAUDE_API_KEY", "claude-key")
-    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setenv("OMNIROUTE_API_KEY", "omniroute-key")
 
+    provider, key, base_url = ai_provider._load_key()
+    assert provider == "omniroute"
+    assert key == "omniroute-key"
+    assert base_url
+
+    monkeypatch.delenv("OMNIROUTE_API_KEY")
     provider, key = ai_provider._load_key()
     assert provider == "opencode"
     assert key == "opencode-key"
 
-    # Test fallback when OpenCode is missing
     monkeypatch.delenv("OPENCODE_ZEN_API_KEY")
     provider, key = ai_provider._load_key()
     assert provider == "openrouter"
     assert key == "openrouter-key"
+
+
+def test_invalid_transaction_account_is_rejected(client):
+    response = client.post("/transactions", json={
+        "type": "expense", "amount": 10, "description": "Test",
+        "category": "Misc", "date": "2024-01-01", "account_id": 999,
+    })
+    assert response.status_code == 404
+
+
+def test_deleting_account_detaches_transactions(client):
+    account = client.post("/accounts", json={"name": "Cash", "balance": 0}).json()
+    transaction = client.post("/transactions", json={
+        "type": "expense", "amount": 10, "description": "Test",
+        "category": "Misc", "date": "2024-01-01", "account_id": account["id"],
+    })
+    assert transaction.status_code == 201
+
+    assert client.delete(f"/accounts/{account['id']}").status_code == 200
+    assert client.get("/transactions").json()[0]["account_id"] is None
+
+
+def test_chat_route_is_registered(client):
+    with patch("routes.ai_chat.ask_ai", return_value="Use a budget"):
+        response = client.post("/api/chat", json={
+            "messages": [], "question": "How should I budget?"
+        })
+    assert response.status_code == 200
+    assert response.json() == {"reply": "Use a budget", "success": True}

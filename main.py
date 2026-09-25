@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from database import init_db
 from routes.accounts import router as accounts_router
+from routes.ai_chat import router as ai_chat_router
 from routes.analysis import router as analysis_router
 from routes.budgets import router as budgets_router
 from routes.general import router as general_router
@@ -48,6 +49,7 @@ app.include_router(analysis_router)
 app.include_router(general_router)
 app.include_router(accounts_router)
 app.include_router(market_router)
+app.include_router(ai_chat_router)
 
 init_db()
 

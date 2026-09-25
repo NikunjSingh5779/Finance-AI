@@ -19,6 +19,10 @@ def list_transactions():
 def add_transaction(txn: TransactionIn):
     conn = get_db()
     try:
+        if txn.account_id is not None and not conn.execute(
+            "SELECT 1 FROM accounts WHERE id=?", (txn.account_id,)
+        ).fetchone():
+            raise HTTPException(404, "Account not found")
         cur = conn.execute(
             "INSERT INTO transactions (type,amount,description,category,date,account_id) VALUES (?,?,?,?,?,?)",
             (txn.type, txn.amount, txn.description, txn.category, txn.date, txn.account_id),
@@ -40,6 +44,10 @@ def update_transaction(txn_id: int, txn: TransactionUpdate):
         fields = {k: v for k, v in txn.model_dump(exclude_unset=True).items() if v is not None}
         if not fields:
             raise HTTPException(400, "No fields to update")
+        if "account_id" in fields and fields["account_id"] is not None and not conn.execute(
+            "SELECT 1 FROM accounts WHERE id=?", (fields["account_id"],)
+        ).fetchone():
+            raise HTTPException(404, "Account not found")
         sets = ", ".join(f"{k}=?" for k in fields)
         vals = list(fields.values()) + [txn_id]
         conn.execute(f"UPDATE transactions SET {sets} WHERE id=?", vals)
@@ -56,6 +64,10 @@ def import_transactions(txns: list[TransactionIn]):
     try:
         count = 0
         for txn in txns:
+            if txn.account_id is not None and not conn.execute(
+                "SELECT 1 FROM accounts WHERE id=?", (txn.account_id,)
+            ).fetchone():
+                raise HTTPException(404, "Account not found")
             conn.execute(
                 "INSERT INTO transactions (type,amount,description,category,date,account_id) VALUES (?,?,?,?,?,?)",
                 (txn.type, txn.amount, txn.description, txn.category, txn.date, txn.account_id),

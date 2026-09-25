@@ -62,6 +62,9 @@ def _is_successful_response(result: str) -> bool:
 
     Returns False for diagnostic messages indicating failure.
     """
+    if not result or not result.strip():
+        return False
+
     failure_indicators = [
         'AI provider',
         'returned HTTP',
@@ -407,20 +410,11 @@ def _extract_investment_advice_from_reasoning(reasoning_text: str) -> list:
     advice_points = []
 
     # Investment-specific extraction logic
-    current_section = ""
 
     for line in lines:
         line_stripped = line.strip()
         if not line_stripped:
             continue
-
-        # Track what section we're in
-        if 'investment' in line_stripped.lower() or 'recommend' in line_stripped.lower():
-            current_section = "investment"
-        elif 'emergency fund' in line_stripped.lower():
-            current_section = "emergency"
-        elif 'goal' in line_stripped.lower() or 'objective' in line_stripped.lower():
-            current_section = "goals"
 
         # Extract actionable advice
         if any(keyword in line_stripped.lower() for keyword in [
@@ -447,12 +441,6 @@ def _apply_emergency_formatting(raw_text: str) -> str:
 
     This is the final safety net to ensure no raw "thinking process" content reaches users.
     """
-    # If it still starts with "Here's thinking process:", strip that and reformat
-    if raw_text.lower().startswith("here's thinking process:"):
-        content = raw_text[len("Here's thinking process:"):].strip()
-    else:
-        content = raw_text
-
     # Apply generic financial advice template
     return """**Investment Guidance:**
 
@@ -465,7 +453,8 @@ Based on your financial situation, here are key recommendations:
 • **Long-term Focus**: Stay invested for 5+ years for optimal growth
 • **Regular Review**: Monitor and rebalance portfolio annually
 
-*Note: Consider consulting a certified financial planner for personalized advice tailored to your specific goals and risk tolerance.*"""
+*Note: Consider consulting a certified financial planner for personalized advice
+ tailored to your specific goals and risk tolerance.*"""
 
 
 def _validate_response_quality(response_text: str) -> str:
@@ -479,7 +468,9 @@ def _validate_response_quality(response_text: str) -> str:
 
     # Check if response looks like raw reasoning
     if _is_raw_reasoning_content(response_text):
-        logger.warning("Response validation caught raw reasoning content, applying emergency formatting")
+        logger.warning(
+            "Response validation caught raw reasoning content, applying emergency formatting"
+        )
         return _apply_emergency_formatting(response_text)
 
     # Check for other problematic patterns
@@ -487,7 +478,6 @@ def _validate_response_quality(response_text: str) -> str:
 
     # Enhanced incomplete response detection - targeting specific truncation patterns
     incomplete_indicators = [
-        len(response_text) < 80,  # Too short for financial advice
         text_lower.endswith("3. **determine"),
         "analyze user input:" in text_lower,
         response_text.count('\n') > 25,  # Too many line breaks
@@ -516,14 +506,22 @@ def _validate_response_quality(response_text: str) -> str:
         response_text.endswith("- **Short‑term**:"),
         response_text.endswith("- **Medium‑term**:"),
         response_text.endswith("- **Long‑term**:"),
-        response_text.strip().endswith(("Short‑term (1‑3 increse reply words so it can give all things in 100-200 words")),
+        response_text.strip().endswith(
+            "Short‑term (1‑3 increse reply words so it can give all things in 100-200 words"
+        ),
 
         # General mid-sentence cutoff detection
-        response_text.strip().endswith(("of ex", "of th", "of fi", "ing", "tion", "tual", "ical", "able", "ible")),
-        response_text.strip().endswith(("emergen", "fund cov", "build an e", "surplus", "savings r", "expense r")),
+        response_text.strip().endswith(
+            ("of ex", "of th", "of fi", "ing", "tion", "tual", "ical", "able", "ible")
+        ),
+        response_text.strip().endswith(
+            ("emergen", "fund cov", "build an e", "surplus", "savings r", "expense r")
+        ),
 
         # Detect responses that end without proper punctuation (incomplete sentences)
-        len(response_text) > 50 and not response_text.strip().endswith(('.', '!', '?', '"', "'")) and '•' in response_text,
+        len(response_text) > 50
+        and not response_text.strip().endswith((".", "!", "?", '"', "'"))
+        and "•" in response_text,
     ]
 
     if any(incomplete_indicators):
@@ -531,6 +529,7 @@ def _validate_response_quality(response_text: str) -> str:
         return _apply_emergency_formatting(response_text)
 
     return response_text
+
 
 def _format_reasoning_as_advice(reasoning_text: str) -> str:
     """
@@ -630,7 +629,7 @@ def _extract_response_text(data: dict, provider: str) -> str | None:
 
                     # Double-check: if formatted advice still looks like raw reasoning, apply emergency formatting
                     if _is_raw_reasoning_content(formatted_advice):
-                        logger.warning(f"Formatted advice still contains raw reasoning, applying emergency formatting")
+                        logger.warning("Formatted advice still contains raw reasoning, applying emergency formatting")
                         return _apply_emergency_formatting(formatted_advice)
 
                     return formatted_advice
