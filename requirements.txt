@@ -12,6 +12,8 @@ yfinance>=0.1.70
 # Web search — financial news context (optional)
 duckduckgo-search>=8.0.0
 httpx>=0.27.0
+SQLAlchemy>=2.0.36
+psycopg[binary]>=3.2.3
 
 # ML price prediction — Kronos model (optional, see market_predictor.py)
 # pip install torch huggingface_hub safetensors einops

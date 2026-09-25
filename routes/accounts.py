@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from database import get_db
+from sqlalchemy import text
+
+from database import db_connection
 from models import AccountIn
 
 router = APIRouter()
@@ -7,71 +9,53 @@ router = APIRouter()
 
 @router.get("/accounts")
 def list_accounts():
-    conn = get_db()
-    try:
-        rows = conn.execute("SELECT * FROM accounts ORDER BY name").fetchall()
-        result = []
-        for r in rows:
-            a = dict(r)
-            inc = conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE account_id=? AND type='income'",
-                (a['id'],)
-            ).fetchone()[0]
-            exp = conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM transactions WHERE account_id=? AND type='expense'",
-                (a['id'],)
-            ).fetchone()[0]
-            a['balance'] = round(a['balance'] + inc - exp, 2)
-            result.append(a)
-        return result
-    finally:
-        conn.close()
+    with db_connection() as conn:
+        rows = conn.execute(text("""
+            SELECT a.*, a.balance + COALESCE(SUM(
+                CASE WHEN t.type='income' THEN t.amount ELSE -t.amount END
+            ), 0) AS calculated_balance
+            FROM accounts a
+            LEFT JOIN transactions t ON t.account_id=a.id
+            GROUP BY a.id, a.name, a.balance, a.type
+            ORDER BY a.name
+        """)).mappings().all()
+        return [
+            {**{key: value for key, value in row.items() if key != "calculated_balance"},
+             "balance": round(row["calculated_balance"], 2)}
+            for row in rows
+        ]
 
 
 @router.post("/accounts", status_code=201)
-def add_account(a: AccountIn):
-    conn = get_db()
-    try:
-        cur = conn.execute(
-            "INSERT INTO accounts (name,balance,type) VALUES (?,?,?)",
-            (a.name, a.balance, a.type),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM accounts WHERE id=?", (cur.lastrowid,)).fetchone()
+def add_account(account: AccountIn):
+    with db_connection() as conn:
+        row = conn.execute(text("""
+            INSERT INTO accounts (name, balance, type)
+            VALUES (:name, :balance, :type)
+            RETURNING *
+        """), account.model_dump()).mappings().one()
         return dict(row)
-    finally:
-        conn.close()
 
 
 @router.put("/accounts/{account_id}")
-def update_account(account_id: int, a: AccountIn):
-    conn = get_db()
-    try:
-        cur = conn.execute(
-            "UPDATE accounts SET name=?, balance=?, type=? WHERE id=?",
-            (a.name, a.balance, a.type, account_id),
-        )
-        conn.commit()
-        if not cur.rowcount:
+def update_account(account_id: int, account: AccountIn):
+    with db_connection() as conn:
+        row = conn.execute(text("""
+            UPDATE accounts SET name=:name, balance=:balance, type=:type
+            WHERE id=:id RETURNING *
+        """), {**account.model_dump(), "id": account_id}).mappings().first()
+        if not row:
             raise HTTPException(404, "Not found")
-        row = conn.execute("SELECT * FROM accounts WHERE id=?", (account_id,)).fetchone()
         return dict(row)
-    finally:
-        conn.close()
 
 
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int):
-    conn = get_db()
-    try:
-        account = conn.execute("SELECT id FROM accounts WHERE id=?", (account_id,)).fetchone()
-        if not account:
+    with db_connection() as conn:
+        if not conn.execute(text("SELECT id FROM accounts WHERE id=:id"), {"id": account_id}).first():
             raise HTTPException(404, "Not found")
-        conn.execute("UPDATE transactions SET account_id=NULL WHERE account_id=?", (account_id,))
-        affected = conn.execute("DELETE FROM accounts WHERE id=?", (account_id,)).rowcount
-        conn.commit()
-        if not affected:
+        conn.execute(text("UPDATE transactions SET account_id=NULL WHERE account_id=:id"), {"id": account_id})
+        result = conn.execute(text("DELETE FROM accounts WHERE id=:id"), {"id": account_id})
+        if result.rowcount == 0:
             raise HTTPException(404, "Not found")
         return {"deleted": account_id}
-    finally:
-        conn.close()

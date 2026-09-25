@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
-from database import init_db
+from database import init_db, reset_engine_for_tests
 from main import app
 
 
@@ -15,7 +15,9 @@ def clear_provider_environment(monkeypatch):
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     db_file = tmp_path / "test.db"
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DB_PATH", str(db_file))
+    reset_engine_for_tests()
     init_db()
     with TestClient(app) as test_client:
         yield test_client

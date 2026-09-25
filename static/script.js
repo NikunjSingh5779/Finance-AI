@@ -92,13 +92,11 @@ function makeSparkline(id, data, color) {
   const canvas = document.getElementById(id);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  canvas.width = canvas.parentElement.offsetWidth || 180;
-  canvas.height = 40;
   if (sparkCharts[id]) sparkCharts[id].destroy();
   sparkCharts[id] = new Chart(ctx, {
     type:'line',
     data:{labels:data.map((_,i)=>i),datasets:[{data,borderColor:color,borderWidth:1.5,fill:true,backgroundColor:color.replace(')',',0.08)').replace('rgb','rgba').replace('#','').replace(/^([0-9a-f]{6})$/i,(_,h)=>`rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},0.08)`),tension:0.4,pointRadius:0}]},
-    options:{responsive:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}},animation:false}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}},animation:false}
   });
 }
 
@@ -747,13 +745,37 @@ function populateAccountSelect(selectId, selectedId) {
     accountsData.map(a => `<option value="${a.id}"${selectedId && a.id === selectedId ? ' selected' : ''}>${escapeHtml(a.name)}${a.type ? ' (' + escapeHtml(a.type) + ')' : ''}</option>`).join('');
 }
 
-function openModal() {
-  document.getElementById('modal').classList.add('open');
+let lastModalTrigger = null;
+
+function openModal(trigger = document.activeElement) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  lastModalTrigger = trigger;
+  modal.classList.add('open');
+  document.body.classList.add('modal-open');
+  modal.setAttribute('aria-hidden', 'false');
   document.getElementById('m-date').value = new Date().toISOString().slice(0,10);
   if (document.getElementById('m-desc')) document.getElementById('m-desc').value = '';
   populateAccountSelect('m-account');
+  requestAnimationFrame(() => document.getElementById('m-type')?.focus());
 }
-function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+function closeModal() {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+  lastModalTrigger?.focus?.();
+}
+
+function closeSidebar() {
+  const wasOpen = document.body.classList.contains('sidebar-open');
+  document.body.classList.remove('sidebar-open');
+  const hamburger = document.querySelector('.hamburger');
+  hamburger?.setAttribute('aria-expanded', 'false');
+  if (wasOpen) hamburger?.focus();
+}
 async function submitModal() {
   const type=document.getElementById('m-type').value, amount=parseFloat(document.getElementById('m-amount').value);
   const category=document.getElementById('m-category').value.trim(), date=document.getElementById('m-date').value;
@@ -776,10 +798,17 @@ function goPage(name, el) {
   currentPage = name;
 
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    n.classList.remove('active');
+    n.removeAttribute('aria-current');
+  });
 
   document.getElementById('page-'+name).classList.add('active');
-  if(el) el.classList.add('active');
+  if(el) {
+    el.classList.add('active');
+    el.setAttribute('aria-current', 'page');
+  }
+  if (window.matchMedia('(max-width: 1024px)').matches) closeSidebar();
 
   const titles = {
     dashboard:'Overview',
@@ -845,8 +874,31 @@ function toggleTheme() {
 }
 
 function toggleSidebar() {
-  document.body.classList.toggle('sidebar-open');
+  const isOpen = document.body.classList.toggle('sidebar-open');
+  const hamburger = document.querySelector('.hamburger');
+  hamburger?.setAttribute('aria-expanded', String(isOpen));
+  if (isOpen) {
+    requestAnimationFrame(() => document.querySelector('.sidebar .nav-item')?.focus());
+  } else {
+    hamburger?.focus();
+  }
 }
+
+function updateViewportHeight() {
+  const viewportHeight = window.visualViewport?.height || window.innerHeight;
+  document.documentElement.style.setProperty('--app-height', `${Math.round(viewportHeight)}px`);
+}
+
+window.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (document.body.classList.contains('sidebar-open')) closeSidebar();
+  if (document.getElementById('modal')?.classList.contains('open')) closeModal();
+});
+
+window.addEventListener('resize', updateViewportHeight, { passive: true });
+window.visualViewport?.addEventListener('resize', updateViewportHeight, { passive: true });
+window.visualViewport?.addEventListener('scroll', updateViewportHeight, { passive: true });
+updateViewportHeight();
 function calcChange(current, previous) {
   if (!previous || previous === 0) return 0;
   return ((current - previous) / previous) * 100;

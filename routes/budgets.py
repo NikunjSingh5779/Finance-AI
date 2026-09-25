@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from database import get_db
+from sqlalchemy import text
+
+from database import db_connection
 from models import BudgetIn
 
 router = APIRouter()
@@ -7,38 +9,34 @@ router = APIRouter()
 
 @router.get("/budgets")
 def list_budgets():
-    conn = get_db()
-    try:
-        rows = conn.execute("SELECT * FROM budgets ORDER BY category").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    with db_connection() as conn:
+        rows = conn.execute(text("SELECT * FROM budgets ORDER BY category")).mappings().all()
+        return [dict(row) for row in rows]
 
 
 @router.post("/budgets", status_code=201)
-def set_budget(b: BudgetIn):
-    conn = get_db()
-    try:
-        conn.execute(
-            """INSERT INTO budgets (category, limit_amt) VALUES (?,?)
-               ON CONFLICT(category) DO UPDATE SET limit_amt=excluded.limit_amt""",
-            (b.category, b.limit_amt),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM budgets WHERE category=?", (b.category,)).fetchone()
+def set_budget(budget: BudgetIn):
+    with db_connection() as conn:
+        if conn.dialect.name == "postgresql":
+            statement = text("""
+                INSERT INTO budgets (category, limit_amt) VALUES (:category, :limit_amt)
+                ON CONFLICT(category) DO UPDATE SET limit_amt=EXCLUDED.limit_amt
+                RETURNING *
+            """)
+        else:
+            statement = text("""
+                INSERT INTO budgets (category, limit_amt) VALUES (:category, :limit_amt)
+                ON CONFLICT(category) DO UPDATE SET limit_amt=excluded.limit_amt
+                RETURNING *
+            """)
+        row = conn.execute(statement, budget.model_dump()).mappings().one()
         return dict(row)
-    finally:
-        conn.close()
 
 
 @router.delete("/budgets/{category}")
 def delete_budget(category: str):
-    conn = get_db()
-    try:
-        affected = conn.execute("DELETE FROM budgets WHERE category=?", (category,)).rowcount
-        conn.commit()
-        if not affected:
+    with db_connection() as conn:
+        result = conn.execute(text("DELETE FROM budgets WHERE category=:category"), {"category": category})
+        if result.rowcount == 0:
             raise HTTPException(404, "Not found")
         return {"deleted": category}
-    finally:
-        conn.close()

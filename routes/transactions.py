@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from database import get_db
+from sqlalchemy import text
+
+from database import db_connection
 from models import TransactionIn, TransactionUpdate
 
 router = APIRouter()
@@ -7,86 +9,67 @@ router = APIRouter()
 
 @router.get("/transactions")
 def list_transactions():
-    conn = get_db()
-    try:
-        rows = conn.execute("SELECT * FROM transactions ORDER BY date DESC").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    with db_connection() as conn:
+        rows = conn.execute(text("SELECT * FROM transactions ORDER BY date DESC")).mappings().all()
+        return [dict(row) for row in rows]
 
 
 @router.post("/transactions", status_code=201)
 def add_transaction(txn: TransactionIn):
-    conn = get_db()
-    try:
+    with db_connection() as conn:
         if txn.account_id is not None and not conn.execute(
-            "SELECT 1 FROM accounts WHERE id=?", (txn.account_id,)
-        ).fetchone():
+            text("SELECT 1 FROM accounts WHERE id=:account_id"), {"account_id": txn.account_id}
+        ).first():
             raise HTTPException(404, "Account not found")
-        cur = conn.execute(
-            "INSERT INTO transactions (type,amount,description,category,date,account_id) VALUES (?,?,?,?,?,?)",
-            (txn.type, txn.amount, txn.description, txn.category, txn.date, txn.account_id),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM transactions WHERE id=?", (cur.lastrowid,)).fetchone()
+        row = conn.execute(text("""
+            INSERT INTO transactions (type, amount, description, category, date, account_id)
+            VALUES (:type, :amount, :description, :category, :date, :account_id)
+            RETURNING *
+        """), txn.model_dump()).mappings().one()
         return dict(row)
-    finally:
-        conn.close()
 
 
 @router.put("/transactions/{txn_id}")
 def update_transaction(txn_id: int, txn: TransactionUpdate):
-    conn = get_db()
-    try:
-        existing = conn.execute("SELECT * FROM transactions WHERE id=?", (txn_id,)).fetchone()
-        if not existing:
+    with db_connection() as conn:
+        if not conn.execute(text("SELECT 1 FROM transactions WHERE id=:id"), {"id": txn_id}).first():
             raise HTTPException(404, "Not found")
         fields = {k: v for k, v in txn.model_dump(exclude_unset=True).items() if v is not None}
         if not fields:
             raise HTTPException(400, "No fields to update")
-        if "account_id" in fields and fields["account_id"] is not None and not conn.execute(
-            "SELECT 1 FROM accounts WHERE id=?", (fields["account_id"],)
-        ).fetchone():
+        if "account_id" in fields and not conn.execute(
+            text("SELECT 1 FROM accounts WHERE id=:account_id"), {"account_id": fields["account_id"]}
+        ).first():
             raise HTTPException(404, "Account not found")
-        sets = ", ".join(f"{k}=?" for k in fields)
-        vals = list(fields.values()) + [txn_id]
-        conn.execute(f"UPDATE transactions SET {sets} WHERE id=?", vals)
-        conn.commit()
-        row = conn.execute("SELECT * FROM transactions WHERE id=?", (txn_id,)).fetchone()
+        allowed_fields = {"type", "amount", "description", "category", "date", "account_id"}
+        fields = {key: value for key, value in fields.items() if key in allowed_fields}
+        assignments = ", ".join(f"{key}=:{key}" for key in fields)
+        fields["id"] = txn_id
+        row = conn.execute(
+            text(f"UPDATE transactions SET {assignments} WHERE id=:id RETURNING *"), fields
+        ).mappings().one()
         return dict(row)
-    finally:
-        conn.close()
 
 
 @router.post("/transactions/import", status_code=201)
 def import_transactions(txns: list[TransactionIn]):
-    conn = get_db()
-    try:
-        count = 0
+    with db_connection() as conn:
         for txn in txns:
             if txn.account_id is not None and not conn.execute(
-                "SELECT 1 FROM accounts WHERE id=?", (txn.account_id,)
-            ).fetchone():
+                text("SELECT 1 FROM accounts WHERE id=:account_id"), {"account_id": txn.account_id}
+            ).first():
                 raise HTTPException(404, "Account not found")
-            conn.execute(
-                "INSERT INTO transactions (type,amount,description,category,date,account_id) VALUES (?,?,?,?,?,?)",
-                (txn.type, txn.amount, txn.description, txn.category, txn.date, txn.account_id),
-            )
-            count += 1
-        conn.commit()
-        return {"imported": count}
-    finally:
-        conn.close()
+            conn.execute(text("""
+                INSERT INTO transactions (type, amount, description, category, date, account_id)
+                VALUES (:type, :amount, :description, :category, :date, :account_id)
+            """), txn.model_dump())
+        return {"imported": len(txns)}
 
 
 @router.delete("/transactions/{txn_id}")
 def delete_transaction(txn_id: int):
-    conn = get_db()
-    try:
-        affected = conn.execute("DELETE FROM transactions WHERE id=?", (txn_id,)).rowcount
-        conn.commit()
-        if not affected:
+    with db_connection() as conn:
+        result = conn.execute(text("DELETE FROM transactions WHERE id=:id"), {"id": txn_id})
+        if result.rowcount == 0:
             raise HTTPException(404, "Not found")
         return {"deleted": txn_id}
-    finally:
-        conn.close()

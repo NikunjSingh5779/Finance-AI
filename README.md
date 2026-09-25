@@ -96,6 +96,19 @@ uvicorn main:app --reload
 
 Open `http://localhost:8000` in your browser.
 
+## Deploy to Vercel with Supabase
+
+1. Create a Supabase project and copy its Postgres connection string.
+2. Import this repository into Vercel; the included `vercel.json` exposes the FastAPI app through `api/index.py`.
+3. Add these Vercel environment variables for Production:
+   - `DATABASE_URL`: Supabase connection string using the `postgresql+psycopg://` scheme.
+   - At least one supported AI provider key such as `OPENROUTER_API_KEY` or `OPENCODE_ZEN_API_KEY`.
+   - `CORS_ORIGINS`: your Vercel deployment URL, if you call the API from another origin.
+   - `RATE_LIMIT_PER_MINUTE`: optional AI request limit.
+4. Deploy and check `/health` before using the app.
+
+`DB_PATH` and SQLite are for local development only. Existing local SQLite data is not copied automatically to Supabase; export it before switching databases if you need to retain it. The app is responsive web UI only and does not include offline/PWA behavior.
+
 ## API Endpoints
 
 | Method | Path                     | Description                                   |

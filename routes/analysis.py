@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
-from database import get_db
+from database import db_connection
+from sqlalchemy import text
 from models import AIQuery
 from rate_limiter import check_rate_limit
 from ai_provider import ask_ai
@@ -18,19 +19,18 @@ router = APIRouter()
 
 @router.get("/summary")
 def get_summary():
-    conn = get_db()
-    try:
-        rows = conn.execute(
+    with db_connection() as conn:
+        rows = conn.execute(text(
             "SELECT type, SUM(amount) as total FROM transactions GROUP BY type"
-        ).fetchall()
+        )).mappings().all()
 
-        monthly_rows = conn.execute(
+        monthly_rows = conn.execute(text(
             "SELECT substr(date,1,7) as month, type, SUM(amount) as total FROM transactions GROUP BY month, type"
-        ).fetchall()
+        )).mappings().all()
 
-        category_rows = conn.execute(
+        category_rows = conn.execute(text(
             "SELECT category, SUM(amount) as total FROM transactions WHERE type='expense' GROUP BY category"
-        ).fetchall()
+        )).mappings().all()
 
         income = expense = 0.0
         for r in rows:
@@ -56,17 +56,14 @@ def get_summary():
             "monthly": monthly,
             "category_totals": category_totals
         }
-    finally:
-        conn.close()
 
 
 @router.get("/predict-expense")
 def predict_expense():
-    conn = get_db()
-    try:
-        rows = conn.execute(
+    with db_connection() as conn:
+        rows = conn.execute(text(
             "SELECT date, amount FROM transactions WHERE type='expense' ORDER BY date"
-        ).fetchall()
+        )).mappings().all()
 
         if len(rows) < 2:
             return {"prediction": "Not enough data"}
@@ -78,10 +75,7 @@ def predict_expense():
         model.fit(X, y)
 
         next_val = model.predict([[len(rows)]])[0]
-
         return {"predicted_expense": round(float(next_val), 2)}
-    finally:
-        conn.close()
 
 
 @router.post("/ai/advice")
