@@ -200,7 +200,7 @@ Savings Rate: {savings}%
 User Question: {query.question}
 """
 
-        max_tokens = 300 if detailed else 180
+        max_tokens = 500 if detailed else 350  # Increased for complete financial advice
 
         return {"advice": ask_ai(system_prompt, user_prompt, max_tokens)}
 
@@ -347,6 +347,6 @@ async def ai_advice_enhanced(query: AIQuery, request: Request):
     User Question: {query.question}
     """
 
-    max_tokens = 400 if detailed else 250
+    max_tokens = 600 if detailed else 400  # Increased for complete financial advice
 
     return {"advice": ask_ai(system_prompt, user_prompt, max_tokens)}
