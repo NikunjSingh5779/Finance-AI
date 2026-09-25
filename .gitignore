@@ -41,3 +41,9 @@ graphify-out/
 # AI tool configs
 .ai-os-link.json
 .claude/
+.agents/
+.mcp.json
+skills-lock.json
+
+# Editor settings
+.vscode/
