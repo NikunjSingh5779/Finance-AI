@@ -8,6 +8,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ============================================================
+# OMNIROUTE CONFIGURATION (HAIKU MODELS ONLY)
+# ============================================================
+
+_OMNIROUTE_HAIKU_MODELS = [
+    "haiku",
+]
+
+# ============================================================
 # FREE-ONLY AI CONFIGURATION
 # ============================================================
 
@@ -82,11 +90,17 @@ def _load_key():
     Load a FREE-provider API key.
 
     Priority:
-        1. OpenCode Zen
-        2. OpenRouter
+        1. OmniRoute Localhost (Haiku models only)
+        2. OpenCode Zen
+        3. OpenRouter
 
     Paid providers are intentionally not supported.
     """
+
+    omniroute_key = os.getenv("OMNIROUTE_API_KEY")
+    if omniroute_key:
+        base_url = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128")
+        return "omniroute", omniroute_key.strip(), base_url
 
     opencode_key = os.getenv("OPENCODE_ZEN_API_KEY")
     if opencode_key:
@@ -98,9 +112,42 @@ def _load_key():
 
     raise RuntimeError(
         "No FREE AI API key configured. Set one of:\n"
+        "  OMNIROUTE_API_KEY\n"
         "  OPENCODE_ZEN_API_KEY\n"
         "  OPENROUTER_API_KEY"
     )
+
+
+# ============================================================
+# OMNIROUTE MODEL HANDLING
+# ============================================================
+
+def _get_omniroute_models(base_url: str) -> list[str]:
+    """
+    Get available OmniRoute Haiku combo models.
+
+    Tries to discover 'haiku' models from API, falls back to static list.
+    """
+    try:
+        response = requests.get(f"{base_url}/v1/models", timeout=5)
+        if response.ok:
+            data = response.json().get("data", [])
+            haiku_models = []
+            for model in data:
+                model_id = str(model.get("id", "")).strip()
+                # Use only "haiku" combo model
+                if "haiku" in model_id.lower() and model.get("owned_by") == "combo":
+                    haiku_models.append(model_id)
+
+            if haiku_models:
+                logger.info("OmniRoute Haiku combo models discovered: %s", haiku_models)
+                return haiku_models
+
+    except Exception as exc:
+        logger.debug("Failed to discover OmniRoute models from API: %s", exc)
+
+    logger.info("Using static OmniRoute Haiku combo models: %s", _OMNIROUTE_HAIKU_MODELS)
+    return _OMNIROUTE_HAIKU_MODELS.copy()
 
 
 # ============================================================
@@ -601,6 +648,26 @@ def _extract_response_text(data: dict, provider: str) -> str | None:
     except (TypeError, AttributeError):
         pass
 
+    # Try OmniRoute custom format: data.response
+    try:
+        response_text = data.get("response")
+        if isinstance(response_text, str):
+            text = response_text.strip()
+            if text:
+                return text
+    except (TypeError, AttributeError):
+        pass
+
+    # Try OmniRoute custom format: data.text
+    try:
+        text_field = data.get("text")
+        if isinstance(text_field, str):
+            text = text_field.strip()
+            if text:
+                return text
+    except (TypeError, AttributeError):
+        pass
+
     return None
 
 
@@ -736,6 +803,137 @@ def _parse_openai_response(
         f'AI provider "{provider}" returned no final text. '
         f'Selected model "{model}" may have returned reasoning only '
         f"or unsupported response format."
+    )
+
+
+# ============================================================
+# OMNIROUTE CHAT
+# ============================================================
+
+def _ask_omniroute(
+    base_url: str,
+    api_key: str,
+    messages: list[dict],
+    max_tokens: int,
+) -> str:
+    """
+    Call OmniRoute localhost using Haiku combo models only.
+
+    Strategy:
+        1. Use static list of Haiku combo models
+        2. Try models sequentially
+        3. Discover request/response format through testing
+        4. Continue to next model if HTTP 200 response contains no usable text
+        5. Return detailed diagnostic information if all fail
+    """
+
+    endpoint = f"{base_url}/v1/responses"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    models = _get_omniroute_models(base_url)
+
+    last_status = None
+    last_error = ""
+
+    for model in models:
+
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": 0.6,
+            "messages": messages,
+        }
+
+        logger.info(
+            "Trying OmniRoute Haiku model: %s",
+            model,
+        )
+
+        try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                timeout=60,
+            )
+
+            last_status = response.status_code
+
+            logger.info(
+                "OmniRoute model=%s HTTP=%s",
+                model,
+                response.status_code,
+            )
+
+            # ------------------------------------------------
+            # PARSE RESPONSE (REGARDLESS OF STATUS CODE)
+            # ------------------------------------------------
+            result = _parse_openai_response(
+                response=response,
+                provider="omniroute",
+                model=model,
+            )
+
+            # If the response contains usable text, return it
+            if _is_successful_response(result):
+                # Apply final validation before returning to user
+                validated_result = _validate_response_quality(result)
+                return validated_result
+
+            # Otherwise, this model failed - continue to next
+            last_error = result
+            logger.warning(
+                "OmniRoute model %s failed, trying next: %s",
+                model,
+                last_error,
+            )
+            continue
+
+        except requests.exceptions.Timeout:
+
+            last_status = None
+            last_error = f"Model {model} timed out."
+
+            logger.warning(
+                "OmniRoute model %s timed out.",
+                model,
+            )
+
+            continue
+
+        except requests.exceptions.ConnectionError:
+
+            return (
+                'AI provider "omniroute" is unreachable. '
+                "Verify OmniRoute service is running on localhost:20128."
+            )
+
+        except Exception as exc:
+
+            last_error = (
+                f"Model {model} unexpected error: {exc}"
+            )
+
+            logger.exception(
+                "OmniRoute model %s unexpected error.",
+                model,
+            )
+
+            continue
+
+    # --------------------------------------------------------
+    # ALL OMNIROUTE HAIKU MODELS FAILED
+    # --------------------------------------------------------
+
+    return (
+        'AI provider "omniroute" could not complete the request '
+        "using any available Haiku combo model.\n"
+        f"Last HTTP status: {last_status}\n"
+        f"Last error: {last_error}"
     )
 
 
@@ -1046,12 +1244,12 @@ def ask_ai(
 
     Priority:
 
-        1. OpenCode Zen FREE models
-        2. OpenRouter FREE router
+        1. OmniRoute Localhost (Haiku models only)
+        2. OpenCode Zen FREE models
+        3. OpenRouter FREE router
 
-    If OPENCODE_ZEN_API_KEY exists, OpenCode is attempted first.
-
-    If OpenCode is not configured, OpenRouter is used.
+    If OMNIROUTE_API_KEY exists, OmniRoute is attempted first.
+    If OpenCode is not configured after OmniRoute fails, OpenRouter is used.
 
     NOTE:
         This function does NOT silently fall back to paid APIs.
@@ -1072,7 +1270,13 @@ def ask_ai(
     # --------------------------------------------------------
 
     try:
-        provider, key = _load_key()
+        provider_result = _load_key()
+
+        if provider_result[0] == "omniroute":
+            provider, key, base_url = provider_result
+        else:
+            provider, key = provider_result
+            base_url = None
 
     except RuntimeError as exc:
 
@@ -1092,7 +1296,39 @@ def ask_ai(
     )
 
     # --------------------------------------------------------
-    # OPENCode
+    # OMNIROUTE
+    # --------------------------------------------------------
+
+    if provider == "omniroute":
+
+        result = _ask_omniroute(
+            base_url=base_url,
+            api_key=key,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+
+        # If OmniRoute fails, fallback to OpenCode if available
+        if result.startswith('AI provider "omniroute" could not complete'):
+            fallback_key = os.getenv("OPENCODE_ZEN_API_KEY")
+
+            if fallback_key:
+                logger.warning(
+                    "OmniRoute Haiku models failed. "
+                    "Falling back to OpenCode FREE models."
+                )
+                return _ask_opencode(
+                    key=fallback_key.strip(),
+                    messages=messages,
+                    max_tokens=max_tokens,
+                )
+
+        # Apply final response validation before returning to user
+        result = _validate_response_quality(result)
+        return result
+
+    # --------------------------------------------------------
+    # OPENCODE
     # --------------------------------------------------------
 
     if provider == "opencode":
