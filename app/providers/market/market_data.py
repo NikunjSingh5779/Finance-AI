@@ -75,7 +75,9 @@ class MarketDataProvider:
                 "low": round(float(latest["Low"]), 2),
                 "volume": int(latest["Volume"]),
                 "change": round(float(latest["Close"] - prev_close), 2),
-                "change_pct": round(float((latest["Close"] - prev_close) / prev_close * 100), 2),
+                "change_pct": round(
+                    float((latest["Close"] - prev_close) / prev_close * 100)
+                ) if prev_close else 0.0,
                 "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
                 "source": "yfinance",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
