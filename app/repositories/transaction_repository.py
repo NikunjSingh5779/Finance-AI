@@ -1,5 +1,5 @@
 from sqlite3 import Connection
-from typing import List, Optional
+from typing import Optional
 
 from app.schemas.transaction import (
     TransactionCreate,
@@ -14,17 +14,22 @@ class TransactionRepository:
     def __init__(self, conn: Connection):
         self.conn = conn
 
-    def list(self, skip: int = 0, limit: int = 100) -> List[TransactionOut]:
-        cursor = self.conn.execute(
-            "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
+    def list(self, skip: int = 0, limit: int = 100) -> list[TransactionOut]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM transactions
+            ORDER BY date DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
             (limit, skip),
-        )
-        rows = cursor.fetchall()
+        ).fetchall()
         return [TransactionOut(**dict(row)) for row in rows]
 
     def get(self, transaction_id: int) -> Optional[TransactionOut]:
         row = self.conn.execute(
-            "SELECT * FROM transactions WHERE id = ?", (transaction_id,)
+            "SELECT * FROM transactions WHERE id = ?",
+            (transaction_id,),
         ).fetchone()
         return TransactionOut(**dict(row)) if row else None
 
@@ -45,10 +50,15 @@ class TransactionRepository:
             ),
         )
         self.conn.commit()
-        return self.get(cursor.lastrowid)
+        created = self.get(cursor.lastrowid)
+        if created is None:
+            raise RuntimeError("Failed to retrieve created transaction")
+        return created
 
     def update(
-        self, transaction_id: int, transaction: TransactionUpdate
+        self,
+        transaction_id: int,
+        transaction: TransactionUpdate,
     ) -> Optional[TransactionOut]:
         if self.get(transaction_id) is None:
             return None
@@ -57,32 +67,45 @@ class TransactionRepository:
         if not data:
             return self.get(transaction_id)
 
-        allowed = {"type", "amount", "description", "category", "date", "account_id"}
+        allowed = {
+            "type",
+            "amount",
+            "description",
+            "category",
+            "date",
+            "account_id",
+        }
         data = {key: value for key, value in data.items() if key in allowed}
         if not data:
             return self.get(transaction_id)
 
-        set_clause = ", ".join(f"{key} = ?" for key in data)
-        values = list(data.values()) + [transaction_id]
+        assignments = ", ".join(f"{key} = ?" for key in data)
+        values = [*data.values(), transaction_id]
         self.conn.execute(
-            f"UPDATE transactions SET {set_clause} WHERE id = ?", values
+            f"UPDATE transactions SET {assignments} WHERE id = ?",
+            values,
         )
         self.conn.commit()
         return self.get(transaction_id)
 
     def delete(self, transaction_id: int) -> bool:
         cursor = self.conn.execute(
-            "DELETE FROM transactions WHERE id = ?", (transaction_id,)
+            "DELETE FROM transactions WHERE id = ?",
+            (transaction_id,),
         )
         self.conn.commit()
         return cursor.rowcount > 0
 
     def list_by_account(
-        self, account_id: int, skip: int = 0, limit: int = 100
-    ) -> List[TransactionOut]:
+        self,
+        account_id: int,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[TransactionOut]:
         rows = self.conn.execute(
             """
-            SELECT * FROM transactions
+            SELECT *
+            FROM transactions
             WHERE account_id = ?
             ORDER BY date DESC, id DESC
             LIMIT ? OFFSET ?
@@ -92,11 +115,15 @@ class TransactionRepository:
         return [TransactionOut(**dict(row)) for row in rows]
 
     def list_by_type(
-        self, transaction_type: str, skip: int = 0, limit: int = 100
-    ) -> List[TransactionOut]:
+        self,
+        transaction_type: str,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[TransactionOut]:
         rows = self.conn.execute(
             """
-            SELECT * FROM transactions
+            SELECT *
+            FROM transactions
             WHERE type = ?
             ORDER BY date DESC, id DESC
             LIMIT ? OFFSET ?
@@ -106,11 +133,16 @@ class TransactionRepository:
         return [TransactionOut(**dict(row)) for row in rows]
 
     def list_by_date_range(
-        self, start_date: str, end_date: str, skip: int = 0, limit: int = 100
-    ) -> List[TransactionOut]:
+        self,
+        start_date: str,
+        end_date: str,
+        skip: int = 0,
+        limit: int = 500,
+    ) -> list[TransactionOut]:
         rows = self.conn.execute(
             """
-            SELECT * FROM transactions
+            SELECT *
+            FROM transactions
             WHERE date BETWEEN ? AND ?
             ORDER BY date DESC, id DESC
             LIMIT ? OFFSET ?
@@ -132,21 +164,25 @@ class TransactionRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def account_exists(self, account_id: int) -> bool:
-        row = self.conn.execute(
-            "SELECT 1 FROM accounts WHERE id = ?", (account_id,)
-        ).fetchone()
-        return row is not None
-
-    def count_by_account(self, account_id: int) -> int:
-        row = self.conn.execute(
-            "SELECT COUNT(*) AS count FROM transactions WHERE account_id = ?",
-            (account_id,),
-        ).fetchone()
-        return int(row["count"])
+    def monthly_expense_totals(self) -> list[dict]:
+        rows = self.conn.execute(
+            """
+            SELECT
+                substr(date, 1, 7) AS month,
+                COALESCE(SUM(amount), 0) AS expense
+            FROM transactions
+            WHERE type = 'expense'
+            GROUP BY substr(date, 1, 7)
+            ORDER BY month ASC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def expense_total_for_category(
-        self, category: str, start_date: str, end_date: str
+        self,
+        category: str,
+        start_date: str,
+        end_date: str,
     ) -> float:
         row = self.conn.execute(
             """
@@ -159,3 +195,21 @@ class TransactionRepository:
             (category, start_date, end_date),
         ).fetchone()
         return float(row["total"] or 0)
+
+    def account_exists(self, account_id: int) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM accounts WHERE id = ?",
+            (account_id,),
+        ).fetchone()
+        return row is not None
+
+    def count_by_account(self, account_id: int) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM transactions
+            WHERE account_id = ?
+            """,
+            (account_id,),
+        ).fetchone()
+        return int(row["count"])
