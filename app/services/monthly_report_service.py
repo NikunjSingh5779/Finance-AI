@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from typing import Any
 
+from app.core.exceptions import ValidationError
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.budget_repository import BudgetRepository
 from app.services.insights_service import InsightsService
@@ -23,10 +24,10 @@ class MonthlyReportService:
             year, month_number = map(int, selected.split("-"))
             first = date(year, month_number, 1)
         except (ValueError, TypeError):
-            raise ValueError("month must be YYYY-MM") from None
+            raise ValidationError("month must be a valid YYYY-MM value") from None
 
         if first > date.today().replace(day=1):
-            raise ValueError("month cannot be in the future")
+            raise ValidationError("month cannot be in the future")
 
         if month_number == 12:
             next_month = date(year + 1, 1, 1)
