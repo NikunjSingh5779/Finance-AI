@@ -1,6 +1,7 @@
 """Application service for AI-assisted financial advice."""
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
 from app.core.exceptions import ProviderUnavailableError
@@ -15,7 +16,7 @@ class AIService:
     """Build trusted financial context and delegate generation to a provider."""
 
     def __init__(self, provider: AIProvider | None = None):
-        self.provider = provider or get_ai_provider()
+        self.provider = provider if provider is not None else get_ai_provider()
 
     @property
     def available(self) -> bool:
@@ -27,26 +28,35 @@ class AIService:
         transactions: TransactionRepository,
         budgets: BudgetRepository,
     ) -> dict[str, Any]:
-        current_start, current_end = self._current_period()
-        summary = {
-            **analytics.summary_totals(current_start, current_end),
-            "category_totals": analytics.category_totals(current_start, current_end),
-        }
-        income = summary["income"]
-        expense = summary["expense"]
-        summary["balance"] = income - expense
-        summary["savings_rate"] = (
-            ((income - expense) / income) * 100 if income else 0.0
-        )
+        start_date, end_date = self._current_period()
+        totals = analytics.summary_totals(start_date, end_date)
+        category_totals = analytics.category_totals(start_date, end_date)
 
-        recent = [
-            item.model_dump()
-            for item in transactions.list(skip=0, limit=20)
-        ]
+        income = totals["income"]
+        expense = totals["expense"]
+        balance = income - expense
+        savings_rate = (balance / income * 100) if income else 0.0
+
         return {
-            "summary": summary,
-            "recent_transactions": recent,
-            "budgets": [budget.model_dump() for budget in budgets.list()],
+            "summary": {
+                "income": income,
+                "expense": expense,
+                "balance": balance,
+                "savings_rate": savings_rate,
+                "category_totals": category_totals,
+            },
+            "recent_transactions": [
+                transaction.model_dump()
+                for transaction in transactions.list(skip=0, limit=20)
+            ],
+            "budgets": [
+                budget.model_dump()
+                for budget in budgets.list()
+            ],
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date,
+            },
         }
 
     async def get_financial_advice(
@@ -56,13 +66,23 @@ class AIService:
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
         if not self.available:
-            raise ProviderUnavailableError("ai", "No configured provider is available")
+            raise ProviderUnavailableError(
+                "ai",
+                "No configured provider is available",
+            )
 
         prompt = self._build_prompt(question, financial_context, conversation)
         try:
-            return await asyncio.to_thread(self.provider.generate_response, prompt)
+            response = await asyncio.to_thread(
+                self.provider.generate_response,
+                prompt,
+            )
         except Exception as exc:
             raise ProviderUnavailableError("ai", str(exc)) from exc
+
+        if not isinstance(response, str) or not response.strip():
+            raise ProviderUnavailableError("ai", "Provider returned an empty response")
+        return response.strip()
 
     def _build_prompt(
         self,
@@ -87,11 +107,12 @@ class AIService:
             for item in budgets
         ) or "- No budgets configured"
 
-        history_text = ""
-        for message in (conversation or [])[-8:]:
-            role = "Assistant" if message.get("role") == "assistant" else "User"
-            history_text += f"{role}: {message.get('content', '')}
-"
+        history_text = "
+".join(
+            f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
+            f"{message.get('content', '')}"
+            for message in (conversation or [])[-8:]
+        ) or "- None"
 
         return f"""You are FinanceAI, a practical personal-finance assistant for an Indian user.
 Use only the supplied financial facts. Clearly label estimates and do not promise investment returns.
@@ -111,7 +132,7 @@ BUDGETS
 {budget_text}
 
 CONVERSATION HISTORY
-{history_text or '- None'}
+{history_text}
 
 USER QUESTION
 {question}
@@ -121,7 +142,8 @@ Answer concisely with practical next steps. When the question is investment-rela
 
     @staticmethod
     def _current_period() -> tuple[str, str]:
-        from datetime import datetime
-
         now = datetime.now()
-        return now.replace(day=1).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d")
+        return (
+            now.replace(day=1).strftime("%Y-%m-%d"),
+            now.strftime("%Y-%m-%d"),
+        )
