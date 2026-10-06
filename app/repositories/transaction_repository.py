@@ -1,5 +1,5 @@
 from sqlite3 import Connection
-from typing import Optional
+from typing import List, Optional
 
 from app.schemas.transaction import (
     TransactionCreate,
@@ -14,7 +14,7 @@ class TransactionRepository:
     def __init__(self, conn: Connection):
         self.conn = conn
 
-    def list(self, skip: int = 0, limit: int = 100) -> list[TransactionOut]:
+    def list(self, skip: int = 0, limit: int = 100) -> List[TransactionOut]:
         rows = self.conn.execute(
             """
             SELECT *
