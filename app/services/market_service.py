@@ -5,7 +5,7 @@ from typing import Any
 
 from app.providers.market.market_data import MarketDataProvider
 from app.providers.market.market_predictor import predict_prices
-from app.utils.web_search import get_searcher
+from app.providers.search.duckduckgo import get_searcher
 
 
 class MarketService:
