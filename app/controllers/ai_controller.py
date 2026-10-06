@@ -1,21 +1,27 @@
 import logging
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from fastapi.concurrency import run_in_threadpool
-from app.core.ai_provider import ask_ai
+
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
+
+from app.core.database import get_db
+from app.core.rate_limiter import check_rate_limit
+from app.repositories.analytics_repository import AnalyticsRepository
+from app.repositories.budget_repository import BudgetRepository
+from app.repositories.transaction_repository import TransactionRepository
+from app.services.ai_service import AIService
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["ai"])
 
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str = Field(max_length=4000)
 
 
 class ChatRequest(BaseModel):
-    messages: list[ChatMessage]
-    question: str
+    messages: list[ChatMessage] = Field(default_factory=list)
+    question: str = Field(min_length=3, max_length=1000)
 
 
 class ChatResponse(BaseModel):
@@ -23,76 +29,98 @@ class ChatResponse(BaseModel):
     success: bool
 
 
-SYSTEM_PROMPT = """You are a helpful personal finance assistant.
-Your role is to provide practical financial advice and spending suggestions based on user questions.
+def _ai_service(conn) -> AIService:
+    return AIService()
 
-When a user asks about spending money (e.g., "how can I spend my 10k on Shimla?"), provide:
-1. Budget breakdown suggestions
-2. Specific spending categories (accommodation, food, transport, activities, etc.)
-3. Money-saving tips for that destination
-4. Estimated costs based on typical prices
-5. Practical recommendations
 
-When asked about financial planning, budgeting, or money management:
-- Provide actionable advice
-- Consider the Indian financial context (INR, common expenses, etc.)
-- Be practical and considerate of different income levels
-- Suggest ways to track spending
-- Recommend budgeting strategies
-
-Always be helpful, non-judgmental, and focused on the user's financial goals."""
+def _context(conn) -> dict:
+    return _ai_service(conn).build_context(
+        AnalyticsRepository(conn),
+        TransactionRepository(conn),
+        BudgetRepository(conn),
+    )
 
 
 @router.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
-    """
-    Chat endpoint for financial advice and spending suggestions.
-    """
-    try:
-        if not request.question:
-            raise HTTPException(status_code=400, detail="Question is required")
+@router.post("/ai/advice", response_model=dict)
+async def chat(request: ChatRequest, raw_request: Request):
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
 
-        # Build conversation context from message history
-        conversation_context = ""
+    conn = get_db()
+    try:
+        service = _ai_service(conn)
+        context = service.build_context(
+            AnalyticsRepository(conn),
+            TransactionRepository(conn),
+            BudgetRepository(conn),
+        )
+        history = [message.model_dump() for message in request.messages]
+        reply = await service.get_financial_advice(
+            question=request.question,
+            financial_context=context,
+            conversation=history,
+        )
         if request.messages:
-            for msg in request.messages:
-                role = "Assistant" if msg.role == "assistant" else "User"
-                conversation_context += f"{role}: {msg.content}\n"
-
-        # Combine context with current question
-        full_message = (
-            conversation_context + f"User: {request.question}"
-            if conversation_context
-            else request.question
-        )
-
-        # Call AI model with system prompt
-        response = await run_in_threadpool(
-            ask_ai,
-            system_message=SYSTEM_PROMPT,
-            user_message=full_message,
-            max_tokens=1024,
-        )
-
-        if not response:
-            raise HTTPException(status_code=500, detail="Failed to get response from AI model")
-
-        return ChatResponse(reply=response, success=True)
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return ChatResponse(reply=reply, success=True)
+        return {"advice": reply, "success": True}
+    finally:
+        conn.close()
 
 
-@router.get("/test")
-def test_ai():
-    """Test endpoint to verify AI connectivity."""
+@router.post("/ai/advice-enhanced", response_model=dict)
+async def enhanced_advice(request: ChatRequest, raw_request: Request):
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+
+    conn = get_db()
     try:
-        response = ask_ai(
-            system_message="You are a helpful assistant.",
-            user_message="Say hello and confirm you're working.",
-            max_tokens=50
+        service = _ai_service(conn)
+        context = service.build_context(
+            AnalyticsRepository(conn),
+            TransactionRepository(conn),
+            BudgetRepository(conn),
         )
-        return {"response": response, "success": bool(response)}
-    except Exception as e:
-        logger.error(f"Error in AI test: {e}")
-        return {"response": str(e), "success": False}
+        context["mode"] = "enhanced"
+        reply = await service.get_financial_advice(
+            question=request.question,
+            financial_context=context,
+            conversation=[m.model_dump() for m in request.messages],
+        )
+        return {"advice": reply, "success": True}
+    finally:
+        conn.close()
+
+
+@router.get("/ai/providers")
+def provider_status():
+    from app.providers.ai.discovery import get_provider_info
+
+    return get_provider_info()
+
+
+@router.get("/api/chat/test")
+def test_ai():
+    conn = get_db()
+    try:
+        service = _ai_service(conn)
+        context = service.build_context(
+            AnalyticsRepository(conn),
+            TransactionRepository(conn),
+            BudgetRepository(conn),
+        )
+        # Reuse the regular service so diagnostics exercise the real provider path.
+        import asyncio
+
+        reply = asyncio.run(
+            service.get_financial_advice(
+                "Say hello and confirm FinanceAI is working.",
+                context,
+            )
+        )
+        return {"response": reply, "success": True}
+    except Exception as exc:
+        logger.warning("AI diagnostic failed: %s", exc)
+        return {"response": str(exc), "success": False}
+    finally:
+        conn.close()
