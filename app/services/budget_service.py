@@ -55,7 +55,11 @@ class BudgetService:
             if txn.type == "expense" and txn.category == budget.category
         )
 
-        days_elapsed = max(1, datetime.now().day)
+        period_start = datetime.strptime(start_date, "%Y-%m-%d")
+        period_end = datetime.strptime(end_date, "%Y-%m-%d")
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        elapsed_end = min(today, period_end)
+        days_elapsed = max(1, (elapsed_end - period_start).days + 1)
         days_in_period = self._days_in_period(start_date, end_date)
         daily_rate = spent / days_elapsed
         projected_spend = daily_rate * days_in_period
