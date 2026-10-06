@@ -88,13 +88,10 @@ export default function SettingsScreen() {
 
     setSavingAccount(true);
     try {
-      const account = await api.request<Account>("/accounts", {
-        method: "POST",
-        body: JSON.stringify({
-          name: accountName.trim(),
-          balance,
-          type: accountType,
-        }),
+      const account = await api.createAccount({
+        name: accountName.trim(),
+        balance,
+        type: accountType,
       });
       setAccounts((items) => items.concat(account));
       setAccountName("");
@@ -120,9 +117,7 @@ export default function SettingsScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await api.request<{ deleted: number }>("/accounts/" + account.id, {
-                method: "DELETE",
-              });
+              await api.deleteAccount(account.id);
               setAccounts((items) => items.filter((item) => item.id !== account.id));
             } catch (err) {
               setMessage(err instanceof Error ? err.message : "Could not delete account.");
