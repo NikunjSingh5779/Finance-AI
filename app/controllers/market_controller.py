@@ -19,9 +19,7 @@ def _provider_error(exc: Exception) -> HTTPException:
 
 
 @router.get("/search")
-async def search_ticker(
-    q: str = Query(..., min_length=1, max_length=100),
-):
+async def search_ticker(q: str = Query(..., min_length=1, max_length=100)):
     try:
         results = await _service().search_ticker(q)
         return {"query": q, "results": results}
@@ -29,7 +27,10 @@ async def search_ticker(
         raise _provider_error(exc) from exc
     except Exception as exc:
         logger.exception("Ticker search failed")
-        raise HTTPException(503, "Market search is temporarily unavailable") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Market search is temporarily unavailable",
+        ) from exc
 
 
 @router.get("/{symbol}")
@@ -37,7 +38,7 @@ async def get_market_data(symbol: str):
     try:
         return await _service().current_price(symbol)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _provider_error(exc) from exc
 
@@ -51,7 +52,7 @@ async def get_market_history(
     try:
         return await _service().history(symbol, period=period, interval=interval)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _provider_error(exc) from exc
 
@@ -61,7 +62,7 @@ async def get_company_info(symbol: str):
     try:
         return await _service().company_info(symbol)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _provider_error(exc) from exc
 
@@ -73,7 +74,7 @@ async def get_market_news(
 ):
     try:
         return await _service().news(symbol, max_results=max_results)
-    except Exception as exc:
+    except Exception:
         logger.exception("Market news failed")
         return {
             "symbol": symbol.upper(),
@@ -91,10 +92,12 @@ async def get_market_prediction(
 ):
     try:
         return await _service().prediction(
-            symbol, period=period, pred_len=pred_len
+            symbol,
+            period=period,
+            pred_len=pred_len,
         )
     except LookupError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _provider_error(exc) from exc
 
