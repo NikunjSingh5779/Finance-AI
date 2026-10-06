@@ -1,2 +1,2 @@
-# Finance AI Schemas
-# Request/response validation models
+# FinanceAI schemas.
+# Request and response validation models.
