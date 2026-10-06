@@ -63,7 +63,7 @@ class GoalService:
                 months_remaining = (
                     (target_date.year - today.year) * 12
                     + target_date.month - today.month
-                    + (1 if target_date.day >= today.day else 0)
+                    + (1 if target_date.day > today.day else 0)
                 )
                 months_remaining = max(1, months_remaining)
                 monthly_required = remaining / months_remaining
