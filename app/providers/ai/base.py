@@ -1,31 +1,17 @@
-"""Base AI provider interface."""
+"""Base interface for AI providers."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class AIProvider(ABC):
-    """Abstract base class for AI providers."""
+    """Abstract interface shared by all AI providers."""
 
     @abstractmethod
     def generate_response(self, prompt: str) -> str:
-        """
-        Generate a response from the AI provider.
-
-        Args:
-            prompt: The prompt to send to the AI provider
-
-        Returns:
-            The AI-generated response text
-        """
-        pass
+        """Generate a text response for a prompt."""
+        raise NotImplementedError
 
     @abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if the provider is available and configured correctly.
-
-        Returns:
-            True if provider is available, False otherwise
-        """
-        pass
+        """Return whether the provider is configured and reachable."""
+        raise NotImplementedError
