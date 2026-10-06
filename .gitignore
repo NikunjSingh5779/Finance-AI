@@ -41,3 +41,10 @@ graphify-out/
 # AI tool configs
 .ai-os-link.json
 .claude/
+
+# Expo / React Native
+mobile/node_modules/
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+mobile/web-build/
