@@ -1690,6 +1690,7 @@
       transactions: "Transactions",
       budgets: "Budgets",
       accounts: "Accounts",
+      planning: "Planning & Wealth",
       "ai-page": "AI Assistant"
     };
     $("topbar-title").textContent = titles[name] || name;
