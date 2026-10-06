@@ -1,31 +1,30 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+AccountType = Literal["checking", "savings", "credit", "cash", "investment"]
+
 
 class AccountBase(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(min_length=1, max_length=100)
-    balance: float = 0.0
-    type: str = 'checking'
+    balance: float = Field(default=0.0, ge=0)
+    type: AccountType = "checking"
+
 
 class AccountCreate(AccountBase):
-    @classmethod
-    def validate_type(cls, v):
-        allowed_types = ['checking', 'savings', 'credit', 'cash', 'investment']
-        if v not in allowed_types:
-            raise ValueError(f"Account type must be one of {allowed_types}")
-        return v
+    pass
+
 
 class AccountUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    balance: Optional[float] = None
-    type: Optional[str] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    @classmethod
-    def validate_type(cls, v):
-        if v is not None:
-            allowed_types = ['checking', 'savings', 'credit', 'cash', 'investment']
-            if v not in allowed_types:
-                raise ValueError(f"Account type must be one of {allowed_types}")
-        return v
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    balance: float | None = Field(default=None, ge=0)
+    type: AccountType | None = None
+
 
 class AccountOut(AccountBase):
     id: int
+    current_balance: float | None = None
