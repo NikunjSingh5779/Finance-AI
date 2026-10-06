@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "FinanceAI",
+    "slug": "finance-ai",
+    "version": "2.1.0",
+    "orientation": "portrait",
+    "scheme": "financeai",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nikunj.financeai.mobile"
+    },
+    "android": {
+      "package": "com.nikunj.financeai.mobile",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
