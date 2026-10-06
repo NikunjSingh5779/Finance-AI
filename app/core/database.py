@@ -49,6 +49,19 @@ def init_db() -> None:
                     CHECK(type IN ('checking','savings','credit','cash','investment'))
             );
 
+            CREATE TABLE IF NOT EXISTS goals (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT    NOT NULL,
+                target_amount   REAL    NOT NULL CHECK(target_amount > 0),
+                current_amount  REAL    NOT NULL DEFAULT 0 CHECK(current_amount >= 0),
+                target_date     TEXT,
+                category        TEXT    NOT NULL DEFAULT 'Savings',
+                created         TEXT    DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_goals_target_date
+                ON goals(target_date);
+
             CREATE INDEX IF NOT EXISTS idx_transactions_date
                 ON transactions(date);
             CREATE INDEX IF NOT EXISTS idx_transactions_category
