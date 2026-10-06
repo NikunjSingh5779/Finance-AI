@@ -144,3 +144,18 @@ class TransactionRepository:
             (account_id,),
         ).fetchone()
         return int(row["count"])
+
+    def expense_total_for_category(
+        self, category: str, start_date: str, end_date: str
+    ) -> float:
+        row = self.conn.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS total
+            FROM transactions
+            WHERE type = 'expense'
+              AND category = ?
+              AND date BETWEEN ? AND ?
+            """,
+            (category, start_date, end_date),
+        ).fetchone()
+        return float(row["total"] or 0)
