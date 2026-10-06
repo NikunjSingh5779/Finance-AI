@@ -1417,7 +1417,9 @@
 
   let goalsData = [];
   let netWorthData = {};
+  let netWorthHistory = [];
   let monthlyReportData = {};
+  let netWorthChart = null;
 
   function createPlanningPage() {
     if ($("page-planning")) return;
@@ -1511,9 +1513,16 @@
     createPlanningPage();
     if (!$("report-month").value) $("report-month").value = new Date().toISOString().slice(0, 7);
     try {
-      const [goals, netWorth] = await Promise.all([apiFetch("/goals"), apiFetch("/api/net-worth")]);
-      goalsData = goals; netWorthData = netWorth;
-      renderGoals(); renderNetWorth();
+      const [goals, netWorth, history] = await Promise.all([
+        apiFetch("/goals"),
+        apiFetch("/api/net-worth"),
+        apiFetch("/api/net-worth/history?months=12")
+      ]);
+      goalsData = goals;
+      netWorthData = netWorth;
+      netWorthHistory = history.history || [];
+      renderGoals();
+      renderNetWorth();
       await loadMonthlyReport();
     } catch (error) { showToast("Could not load planning data: " + error.message, "error"); }
   }
@@ -1532,6 +1541,18 @@
       const v = document.createElement("div"); v.className = "wealth-metric-value " + type; v.textContent = fmtDec(value);
       metric.append(l,v); summary.appendChild(metric);
     });
+    const trendWrap = document.createElement("div");
+    trendWrap.className = "wealth-trend-wrap";
+    const trendTitle = document.createElement("div");
+    trendTitle.className = "report-list-title";
+    trendTitle.textContent = "Net worth trend";
+    const canvas = document.createElement("canvas");
+    canvas.id = "net-worth-chart";
+    canvas.height = 90;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "Net worth trend for the last twelve months");
+    trendWrap.append(trendTitle, canvas);
+
     const breakdown = document.createElement("div"); breakdown.className = "wealth-breakdown";
     [...(netWorthData.assets || []), ...(netWorthData.liabilities || [])].forEach(item => {
       const row=document.createElement("div"); row.className="wealth-row";
@@ -1540,7 +1561,36 @@
       const amount=document.createElement("strong"); amount.textContent=fmtDec(item.type === "credit" ? -item.balance : item.balance);
       row.append(name,kind,amount); breakdown.appendChild(row);
     });
-    card.append(header,summary,breakdown);
+    if (netWorthChart) netWorthChart.destroy();
+    const chart = $("net-worth-chart");
+    if (chart && typeof Chart !== "undefined" && netWorthHistory.length) {
+      netWorthChart = new Chart(chart.getContext("2d"), {
+        type: "line",
+        data: {
+          labels: netWorthHistory.map(item => item.month),
+          datasets: [{
+            data: netWorthHistory.map(item => item.net_worth),
+            borderColor: "#22c55e",
+            backgroundColor: "rgba(34,197,94,.08)",
+            borderWidth: 2,
+            fill: true,
+            tension: .35,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false }
+          }
+        }
+      });
+    }
+
+    card.append(header,summary,trendWrap,breakdown);
   }
 
   function renderGoals() {
