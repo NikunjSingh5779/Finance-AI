@@ -183,6 +183,7 @@
             <div class="full-title">All Transactions</div>
             <button class="add-btn" onclick="openModal()">+ Add transaction</button>
             <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">📁 Import CSV</button>
+            <button class="add-btn" onclick="exportCSV()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">⬇ Export CSV</button>
             <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
           </div>
           <div class="add-form-grid">
