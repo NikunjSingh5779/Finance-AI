@@ -101,7 +101,7 @@ class TransactionRepository:
         account_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[TransactionOut]:
+    ) -> List[TransactionOut]:
         rows = self.conn.execute(
             """
             SELECT *
@@ -119,7 +119,7 @@ class TransactionRepository:
         transaction_type: str,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[TransactionOut]:
+    ) -> List[TransactionOut]:
         rows = self.conn.execute(
             """
             SELECT *
@@ -138,7 +138,7 @@ class TransactionRepository:
         end_date: str,
         skip: int = 0,
         limit: int = 500,
-    ) -> list[TransactionOut]:
+    ) -> List[TransactionOut]:
         rows = self.conn.execute(
             """
             SELECT *
