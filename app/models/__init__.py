@@ -27,6 +27,17 @@ class TransactionIn(BaseModel):
         return v
 
 
+class TransactionOut(BaseModel):
+    id: int
+    type: str
+    amount: float
+    description: str
+    category: str
+    date: str
+    account_id: int | None = None
+    created: str
+
+
 class AccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     balance: float = 0.0

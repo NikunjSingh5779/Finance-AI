@@ -1,60 +1,23 @@
-from __future__ import annotations
-
-import logging
 from fastapi import APIRouter, Request
-from database import get_db
-from models import AIQuery
-from rate_limiter import check_rate_limit
-from ai_provider import ask_ai
-from sklearn.linear_model import LinearRegression
-from web_search import get_searcher
-import numpy as np
-
-logger = logging.getLogger(__name__)
+from app.core.database import get_db
+from app.repositories.transaction_repository import TransactionRepository
+from app.services.analytics_service import AnalyticsService
+from app.services.ai_service import AIService
+from app.services.forecast_service import ForecastService
+from app.models import AIQuery
+from app.core.rate_limiter import check_rate_limit
+from app.utils.web_search import get_searcher
 
 router = APIRouter()
 
 
 @router.get("/summary")
-def get_summary():
+def get_summary(period: str = "all"):
     conn = get_db()
     try:
-        rows = conn.execute(
-            "SELECT type, SUM(amount) as total FROM transactions GROUP BY type"
-        ).fetchall()
-
-        monthly_rows = conn.execute(
-            "SELECT substr(date,1,7) as month, type, SUM(amount) as total FROM transactions GROUP BY month, type"
-        ).fetchall()
-
-        category_rows = conn.execute(
-            "SELECT category, SUM(amount) as total FROM transactions WHERE type='expense' GROUP BY category"
-        ).fetchall()
-
-        income = expense = 0.0
-        for r in rows:
-            if r["type"] == "income":
-                income = r["total"]
-            else:
-                expense = r["total"]
-
-        monthly = {}
-        for r in monthly_rows:
-            m = r["month"]
-            if m not in monthly:
-                monthly[m] = {"income": 0, "expense": 0}
-            monthly[m][r["type"]] = r["total"]
-
-        category_totals = {r["category"]: r["total"] for r in category_rows}
-
-        return {
-            "income": round(income, 2),
-            "expense": round(expense, 2),
-            "balance": round(income - expense, 2),
-            "savings_rate": round((income - expense) / income * 100, 1) if income else 0,
-            "monthly": monthly,
-            "category_totals": category_totals
-        }
+        repo = TransactionRepository(conn)
+        service = AnalyticsService(repo)
+        return service.get_summary(period)
     finally:
         conn.close()
 
@@ -63,22 +26,9 @@ def get_summary():
 def predict_expense():
     conn = get_db()
     try:
-        rows = conn.execute(
-            "SELECT date, amount FROM transactions WHERE type='expense' ORDER BY date"
-        ).fetchall()
-
-        if len(rows) < 2:
-            return {"prediction": "Not enough data"}
-
-        X = np.array(range(len(rows))).reshape(-1, 1)
-        y = np.array([r["amount"] for r in rows])
-
-        model = LinearRegression()
-        model.fit(X, y)
-
-        next_val = model.predict([[len(rows)]])[0]
-
-        return {"predicted_expense": round(float(next_val), 2)}
+        repo = TransactionRepository(conn)
+        forecast_service = ForecastService(repo)
+        return forecast_service.predict_expense()
     finally:
         conn.close()
 
@@ -202,6 +152,8 @@ User Question: {query.question}
 
         max_tokens = 500 if detailed else 350  # Increased for complete financial advice
 
+        # TODO: Replace with AIService when implemented
+        from app.core.ai_provider import ask_ai
         return {"advice": ask_ai(system_prompt, user_prompt, max_tokens)}
 
 
@@ -237,116 +189,112 @@ async def ai_advice_enhanced(query: AIQuery, request: Request):
                     "60% equity SIP, 20% index funds, 10% debt, 10% high-risk."
                 )
             }
+
         elif savings >= 20:
             return {
                 "advice": (
                     f"Your savings rate is good ({savings}%). "
-                    "Start investing consistently, avoid idle cash."
+                    "Start SIP, avoid idle cash, maintain discipline."
                 )
             }
+
         else:
             return {
                 "advice": (
                     f"Your savings rate is low ({savings}%). "
-                    "Reduce expenses, avoid impulse spending, target 20%+."
+                    "Reduce expenses, avoid impulse spending, target 20%+ savings."
                 )
             }
 
-    if "spending" in q or "overspending" in q:
+    elif "spending" in q or "overspending" in q:
         if not categories:
             return {"advice": "No spending data available."}
+
         top_cat = max(categories, key=categories.get)
+        amt = categories[top_cat]
+
         return {
             "advice": (
-                f"You are overspending in {top_cat} (₹{categories[top_cat]}). "
-                "Reduce this category to improve savings."
+                f"You are overspending in {top_cat} (₹{amt}). "
+                "Reduce this category to improve savings and investment capacity."
             )
         }
 
-    if "budget" in q:
+    elif "budget" in q:
         if not budgets:
             return {"advice": "No budgets set yet."}
+
         messages = []
         for b in budgets:
             cat = b.get("category")
             limit = b.get("limit_amt", 0)
             spent = categories.get(cat, 0)
+
             if spent > limit:
                 messages.append(f"{cat}: Exceeded by ₹{spent - limit}")
             elif spent > 0.8 * limit:
-                messages.append(f"{cat}: Near limit")
+                messages.append(f"{cat}: Near limit (₹{spent}/₹{limit})")
+
         if messages:
             return {"advice": "\n".join(messages)}
-        return {"advice": "All budgets are under control."}
+        else:
+            return {"advice": "All budgets are under control."}
 
-    # For general questions, fetch web context for enriched advice
-    detailed = "explain" in q or "detailed" in q
+    else:
+        # Enhanced AI advice with web search and market context
+        try:
+            # Initialize services
+            repo = TransactionRepository(conn)
+            analytics_service = AnalyticsService(repo)
+            ai_service = AIService()
+            forecast_service = ForecastService(repo)
+            market_service = None  # TODO: Implement market service
+            searcher = get_searcher()
 
-    # Try to fetch financial news context from web search
-    web_context = ""
-    try:
-        searcher = get_searcher()
+            # Build comprehensive context
+            context = await _build_ai_context(
+                analytics_service, ai_service, forecast_service, market_service, searcher, query
+            )
 
-        # Extract key terms for search
-        search_terms = q
-        # Look for potential stock tickers in the query
-        import re
-        tickers = re.findall(r'\b[A-Z]{1,5}\b', q)
-        # Filter out common non-ticker words
-        common_words = {"I", "A", "AN", "THE", "MY", "IN", "ON", "AT", "TO", "FOR",
-                        "OF", "IS", "IT", "BE", "BY", "OR", "AS", "IF", "ME", "DO",
-                        "NO", "SO", "UP", "US", "GO", "SAVE", "BUDGET", "BUY", "SELL",
-                        "HOW", "WHAT", "WHY", "WHEN", "WHERE", "CAN", "GET", "MAKE"}
-        real_tickers = [t for t in tickers if t not in common_words and len(t) >= 2]
+            # Get AI advice
+            advice = await ai_service.get_financial_advice(
+                question=query.question,
+                context=context
+            )
 
-        # Search for financial context
-        if real_tickers:
-            # Search for news about detected tickers
-            news_results = await searcher.search_financial_news(real_tickers[0], max_results=3)
-            if news_results:
-                web_context = "Recent Market News:\n"
-                for n in news_results:
-                    web_context += f"- {n.get('title', '')}: {n.get('snippet', '')[:150]}\n"
+            return {"advice": advice, "success": True}
 
-        # Always try to get macro-economic context for the query
-        macro_results = await searcher.search(search_terms, max_results=3)
-        if macro_results:
-            if web_context:
-                web_context += "\nRelated Financial Context:\n"
-            else:
-                web_context = "Related Financial Context:\n"
-            for r in macro_results[:2]:
-                web_context += f"- {r.title}: {r.snippet[:150]}\n"
+        except Exception as e:
+            # Fallback to basic AI advice
+            from app.core.ai_provider import ask_ai
+            system_prompt = """You are a helpful personal finance assistant.
+            Provide practical financial advice based on the user's question."""
+            user_prompt = f"""{query.question}"""
+            return {"advice": ask_ai(system_prompt, user_prompt, 350), "success": False}
 
-    except ImportError:
-        logger.debug("Web search not available, skipping context")
-    except Exception as e:
-        logger.warning(f"Web search failed: {e}")
 
-    # Build the enriched prompt
-    system_prompt = """You are a professional financial advisor with access to web search context.
+async def _build_ai_context(
+    analytics_service: AnalyticsService,
+    ai_service: AIService,
+    forecast_service: ForecastService,
+    market_service,  # TODO: Implement
+    searcher,
+    query: AIQuery
+) -> dict:
+    """Build comprehensive context for AI advice."""
+    context = {
+        "financial_summary": analytics_service.get_summary("all"),
+        "monthly_trends": analytics_service.get_monthly_series(6),
+        "user_question": query.question
+    }
 
-    Give a COMPLETE but CONCISE answer using the financial data and web context below.
+    # Add optional context if available
+    if query.summary:
+        context.update({
+            "current_period_summary": query.summary,
+            "budgets": query.budgets
+        })
 
-    Rules:
-    - Use bullet points
-    - Max 6-8 lines
-    - Focus on actionable advice
-    - Incorporate recent news/market context when relevant
-    - If web search failed, rely on the user's financial data"""
+    # TODO: Add forecast, market data, web search results when services are implemented
 
-    user_prompt = f"""
-    Financial Profile:
-    - Income: ₹{income}
-    - Expenses: ₹{expenses}
-    - Savings Rate: {savings}%
-    - Balance: ₹{balance}
-
-    {web_context if web_context else "(Web search context unavailable)"}
-
-    User Question: {query.question}
-    """
-
-    max_tokens = 600 if detailed else 400  # Increased for complete financial advice
-
-    return {"advice": ask_ai(system_prompt, user_prompt, max_tokens)}
+    return context

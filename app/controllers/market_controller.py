@@ -18,9 +18,9 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from market_data import get_market_provider, ohlcv_to_features
-from market_predictor import predict_prices
-from web_search import get_searcher
+from app.providers.market.market_data import get_market_provider, ohlcv_to_features
+from app.providers.market.market_predictor import predict_prices
+from app.utils.web_search import get_searcher
 
 logger = logging.getLogger(__name__)
 
