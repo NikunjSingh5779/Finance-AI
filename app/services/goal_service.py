@@ -1,9 +1,9 @@
-from calendar import monthrange
 from datetime import date
 
 from app.core.exceptions import GoalNotFoundError, ValidationError
 from app.repositories.goal_repository import GoalRepository
 from app.schemas.goal import GoalCreate, GoalOut, GoalUpdate
+
 
 class GoalService:
     """Business logic for savings and financial goals."""
