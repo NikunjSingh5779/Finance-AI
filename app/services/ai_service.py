@@ -1,115 +1,127 @@
-"""AI service for handling AI-related operations."""
+"""Application service for AI-assisted financial advice."""
 
-from typing import Dict, Any, Optional
-from app.core.exceptions import ProviderUnavailableError, InsufficientDataError
-from app.providers.ai.discovery import get_ai_provider
+import asyncio
+from typing import Any
+
+from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
-import logging
-
-logger = logging.getLogger(__name__)
+from app.providers.ai.discovery import get_ai_provider
+from app.repositories.analytics_repository import AnalyticsRepository
+from app.repositories.budget_repository import BudgetRepository
+from app.repositories.transaction_repository import TransactionRepository
 
 
 class AIService:
-    """Service for AI operations."""
+    """Build trusted financial context and delegate generation to a provider."""
 
-    def __init__(self):
-        """Initialize the AI service."""
-        self.provider: Optional[AIProvider] = None
-        self._initialize_provider()
+    def __init__(self, provider: AIProvider | None = None):
+        self.provider = provider or get_ai_provider()
 
-    def _initialize_provider(self) -> None:
-        """Initialize the AI provider."""
-        try:
-            self.provider = get_ai_provider()
-        except Exception as e:
-            logger.warning(f"Failed to initialize AI provider: {e}")
-            self.provider = None
+    @property
+    def available(self) -> bool:
+        return self.provider is not None and self.provider.is_available()
 
-    def is_available(self) -> bool:
-        """Check if AI service is available."""
-        return self.provider is not None
+    def build_context(
+        self,
+        analytics: AnalyticsRepository,
+        transactions: TransactionRepository,
+        budgets: BudgetRepository,
+    ) -> dict[str, Any]:
+        current_start, current_end = self._current_period()
+        summary = {
+            **analytics.summary_totals(current_start, current_end),
+            "category_totals": analytics.category_totals(current_start, current_end),
+        }
+        income = summary["income"]
+        expense = summary["expense"]
+        summary["balance"] = income - expense
+        summary["savings_rate"] = (
+            ((income - expense) / income) * 100 if income else 0.0
+        )
+
+        recent = [
+            item.model_dump()
+            for item in transactions.list(skip=0, limit=20)
+        ]
+        return {
+            "summary": summary,
+            "recent_transactions": recent,
+            "budgets": [budget.model_dump() for budget in budgets.list()],
+        }
 
     async def get_financial_advice(
         self,
         question: str,
-        financial_context: Dict[str, Any]
+        financial_context: dict[str, Any],
+        conversation: list[dict[str, str]] | None = None,
     ) -> str:
-        """
-        Get financial advice from the AI provider.
+        if not self.available:
+            raise ProviderUnavailableError("ai", "No configured provider is available")
 
-        Args:
-            question: The user's question
-            financial_context: Financial context from the database
-
-        Returns:
-            AI-generated advice
-
-        Raises:
-            ProviderUnavailableError: If no AI provider is available
-        """
-        if not self.is_available():
-            raise ProviderUnavailableError("No AI provider available")
-
+        prompt = self._build_prompt(question, financial_context, conversation)
         try:
-            # Build the prompt with financial context
-            prompt = self._build_prompt(question, financial_context)
-            response = self.provider.generate_response(prompt)
-            return response
-        except Exception as e:
-            logger.error(f"Error generating AI response: {e}")
-            raise ProviderUnavailableError(f"AI provider error: {str(e)}")
+            return await asyncio.to_thread(self.provider.generate_response, prompt)
+        except Exception as exc:
+            raise ProviderUnavailableError("ai", str(exc)) from exc
 
-    def _build_prompt(self, question: str, financial_context: Dict[str, Any]) -> str:
-        """
-        Build a prompt for the AI provider with financial context.
+    def _build_prompt(
+        self,
+        question: str,
+        context: dict[str, Any],
+        conversation: list[dict[str, str]] | None,
+    ) -> str:
+        summary = context.get("summary", {})
+        recent = context.get("recent_transactions", [])[:10]
+        budgets = context.get("budgets", [])
 
-        Args:
-            question: The user's question
-            financial_context: Financial context from the database
+        recent_text = "
+".join(
+            f"- {item.get('date')}: {item.get('description')} | "
+            f"{item.get('category')} | {item.get('type')} | ₹{item.get('amount')}"
+            for item in recent
+        ) or "- No recent transactions"
 
-        Returns:
-            Formatted prompt string
-        """
-        context_parts = []
+        budget_text = "
+".join(
+            f"- {item.get('category')}: ₹{item.get('limit_amt')}/month"
+            for item in budgets
+        ) or "- No budgets configured"
 
-        # Add financial summary if available
-        if financial_context.get("summary"):
-            summary = financial_context["summary"]
-            context_parts.append(
-                f"Financial Summary: "
-                f"Income: {summary.get('income', 0)}, "
-                f"Expenses: {summary.get('expense', 0)}, "
-                f"Balance: {summary.get('balance', 0)}, "
-                f"Savings Rate: {summary.get('savings_rate', 0)}%"
-            )
+        history_text = ""
+        for message in (conversation or [])[-8:]:
+            role = "Assistant" if message.get("role") == "assistant" else "User"
+            history_text += f"{role}: {message.get('content', '')}
+"
 
-        # Add recent transactions if available
-        if financial_context.get("recent_transactions"):
-            transactions = financial_context["recent_transactions"][:5]  # Limit to 5
-            txn_descriptions = [
-                f"- {txn.get('description', '')}: {txn.get('amount', 0)} ({txn.get('type', '')})"
-                for txn in transactions
-            ]
-            context_parts.append("Recent Transactions:\n" + "\n".join(txn_descriptions))
+        return f"""You are FinanceAI, a practical personal-finance assistant for an Indian user.
+Use only the supplied financial facts. Clearly label estimates and do not promise investment returns.
+Do not invent transactions, account balances, prices, market facts, or personal information.
+Prefer actionable budgeting and cash-flow advice. Use INR (₹).
 
-        # Add budgets if available
-        if financial_context.get("budgets"):
-            budgets = financial_context["budgets"]
-            budget_descriptions = [
-                f"- {budget.get('category', '')}: {budget.get('limit_amt', 0)}"
-                for budget in budgets
-            ]
-            context_parts.append("Budgets:\n" + "\n".join(budget_descriptions))
+CURRENT PERIOD FINANCIAL SUMMARY
+Income: ₹{summary.get('income', 0):.2f}
+Expenses: ₹{summary.get('expense', 0):.2f}
+Net cash flow: ₹{summary.get('balance', 0):.2f}
+Savings rate: {summary.get('savings_rate', 0):.1f}%
 
-        context = "\n".join(context_parts) if context_parts else "No financial context available."
+RECENT TRANSACTIONS
+{recent_text}
 
-        prompt = f"""You are a helpful personal finance assistant.
-{context}
+BUDGETS
+{budget_text}
 
-User Question: {question}
+CONVERSATION HISTORY
+{history_text or '- None'}
 
-Please provide practical, actionable financial advice based on the user's question and their financial context.
-Consider the Indian financial context (INR, common expenses, etc.).
-Be helpful, non-judgmental, and focused on the user's financial goals.
+USER QUESTION
+{question}
+
+Answer concisely with practical next steps. When the question is investment-related, explain risks and avoid guarantees.
 """
-        return prompt
+
+    @staticmethod
+    def _current_period() -> tuple[str, str]:
+        from datetime import datetime
+
+        now = datetime.now()
+        return now.replace(day=1).strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d")
