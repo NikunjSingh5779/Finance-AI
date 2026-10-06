@@ -1052,6 +1052,10 @@
       : parsed.toISOString().slice(0, 10);
   }
 
+  function exportCSV() {
+    window.location.href = "/transactions/export.csv";
+  }
+
   async function importCSV(input) {
     const file = input.files?.[0];
     if (!file) return;
@@ -1782,6 +1786,7 @@
     deleteAccount,
     editAccount,
     importCSV,
+    exportCSV,
     filterThisMonth,
     setRange,
     quickAsk,
