@@ -1,59 +1,68 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+
 from app.core.database import get_db
 from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
+from app.schemas.budget import BudgetCreate, BudgetOut, BudgetUpdate
 from app.services.budget_service import BudgetService
-from app.schemas.budget import BudgetCreate, BudgetUpdate, BudgetOut
 
-router = APIRouter()
+router = APIRouter(prefix="/budgets", tags=["budgets"])
 
 
-@router.get("/budgets", response_model=list[BudgetOut])
+def _service(conn) -> BudgetService:
+    return BudgetService(BudgetRepository(conn), TransactionRepository(conn))
+
+
+@router.get("", response_model=list[BudgetOut])
 def list_budgets():
     conn = get_db()
     try:
-        budget_repo = BudgetRepository(conn)
-        transaction_repo = TransactionRepository(conn)
-        service = BudgetService(budget_repo, transaction_repo)
-        return service.list_budgets()
+        return _service(conn).list_budgets()
     finally:
         conn.close()
 
 
-@router.post("/budgets", status_code=201, response_model=BudgetOut)
-def set_budget(budget: BudgetCreate):
+@router.get("/{category}", response_model=BudgetOut)
+def get_budget(category: str):
     conn = get_db()
     try:
-        budget_repo = BudgetRepository(conn)
-        transaction_repo = TransactionRepository(conn)
-        service = BudgetService(budget_repo, transaction_repo)
-        return service.create_budget(budget)
+        return _service(conn).get_budget(category)
     finally:
         conn.close()
 
 
-@router.get("/budgets/{category}/status")
+@router.get("/{category}/status")
 def get_budget_status(category: str, period: str = "1m"):
     conn = get_db()
     try:
-        budget_repo = BudgetRepository(conn)
-        transaction_repo = TransactionRepository(conn)
-        service = BudgetService(budget_repo, transaction_repo)
-        return service.get_budget_status(category, period)
+        return _service(conn).get_budget_status(category, period)
     finally:
         conn.close()
 
 
-@router.delete("/budgets/{category}")
+@router.post("", status_code=201, response_model=BudgetOut)
+def set_budget(budget: BudgetCreate):
+    conn = get_db()
+    try:
+        return _service(conn).create_budget(budget)
+    finally:
+        conn.close()
+
+
+@router.put("/{category}", response_model=BudgetOut)
+def update_budget(category: str, budget: BudgetUpdate):
+    conn = get_db()
+    try:
+        return _service(conn).update_budget(category, budget)
+    finally:
+        conn.close()
+
+
+@router.delete("/{category}")
 def delete_budget(category: str):
     conn = get_db()
     try:
-        budget_repo = BudgetRepository(conn)
-        transaction_repo = TransactionRepository(conn)
-        service = BudgetService(budget_repo, transaction_repo)
-        deleted = service.delete_budget(category)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Budget not found")
+        _service(conn).delete_budget(category)
         return {"deleted": category}
     finally:
         conn.close()
