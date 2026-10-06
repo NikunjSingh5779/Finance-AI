@@ -772,6 +772,8 @@
       Promise.all([loadAccounts(), loadSummary()]);
     } else if (currentPage === "insights") {
       loadInsightsPage();
+    } else if (currentPage === "planning") {
+      loadPlanningPage();
     } else {
       Promise.all([loadTransactions(), loadBudgets(), loadSummary()]);
     }
@@ -1290,6 +1292,7 @@
 
   async function loadInsightsPage() {
     createInsightsPage();
+    createPlanningPage();
     try {
       const payload = await apiFetch("/api/insights/dashboard");
       renderHealth(payload.health);
@@ -1615,6 +1618,10 @@
       activateInsights();
       return;
     }
+    if (name === "planning") {
+      activatePlanning();
+      return;
+    }
 
     currentPage = name;
     document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
@@ -1653,6 +1660,18 @@
     createInsightsPage();
 
     const navHost = document.querySelector(".sidebar > div:nth-of-type(2)");
+    if (navHost && !$("planning-nav-item")) {
+      const item = document.createElement("div");
+      item.className = "nav-item";
+      item.id = "planning-nav-item";
+      const icon = document.createElement("span");
+      icon.className = "nav-icon";
+      icon.textContent = "◎";
+      item.append(icon, document.createTextNode(" Planning & Wealth"));
+      item.addEventListener("click", activatePlanning);
+      navHost.appendChild(item);
+    }
+
     if (navHost && !$("insights-nav-item")) {
       const item = document.createElement("div");
       item.className = "nav-item";
