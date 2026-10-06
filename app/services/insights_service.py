@@ -8,6 +8,7 @@ from typing import Any
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.account_repository import AccountRepository
 from app.repositories.budget_repository import BudgetRepository
+from app.utils.dates import get_period_bounds
 
 
 class FinancialHealthService:
@@ -25,7 +26,8 @@ class FinancialHealthService:
 
     def get_score(self) -> dict[str, Any]:
         monthly = self.analytics.monthly_series(6)
-        totals = self.analytics.summary_totals()
+        start_date, end_date = get_period_bounds("6m")
+        totals = self.analytics.summary_totals(start_date, end_date)
         income = totals["income"]
         expense = totals["expense"]
         savings_rate = (income - expense) / income * 100 if income else 0.0
@@ -33,8 +35,8 @@ class FinancialHealthService:
         savings_component = min(30.0, max(0.0, savings_rate / 30.0 * 30.0))
 
         budgets = self.budgets.list()
+        current_spending = self.analytics.category_totals(*self._current_period())
         if budgets:
-            current_spending = self.analytics.category_totals(*self._current_period())
             utilizations = [
                 current_spending.get(b.category, 0.0) / b.limit_amt
                 for b in budgets
@@ -80,8 +82,9 @@ class FinancialHealthService:
 
         if budgets:
             over = [
-                b.category for b in budgets
-                if self.analytics.category_totals(*self._current_period()).get(b.category, 0) > b.limit_amt
+                b.category
+                for b in budgets
+                if current_spending.get(b.category, 0) > b.limit_amt
             ]
             if over:
                 actions.append("Review over-budget categories: " + ", ".join(over[:3]) + ".")
