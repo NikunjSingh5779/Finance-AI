@@ -28,3 +28,25 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  mobile-typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install mobile dependencies
+        run: npm install
+
+      - name: Align Expo dependencies
+        run: npx expo install --fix
+
+      - name: Typecheck mobile app
+        run: npm run typecheck
