@@ -22,5 +22,4 @@ def serve_index():
             status_code=503,
         )
 
-    html = _INDEX_FILE.read_text(encoding="utf-8")
     return HTMLResponse(content=_INDEX_FILE.read_text(encoding="utf-8"))
