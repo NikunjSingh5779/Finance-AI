@@ -104,6 +104,7 @@ Claude/OpenAI-specific credentials are not part of the current provider implemen
 | GET/POST | /transactions | Transaction list/create |
 | GET/PUT/DELETE | /transactions/{id} | Transaction lifecycle |
 | POST | /transactions/import | Bulk import |
+| GET | /transactions/export.csv | CSV export with optional type filter |
 | GET/POST | /budgets | Budget list/create/upsert |
 | GET/PUT/DELETE | /budgets/{category} | Budget lifecycle |
 | GET | /budgets/{category}/status | Budget pacing |
