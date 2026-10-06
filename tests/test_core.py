@@ -190,7 +190,14 @@ def test_budget_upsert_and_status(client):
     assert txn.status_code == 201
 
     status = client.get("/budgets/Food/status")
-    assert status.status_code in (200, 404)
+    assert status.status_code == 200
+    status_payload = status.json()
+    assert status_payload["spent"] == 100
+    assert status_payload["limit"] == 750
+
+    updated = client.put("/budgets/Food", json={"limit_amt": 900})
+    assert updated.status_code == 200
+    assert updated.json()["limit_amt"] == 900
 
 
 def test_summary_period_and_forecast(client):
