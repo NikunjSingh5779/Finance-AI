@@ -14,20 +14,15 @@ class ForecastService:
         self.repository = repository
 
     def predict_expense(self) -> dict[str, Any]:
-        rows = self.repository.list_expense_rows()
-        if not rows:
+        monthly_data = [
+            (str(row["month"]), float(row["expense"]))
+            for row in self.repository.monthly_expense_totals()
+        ]
+        if not monthly_data:
             raise InsufficientDataError(
                 "No expense data available for forecasting"
             )
 
-        monthly_expenses: dict[str, float] = {}
-        for row in rows:
-            month = str(row["date"])[:7]
-            monthly_expenses[month] = (
-                monthly_expenses.get(month, 0.0) + float(row["amount"])
-            )
-
-        monthly_data = sorted(monthly_expenses.items())
         if len(monthly_data) < 2:
             raise InsufficientDataError(
                 "Need at least 2 months of expense data for forecasting"
@@ -58,7 +53,6 @@ class ForecastService:
             next_year, next_month = last_year + 1, 1
         else:
             next_year, next_month = last_year, last_month + 1
-
         next_month_str = f"{next_year:04d}-{next_month:02d}"
 
         return {
