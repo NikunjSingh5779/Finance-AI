@@ -398,3 +398,27 @@ def test_monthly_report(client):
 
     future = client.get("/api/reports/monthly?month=2099-01")
     assert future.status_code == 422
+
+
+def test_transaction_csv_export(client):
+    created = client.post(
+        "/transactions",
+        json={
+            "type": "expense",
+            "amount": 250,
+            "description": "Books",
+            "category": "Education",
+            "date": "2026-10-05",
+        },
+    )
+    assert created.status_code == 201
+
+    response = client.get("/transactions/export.csv")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "Books" in response.text
+    assert "financeai-transactions.csv" in response.headers["content-disposition"]
+
+    income_only = client.get("/transactions/export.csv?transaction_type=income")
+    assert income_only.status_code == 200
+    assert "Books" not in income_only.text
