@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from datetime import datetime
-import math
 import statistics
 from typing import Any
 
