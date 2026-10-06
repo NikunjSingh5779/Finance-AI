@@ -13,7 +13,9 @@ class AccountService:
         accounts = self.repository.list()
         return [
             account.model_copy(
-                update={"current_balance": self.repository.get_balance(account.id)}
+                update={
+                    "current_balance": self.repository.get_balance(account.id),
+                }
             )
             for account in accounts
         ]
@@ -23,13 +25,15 @@ class AccountService:
         if account is None:
             raise AccountNotFoundError(account_id)
 
-        current_balance = self.repository.get_balance(account_id)
-        return account.model_copy(update={"current_balance": current_balance})
+        return account.model_copy(
+            update={"current_balance": self.repository.get_balance(account_id)}
+        )
 
     def create_account(self, account: AccountCreate) -> AccountOut:
         created = self.repository.create(account)
-        current_balance = self.repository.get_balance(created.id)
-        return created.model_copy(update={"current_balance": current_balance})
+        return created.model_copy(
+            update={"current_balance": self.repository.get_balance(created.id)}
+        )
 
     def update_account(
         self,
@@ -40,8 +44,9 @@ class AccountService:
         if updated is None:
             raise AccountNotFoundError(account_id)
 
-        current_balance = self.repository.get_balance(account_id)
-        return updated.model_copy(update={"current_balance": current_balance})
+        return updated.model_copy(
+            update={"current_balance": self.repository.get_balance(account_id)}
+        )
 
     def delete_account(self, account_id: int) -> bool:
         if self.repository.get(account_id) is None:
