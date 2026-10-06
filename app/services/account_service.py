@@ -12,26 +12,43 @@ class AccountService:
         self.repository = repository
 
     def list_accounts(self) -> List[AccountOut]:
-        return self.repository.list()
+        accounts = self.repository.list()
+        result: list[AccountOut] = []
+        for account in accounts:
+            current = self.repository.get_balance(account.id)
+            result.append(account.model_copy(update={
+                "balance": current,
+                "current_balance": current,
+            }))
+        return result
 
     def get_account(self, account_id: int) -> AccountOut:
         account = self.repository.get(account_id)
         if account is None:
             raise AccountNotFoundError(account_id)
-        account.current_balance = self.repository.get_balance(account_id)
-        return account
+        current = self.repository.get_balance(account_id)
+        return account.model_copy(update={
+            "balance": current,
+            "current_balance": current,
+        })
 
     def create_account(self, account: AccountCreate) -> AccountOut:
         created = self.repository.create(account)
-        created.current_balance = self.repository.get_balance(created.id)
-        return created
+        current = self.repository.get_balance(created.id)
+        return created.model_copy(update={
+            "balance": current,
+            "current_balance": current,
+        })
 
     def update_account(self, account_id: int, account: AccountUpdate) -> AccountOut:
         updated = self.repository.update(account_id, account)
         if updated is None:
             raise AccountNotFoundError(account_id)
-        updated.current_balance = self.repository.get_balance(account_id)
-        return updated
+        current = self.repository.get_balance(account_id)
+        return updated.model_copy(update={
+            "balance": current,
+            "current_balance": current,
+        })
 
     def delete_account(self, account_id: int) -> bool:
         if self.repository.get(account_id) is None:
