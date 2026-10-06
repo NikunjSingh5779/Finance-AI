@@ -1,8 +1,12 @@
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
 from pathlib import Path
 
-router = APIRouter()
+from fastapi import APIRouter
+from fastapi.responses import HTMLResponse
+
+router = APIRouter(tags=["system"])
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+_INDEX_FILE = _STATIC_DIR / "index.html"
 
 
 @router.get("/health")
@@ -10,12 +14,23 @@ def health():
     return {"status": "ok"}
 
 
-@router.get("/")
+@router.get("/", response_class=HTMLResponse)
 def serve_index():
-    # Serve index.html from the static directory
-    static_dir = Path(__file__).parent.parent / "static"
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    else:
-        return {"message": "Finance AI API is running"}
+    if not _INDEX_FILE.exists():
+        return HTMLResponse(
+            "<h1>FinanceAI API is running</h1><p>Frontend asset not found.</p>",
+            status_code=503,
+        )
+
+    html = _INDEX_FILE.read_text(encoding="utf-8")
+    html = html.replace(
+        "</head>",
+        '<link rel="stylesheet" href="/static/insights.css"></head>',
+        1,
+    )
+    html = html.replace(
+        "</body>",
+        '<script src="/static/enhancements.js"></script></body>',
+        1,
+    )
+    return HTMLResponse(content=html)
