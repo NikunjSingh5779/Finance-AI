@@ -1,5 +1,3 @@
-from typing import List
-
 from app.core.exceptions import AccountDeletionError, AccountNotFoundError
 from app.repositories.account_repository import AccountRepository
 from app.schemas.account import AccountCreate, AccountOut, AccountUpdate
@@ -11,40 +9,39 @@ class AccountService:
     def __init__(self, repository: AccountRepository):
         self.repository = repository
 
-    def list_accounts(self) -> List[AccountOut]:
+    def list_accounts(self) -> list[AccountOut]:
         accounts = self.repository.list()
-        result: list[AccountOut] = []
-        for account in accounts:
-            current = self.repository.get_balance(account.id)
-            result.append(account.model_copy(update={
-                "current_balance": current,
-            })
-        return result
+        return [
+            account.model_copy(
+                update={"current_balance": self.repository.get_balance(account.id)}
+            )
+            for account in accounts
+        ]
 
     def get_account(self, account_id: int) -> AccountOut:
         account = self.repository.get(account_id)
         if account is None:
             raise AccountNotFoundError(account_id)
-        current = self.repository.get_balance(account_id)
-        return account.model_copy(update={
-            "current_balance": current,
-        })
+
+        current_balance = self.repository.get_balance(account_id)
+        return account.model_copy(update={"current_balance": current_balance})
 
     def create_account(self, account: AccountCreate) -> AccountOut:
         created = self.repository.create(account)
-        current = self.repository.get_balance(created.id)
-        return created.model_copy(update={
-            "current_balance": current,
-        })
+        current_balance = self.repository.get_balance(created.id)
+        return created.model_copy(update={"current_balance": current_balance})
 
-    def update_account(self, account_id: int, account: AccountUpdate) -> AccountOut:
+    def update_account(
+        self,
+        account_id: int,
+        account: AccountUpdate,
+    ) -> AccountOut:
         updated = self.repository.update(account_id, account)
         if updated is None:
             raise AccountNotFoundError(account_id)
-        current = self.repository.get_balance(account_id)
-        return updated.model_copy(update={
-            "current_balance": current,
-        })
+
+        current_balance = self.repository.get_balance(account_id)
+        return updated.model_copy(update={"current_balance": current_balance})
 
     def delete_account(self, account_id: int) -> bool:
         if self.repository.get(account_id) is None:
