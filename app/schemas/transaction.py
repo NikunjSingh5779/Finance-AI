@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -19,6 +20,13 @@ class TransactionBase(BaseModel):
     def validate_type(cls, value: str) -> str:
         if value not in ("income", "expense"):
             raise ValueError("type must be 'income' or 'expense'")
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("amount must be a finite number")
         return value
 
     @field_validator("date")
@@ -50,6 +58,13 @@ class TransactionUpdate(BaseModel):
     def validate_type(cls, value: Optional[str]) -> Optional[str]:
         if value is not None and value not in ("income", "expense"):
             raise ValueError("type must be 'income' or 'expense'")
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("amount must be a finite number")
         return value
 
     @field_validator("date")
