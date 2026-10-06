@@ -76,7 +76,7 @@ class MarketDataProvider:
                 "volume": int(latest["Volume"]),
                 "change": round(float(latest["Close"] - prev_close), 2),
                 "change_pct": round(float((latest["Close"] - prev_close) / prev_close * 100), 2),
-                "currency": "USD",
+                "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
                 "source": "yfinance",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -214,7 +214,11 @@ def ohlcv_to_features(records: list[dict[str, Any]]) -> dict[str, Any]:
     sma_20 = sum(closes[-20:]) / min(20, len(closes)) if len(closes) >= 20 else None
 
     # Volatility (standard deviation of returns)
-    returns = [(closes[i] - closes[i - 1]) / closes[i - 1] * 100 for i in range(1, len(closes))]
+    returns = []
+    for i in range(1, len(closes)):
+        previous = closes[i - 1]
+        if previous:
+            returns.append((closes[i] - previous) / previous * 100)
     volatility = (sum(r ** 2 for r in returns) / len(returns)) ** 0.5 if returns else 0
 
     # Volume trend
