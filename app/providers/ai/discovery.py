@@ -1,8 +1,8 @@
-"""AI provider discovery and selection."""
+"""Discover the first configured AI provider."""
 
-import os
 import logging
-from typing import Optional, Tuple
+import os
+
 from .base import AIProvider
 from .omniroute import OmniRouteProvider
 from .opencode import OpenCodeProvider
@@ -11,109 +11,54 @@ from .openrouter import OpenRouterProvider
 logger = logging.getLogger(__name__)
 
 
-def get_ai_provider() -> Optional[AIProvider]:
-    """
-    Discover and initialize the best available AI provider.
-
-    Returns:
-        An initialized AIProvider instance, or None if no provider is available
-
-    Priority order:
-    1. OmniRoute (if API key configured)
-    2. OpenCode (if API key configured)
-    3. OpenRouter (if API key configured)
-    """
-    try:
-        # Try OmniRoute first
-        omniroute_provider = _try_omniroute()
-        if omniroute_provider and omniroute_provider.is_available():
-            logger.info("Using OmniRoute AI provider")
-            return omniroute_provider
-    except Exception as e:
-        logger.debug(f"OmniRoute provider initialization failed: {e}")
-
-    try:
-        # Try OpenCode second
-        opencode_provider = _try_opencode()
-        if opencode_provider and opencode_provider.is_available():
-            logger.info("Using OpenCode AI provider")
-            return opencode_provider
-    except Exception as e:
-        logger.debug(f"OpenCode provider initialization failed: {e}")
-
-    try:
-        # Try OpenRouter third
-        openrouter_provider = _try_openrouter()
-        if openrouter_provider and openrouter_provider.is_available():
-            logger.info("Using OpenRouter AI provider")
-            return openrouter_provider
-    except Exception as e:
-        logger.debug(f"OpenRouter provider initialization failed: {e}")
+def get_ai_provider() -> AIProvider | None:
+    """Return the first available provider in configured priority order."""
+    for factory in (_try_omniroute, _try_opencode, _try_openrouter):
+        try:
+            provider = factory()
+            if provider and provider.is_available():
+                logger.info("Using %s AI provider", provider.__class__.__name__)
+                return provider
+        except Exception as exc:
+            logger.debug("AI provider discovery failed: %s", exc)
 
     logger.warning("No AI provider available")
     return None
 
 
-def _try_omniroute() -> Optional[AIProvider]:
-    """Try to initialize OmniRoute provider."""
+def _try_omniroute() -> AIProvider | None:
     api_key = os.getenv("OMNIROUTE_API_KEY")
     if not api_key:
         return None
+    return OmniRouteProvider(
+        api_key.strip(),
+        os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128"),
+    )
 
-    base_url = os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128")
-    return OmniRouteProvider(api_key.strip(), base_url)
 
-
-def _try_opencode() -> Optional[AIProvider]:
-    """Try to initialize OpenCode provider."""
+def _try_opencode() -> AIProvider | None:
     api_key = os.getenv("OPENCODE_ZEN_API_KEY")
     if not api_key:
         return None
-
     return OpenCodeProvider(api_key.strip())
 
 
-def _try_openrouter() -> Optional[AIProvider]:
-    """Try to initialize OpenRouter provider."""
+def _try_openrouter() -> AIProvider | None:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return None
-
     return OpenRouterProvider(api_key.strip())
 
 
 def get_provider_info() -> dict:
-    """
-    Get information about available providers.
-
-    Returns:
-        Dictionary with provider availability information
-    """
+    """Report configuration and selected provider without exposing secrets."""
     info = {
-        "omniroute": {
-            "available": bool(os.getenv("OMNIROUTE_API_KEY")),
-            "configured": bool(os.getenv("OMNIROUTE_API_KEY"))
-        },
-        "opencode": {
-            "available": bool(os.getenv("OPENCODE_ZEN_API_KEY")),
-            "configured": bool(os.getenv("OPENCODE_ZEN_API_KEY"))
-        },
-        "openrouter": {
-            "available": bool(os.getenv("OPENROUTER_API_KEY")),
-            "configured": bool(os.getenv("OPENROUTER_API_KEY"))
-        }
+        "omniroute": {"configured": bool(os.getenv("OMNIROUTE_API_KEY"))},
+        "opencode": {"configured": bool(os.getenv("OPENCODE_ZEN_API_KEY"))},
+        "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY"))},
     }
-
-    # Determine which provider would be selected
     provider = get_ai_provider()
-    if provider:
-        if isinstance(provider, OmniRouteProvider):
-            info["selected"] = "omniroute"
-        elif isinstance(provider, OpenCodeProvider):
-            info["selected"] = "opencode"
-        elif isinstance(provider, OpenRouterProvider):
-            info["selected"] = "openrouter"
-    else:
-        info["selected"] = None
-
+    info["selected"] = (
+        provider.__class__.__name__ if provider is not None else None
+    )
     return info
