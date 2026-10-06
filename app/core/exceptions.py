@@ -121,3 +121,11 @@ class InsufficientDataError(FinanceAIError):
         details: Optional[dict] = None,
     ):
         super().__init__(message, details)
+
+
+class GoalNotFoundError(NotFoundError):
+    def __init__(self, goal_id: int):
+        super().__init__(
+            f"Goal with id {goal_id} not found",
+            {"goal_id": goal_id},
+        )
