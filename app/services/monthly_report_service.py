@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -34,7 +34,7 @@ class MonthlyReportService:
             next_month = date(year, month_number + 1, 1)
 
         start_date = first.isoformat()
-        end_date = (next_month - __import__("datetime").timedelta(days=1)).isoformat()
+        end_date = (next_month - timedelta(days=1)).isoformat()
 
         totals = self.analytics.summary_totals(start_date, end_date)
         categories = self.analytics.category_totals(start_date, end_date)
@@ -56,7 +56,7 @@ class MonthlyReportService:
             previous_year -= 1
             previous_month = 12
         previous_start = date(previous_year, previous_month, 1)
-        previous_end = first - __import__("datetime").timedelta(days=1)
+        previous_end = first - timedelta(days=1)
         previous = self.analytics.summary_totals(
             previous_start.isoformat(), previous_end.isoformat()
         )
