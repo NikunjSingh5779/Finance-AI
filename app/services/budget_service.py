@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import datetime
 from typing import List
 
@@ -59,21 +60,28 @@ class BudgetService:
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         period_start = datetime.strptime(start_date, "%Y-%m-%d")
         period_end = datetime.strptime(end_date, "%Y-%m-%d")
-        elapsed_end = min(today, period_end)
+        projection_month_end = datetime(
+            today.year, today.month, monthrange(today.year, today.month)[1]
+        )
+        projection_end = max(period_end, projection_month_end)
+        elapsed_end = min(today, projection_end)
+
         days_elapsed = max(1, (elapsed_end - period_start).days + 1)
-        days_in_period = max(1, (period_end - period_start).days + 1)
+        days_in_period = max(1, (projection_end - period_start).days + 1)
         daily_rate = spent / days_elapsed
         projected_spend = daily_rate * days_in_period
 
-        utilization = (spent / budget.limit_amt) * 100
+        months_in_period = {"1m": 1, "3m": 3, "6m": 6, "1y": 12}[period]
+        period_limit = budget.limit_amt * months_in_period
+        utilization = (spent / period_limit) * 100 if period_limit else 0.0
         status = (
             "Exceeded"
-            if spent >= budget.limit_amt
+            if spent >= period_limit
             else "Warning"
-            if spent >= budget.limit_amt * 0.8
+            if spent >= period_limit * 0.8
             else "Healthy"
         )
-        remaining = budget.limit_amt - spent
+        remaining = period_limit - spent
 
         return {
             "category": budget.category,
@@ -86,6 +94,6 @@ class BudgetService:
             "utilization_percent": round(utilization, 2),
             "status": status,
             "projected_spend": round(projected_spend, 2),
-            "projected_overrun": round(max(0.0, projected_spend - budget.limit_amt), 2),
+            "projected_overrun": round(max(0.0, projected_spend - period_limit), 2),
             "is_projection": True,
         }
