@@ -17,9 +17,8 @@ class AccountService:
         for account in accounts:
             current = self.repository.get_balance(account.id)
             result.append(account.model_copy(update={
-                "balance": current,
                 "current_balance": current,
-            }))
+            })
         return result
 
     def get_account(self, account_id: int) -> AccountOut:
@@ -28,7 +27,6 @@ class AccountService:
             raise AccountNotFoundError(account_id)
         current = self.repository.get_balance(account_id)
         return account.model_copy(update={
-            "balance": current,
             "current_balance": current,
         })
 
@@ -36,7 +34,6 @@ class AccountService:
         created = self.repository.create(account)
         current = self.repository.get_balance(created.id)
         return created.model_copy(update={
-            "balance": current,
             "current_balance": current,
         })
 
@@ -46,7 +43,6 @@ class AccountService:
             raise AccountNotFoundError(account_id)
         current = self.repository.get_balance(account_id)
         return updated.model_copy(update={
-            "balance": current,
             "current_balance": current,
         })
 
