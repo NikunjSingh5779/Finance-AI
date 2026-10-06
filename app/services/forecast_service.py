@@ -1,107 +1,68 @@
-"""Service for expense forecasting."""
+"""Expense forecasting service."""
 
-from typing import Dict, Any, List
-from app.repositories.transaction_repository import TransactionRepository
-from app.core.exceptions import InsufficientDataError
-from app.utils.dates import get_period_bounds
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
+
+from app.core.exceptions import InsufficientDataError
+from app.repositories.transaction_repository import TransactionRepository
 
 
 class ForecastService:
-    """Service for forecasting expenses."""
+    """Forecast next month's total expenses from monthly historical totals."""
 
     def __init__(self, repository: TransactionRepository):
-        """Initialize the forecast service with a repository."""
         self.repository = repository
 
-    def predict_expense(self) -> Dict[str, Any]:
-        """
-        Predict next month's total expenses based on historical data.
-
-        Returns:
-            Dictionary containing prediction and historical data
-        """
-        conn = self.repository.conn
-
-        # Get all expense transactions
-        expense_rows = conn.execute(
-            """SELECT date, amount FROM transactions
-               WHERE type = 'expense'
-               ORDER BY date"""
-        ).fetchall()
-
-        if not expense_rows:
+    def predict_expense(self) -> dict[str, Any]:
+        rows = self.repository.list_expense_rows()
+        if not rows:
             raise InsufficientDataError("No expense data available for forecasting")
 
-        # Group expenses by month
-        monthly_expenses = {}
-        for row in expense_rows:
-            date_str = row["date"]
-            # Extract YYYY-MM from date
-            month_key = date_str[:7]  # YYYY-MM format
-            amount = row["amount"]
+        monthly_expenses: dict[str, float] = {}
+        for row in rows:
+            month = str(row["date"])[:7]
+            monthly_expenses[month] = monthly_expenses.get(month, 0.0) + float(row["amount"])
 
-            if month_key not in monthly_expenses:
-                monthly_expenses[month_key] = 0.0
-            monthly_expenses[month_key] += amount
-
-        # Convert to list of (month, amount) tuples sorted by month
-        monthly_data = [(month, amount) for month, amount in monthly_expenses.items()]
-        monthly_data.sort(key=lambda x: x[0])  # Sort by month
-
+        monthly_data = sorted(monthly_expenses.items())
         if len(monthly_data) < 2:
-            raise InsufficientDataError("Need at least 2 months of data for forecasting")
+            raise InsufficientDataError(
+                "Need at least 2 months of expense data for forecasting"
+            )
 
-        # Extract just the amounts for calculation
         amounts = [amount for _, amount in monthly_data]
+        sample = amounts[-3:] if len(amounts) >= 3 else amounts
+        prediction = statistics.mean(sample)
+        model_used = "3-month moving average" if len(amounts) >= 3 else "historical average"
 
-        # Simple forecasting: use average of last 3 months or all months if less
-        if len(amounts) >= 3:
-            recent_amounts = amounts[-3:]
-            prediction = statistics.mean(recent_amounts)
-            model_used = "3-month moving average"
-        else:
-            prediction = statistics.mean(amounts)
-            model_used = "Overall average"
+        mean_value = statistics.mean(amounts)
+        cv = (
+            statistics.stdev(amounts) / mean_value
+            if len(amounts) >= 2 and mean_value > 0
+            else 1.0
+        )
+        confidence = max(0.0, min(100.0, 100.0 * (1.0 - min(cv, 1.0))))
 
-        # Calculate confidence based on data consistency
-        if len(amounts) >= 2:
-            stdev = statistics.stdev(amounts) if len(amounts) >= 2 else 0
-            mean_val = statistics.mean(amounts)
-            # Coefficient of variation - lower means more consistent
-            cv = stdev / mean_val if mean_val != 0 else 1
-            # Confidence: higher when data is more consistent
-            confidence = max(0, min(100, 100 * (1 - cv)))
-        else:
-            confidence = 50  # Default confidence with minimal data
-
-        # Format historical data for response
-        historical = [
-            {"month": month, "expense": amount}
-            for month, amount in monthly_data
-        ]
-
-        # Determine next month
-        last_month_str = monthly_data[-1][0]  # YYYY-MM
-        last_year, last_month = map(int, last_month_str.split('-'))
-
-        # Calculate next month
+        last_year, last_month = map(int, monthly_data[-1][0].split("-"))
         if last_month == 12:
-            next_month = 1
-            next_year = last_year + 1
+            next_year, next_month = last_year + 1, 1
         else:
-            next_month = last_month + 1
-            next_year = last_year
-
+            next_year, next_month = last_year, last_month + 1
         next_month_str = f"{next_year:04d}-{next_month:02d}"
 
         return {
             "prediction": round(prediction, 2),
             "confidence": round(confidence, 2),
             "model_used": model_used,
-            "historical_data": historical,
+            "historical_data": [
+                {"month": month, "expense": round(amount, 2)}
+                for month, amount in monthly_data
+            ],
             "next_month": next_month_str,
             "data_points": len(monthly_data),
-            "note": f"Prediction for {next_month_str} based on {len(monthly_data)} months of historical data"
+            "is_estimate": True,
+            "note": (
+                f"Estimated {next_month_str} expenses from {len(monthly_data)} "
+                "historical calendar months."
+            ),
         }
