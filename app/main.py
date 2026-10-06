@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.controllers.account_controller import router as account_router
@@ -56,33 +56,55 @@ app.add_middleware(
 
 
 @app.exception_handler(AccountDeletionError)
-async def account_deletion_handler(request: Request, exc: AccountDeletionError):
-    return JSONResponse(status_code=409, content={"detail": exc.message, "errors": exc.details})
+async def account_deletion_handler(
+    request: Request, exc: AccountDeletionError
+):
+    return JSONResponse(
+        status_code=409,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(InsufficientDataError)
-async def insufficient_data_handler(request: Request, exc: InsufficientDataError):
-    return JSONResponse(status_code=422, content={"detail": exc.message, "errors": exc.details})
+async def insufficient_data_handler(
+    request: Request, exc: InsufficientDataError
+):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(ProviderError)
 async def provider_error_handler(request: Request, exc: ProviderError):
-    return JSONResponse(status_code=503, content={"detail": exc.message, "errors": exc.details})
+    return JSONResponse(
+        status_code=503,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(RateLimitError)
 async def rate_limit_handler(request: Request, exc: RateLimitError):
-    return JSONResponse(status_code=429, content={"detail": exc.message, "errors": exc.details})
+    return JSONResponse(
+        status_code=429,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(ValidationError)
 async def validation_error_handler(request: Request, exc: ValidationError):
-    return JSONResponse(status_code=422, content={"detail": exc.message, "errors": exc.details})
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(FinanceAIError)
 async def finance_error_handler(request: Request, exc: FinanceAIError):
-    return JSONResponse(status_code=400, content={"detail": exc.message, "errors": exc.details})
+    return JSONResponse(
+        status_code=400,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 app.include_router(transaction_router)
@@ -96,10 +118,12 @@ app.include_router(insights_router)
 
 init_db()
 
-configured_provider_keys = (
+SUPPORTED_AI_KEYS = (
     "OMNIROUTE_API_KEY",
     "OPENCODE_ZEN_API_KEY",
     "OPENROUTER_API_KEY",
 )
-if not any(os.getenv(key) for key in configured_provider_keys):
-    logger.warning("No supported AI provider credentials found; AI features are disabled.")
+if not any(os.getenv(key) for key in SUPPORTED_AI_KEYS):
+    logger.warning(
+        "No supported AI provider credentials found; AI features are disabled."
+    )
