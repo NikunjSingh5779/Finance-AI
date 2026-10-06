@@ -23,19 +23,4 @@ def serve_index():
         )
 
     html = _INDEX_FILE.read_text(encoding="utf-8")
-    html = html.replace(
-        'href="static/style.css"',
-        'href="/static/style.css"',
-        1,
-    )
-    html = html.replace(
-        'src="static/script.js"',
-        'src="/static/app.js"',
-        1,
-    )
-    html = html.replace(
-        "</head>",
-        '<link rel="stylesheet" href="/static/insights.css"></head>',
-        1,
-    )
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=_INDEX_FILE.read_text(encoding="utf-8"))
