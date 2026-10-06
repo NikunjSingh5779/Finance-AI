@@ -1,11 +1,15 @@
-import { useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, RefreshControl, StyleSheet, Text, View } from "react-native";
 import {
   Button,
   Card,
+  ChipRow,
+  EmptyState,
   ErrorBanner,
   Header,
   Input,
+  LoadingState,
+  Money,
   Pill,
   Screen,
   SectionTitle,
@@ -13,13 +17,44 @@ import {
 } from "../src/components";
 import { FinanceApi } from "../src/api";
 import { useFinance } from "../src/AppContext";
+import type { Account, AccountType } from "../src/types";
 import { colors } from "../src/theme";
 
+const accountTypes: AccountType[] = [
+  "checking",
+  "savings",
+  "cash",
+  "credit",
+  "investment",
+];
+
 export default function SettingsScreen() {
-  const { apiBaseUrl, setApiBaseUrl } = useFinance();
+  const { api, apiBaseUrl, setApiBaseUrl } = useFinance();
   const [draft, setDraft] = useState(apiBaseUrl);
   const [status, setStatus] = useState<"idle" | "checking" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountForm, setAccountForm] = useState(false);
+  const [accountName, setAccountName] = useState("");
+  const [accountBalance, setAccountBalance] = useState("0");
+  const [accountType, setAccountType] = useState<AccountType>("checking");
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      setAccounts(await api.accounts());
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not load accounts.");
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadAccounts();
+  }, [loadAccounts]);
 
   const saveAndCheck = async () => {
     const normalized = draft.trim().replace(/\/+$/, "");
@@ -44,13 +79,88 @@ export default function SettingsScreen() {
     }
   };
 
+  const createAccount = async () => {
+    const balance = Number(accountBalance);
+    if (!accountName.trim() || !Number.isFinite(balance)) {
+      setMessage("Enter an account name and a finite opening balance.");
+      return;
+    }
+
+    setSavingAccount(true);
+    try {
+      const account = await api.request<Account>("/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          name: accountName.trim(),
+          balance,
+          type: accountType,
+        }),
+      });
+      setAccounts((items) => items.concat(account));
+      setAccountName("");
+      setAccountBalance("0");
+      setAccountType("checking");
+      setAccountForm(false);
+      setMessage("");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not create account.");
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const deleteAccount = (account: Account) => {
+    Alert.alert(
+      "Delete account",
+      "Delete " + account.name + "? Accounts with linked transactions cannot be deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.request<{ deleted: number }>("/accounts/" + account.id, {
+                method: "DELETE",
+              });
+              setAccounts((items) => items.filter((item) => item.id !== account.id));
+            } catch (err) {
+              setMessage(err instanceof Error ? err.message : "Could not delete account.");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await loadAccounts();
+    setRefreshing(false);
+  };
+
   const openDocs = async () => {
+    const { Linking } = await import("react-native");
     await Linking.openURL(apiBaseUrl.replace(/\/+$/, "") + "/docs");
   };
 
+  if (loadingAccounts) {
+    return (
+      <Screen>
+        <LoadingState />
+      </Screen>
+    );
+  }
+
   return (
-    <Screen>
-      <Header title="Settings" subtitle="Connect the mobile app to your FinanceAI backend." />
+    <Screen
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+      }
+    >
+      <Header title="Settings" subtitle="Backend connection, accounts and release configuration." />
+
+      {message && status !== "ok" ? <ErrorBanner message={message} /> : null}
 
       <Card>
         <SectionTitle>Backend connection</SectionTitle>
@@ -65,9 +175,47 @@ export default function SettingsScreen() {
         />
         <Button title="Save & test connection" onPress={() => void saveAndCheck()} loading={status === "checking"} />
         {status === "ok" ? <Pill tone="success">Connected</Pill> : null}
-        {status === "error" ? <ErrorBanner message={message} /> : null}
         {status === "ok" ? <SmallText>{message}</SmallText> : null}
       </Card>
+
+      <View style={styles.rowBetween}>
+        <SectionTitle>Accounts</SectionTitle>
+        <Button title={accountForm ? "Close" : "+ Account"} onPress={() => setAccountForm((v) => !v)} kind={accountForm ? "secondary" : "primary"} />
+      </View>
+
+      {accountForm ? (
+        <Card>
+          <Input label="Account name" value={accountName} onChangeText={setAccountName} placeholder="Main bank" />
+          <Input label="Opening balance (₹)" value={accountBalance} onChangeText={setAccountBalance} keyboardType="decimal-pad" placeholder="25000" />
+          <SmallText>Type</SmallText>
+          <ChipRow
+            values={accountTypes}
+            selected={accountType}
+            onSelect={(value) => setAccountType(value as AccountType)}
+          />
+          <Button title="Create account" onPress={() => void createAccount()} loading={savingAccount} />
+        </Card>
+      ) : null}
+
+      {accounts.length === 0 ? (
+        <Card><EmptyState message="No accounts configured yet." /></Card>
+      ) : (
+        accounts.map((account) => (
+          <Card key={account.id}>
+            <View style={styles.rowBetween}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>{account.name}</Text>
+                <SmallText>{account.type}</SmallText>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Money value={account.current_balance ?? account.balance} size={18} />
+                <SmallText>current balance</SmallText>
+              </View>
+            </View>
+            <Button title="Delete account" onPress={() => deleteAccount(account)} kind="danger" />
+          </Card>
+        ))
+      )}
 
       <Card>
         <SectionTitle>Local development</SectionTitle>
@@ -82,7 +230,7 @@ export default function SettingsScreen() {
           <SectionTitle>API documentation</SectionTitle>
           <Pill tone="info">Swagger</Pill>
         </View>
-        <Text style={styles.body}>Open the FastAPI interactive documentation to verify routes and test requests.</Text>
+        <Text style={styles.body}>Use FastAPI Swagger to inspect and test the backend routes.</Text>
         <Button title="Open /docs" onPress={() => void openDocs()} kind="secondary" />
       </Card>
 
@@ -117,5 +265,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
+  },
+  cardTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
   },
 });
