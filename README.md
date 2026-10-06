@@ -115,9 +115,21 @@ Claude/OpenAI-specific credentials are not part of the current provider implemen
 | GET | /api/insights/health | Financial Health Score |
 | GET | /api/insights/recurring | Recurring expenses |
 | GET | /api/insights/anomalies | Unusual spending |
+| GET/POST | /goals | Financial goal list/create |
+| GET/PUT/DELETE | /goals/{id} | Financial goal lifecycle |
+| GET | /api/net-worth | Current assets, liabilities, and net worth |
+| GET | /api/reports/monthly | Deterministic monthly report |
 | GET | /api/market/{symbol} | Market data |
 | GET | /api/market/{symbol}/history | OHLCV history |
 | GET | /api/market/{symbol}/predict | Experimental forecast |
+
+## Planning and wealth
+
+The Planning & Wealth page combines three capabilities:
+
+- **Financial goals** — create targets, track saved amounts, set target dates, and calculate the monthly amount required to reach the target.
+- **Net worth** — derives assets and liabilities from current account balances. Credit accounts are treated as liabilities.
+- **Monthly report** — summarizes a selected month, compares it with the previous month, highlights major spending categories, and shows budget/recurring signals.
 
 ## Financial insights
 
