@@ -20,6 +20,7 @@ from app.core.database import init_db
 from app.core.exceptions import (
     AccountDeletionError,
     FinanceAIError,
+    NotFoundError,
     InsufficientDataError,
     ProviderError,
     RateLimitError,
@@ -53,6 +54,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_handler(request: Request, exc: NotFoundError):
+    return JSONResponse(
+        status_code=404,
+        content={"detail": exc.message, "errors": exc.details},
+    )
 
 
 @app.exception_handler(AccountDeletionError)
@@ -126,4 +135,14 @@ SUPPORTED_AI_KEYS = (
 if not any(os.getenv(key) for key in SUPPORTED_AI_KEYS):
     logger.warning(
         "No supported AI provider credentials found; AI features are disabled."
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host=os.getenv("HOST", "127.0.0.1"),
+        port=int(os.getenv("PORT", "8000")),
     )
