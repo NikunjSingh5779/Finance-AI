@@ -38,11 +38,12 @@ export default function SettingsScreen() {
   const [accountName, setAccountName] = useState("");
   const [accountBalance, setAccountBalance] = useState("0");
   const [accountType, setAccountType] = useState<AccountType>("checking");
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadAccounts = useCallback(async () => {
+    setLoadingAccounts(true);
     try {
       setAccounts(await api.accounts());
     } catch (err) {
@@ -139,14 +140,6 @@ export default function SettingsScreen() {
     await Linking.openURL(apiBaseUrl.replace(/\/+$/, "") + "/docs");
   };
 
-  if (loadingAccounts) {
-    return (
-      <Screen>
-        <LoadingState />
-      </Screen>
-    );
-  }
-
   return (
     <Screen
       refreshControl={
@@ -192,7 +185,9 @@ export default function SettingsScreen() {
         </Card>
       ) : null}
 
-      {accounts.length === 0 ? (
+      {loadingAccounts ? (
+        <Card><LoadingState /></Card>
+      ) : accounts.length === 0 ? (
         <Card><EmptyState message="No accounts configured yet." /></Card>
       ) : (
         accounts.map((account) => (
