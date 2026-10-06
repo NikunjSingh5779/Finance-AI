@@ -1,4 +1,8 @@
+import csv
+from io import StringIO
+
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 
 from app.core.database import get_db
 from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
@@ -20,6 +24,55 @@ def list_transactions(
     conn = get_db()
     try:
         return _service(conn).list_transactions(skip=skip, limit=limit)
+    finally:
+        conn.close()
+
+
+@router.get("/export.csv")
+def export_transactions(
+    transaction_type: str | None = Query(default=None, pattern="^(income|expense)$"),
+):
+    conn = get_db()
+    try:
+        repository = TransactionRepository(conn)
+        rows = repository.list_by_type(
+            transaction_type,
+            skip=0,
+            limit=100000,
+        ) if transaction_type else repository.list(skip=0, limit=100000)
+
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow([
+            "id",
+            "type",
+            "amount",
+            "description",
+            "category",
+            "date",
+            "created",
+            "account_id",
+        ])
+        for txn in rows:
+            writer.writerow([
+                txn.id,
+                txn.type,
+                txn.amount,
+                txn.description,
+                txn.category,
+                txn.date,
+                txn.created,
+                txn.account_id,
+            ])
+
+        buffer.seek(0)
+        return StreamingResponse(
+            iter([buffer.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": 'attachment; filename="financeai-transactions.csv"'
+            },
+        )
     finally:
         conn.close()
 
