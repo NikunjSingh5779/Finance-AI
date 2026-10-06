@@ -55,7 +55,11 @@ class FinancialHealthService:
         expense_values = [row["expense"] for row in monthly if row["expense"] > 0]
         if len(expense_values) >= 2:
             mean_expense = statistics.mean(expense_values)
-            cv = statistics.stdev(expense_values) / mean_expense if mean_expense else 1.0
+            cv = (
+                statistics.stdev(expense_values) / mean_expense
+                if mean_expense
+                else 1.0
+            )
             consistency_component = max(0.0, min(20.0, 20.0 * (1.0 - min(cv, 1.0))))
         else:
             consistency_component = 10.0
@@ -87,7 +91,11 @@ class FinancialHealthService:
                 if current_spending.get(b.category, 0) > b.limit_amt
             ]
             if over:
-                actions.append("Review over-budget categories: " + ", ".join(over[:3]) + ".")
+                actions.append(
+                    "Review over-budget categories: "
+                    + ", ".join(over[:3])
+                    + "."
+                )
             else:
                 strengths.append("Your tracked budgets are currently within limits.")
         else:
@@ -115,7 +123,10 @@ class FinancialHealthService:
             },
             "strengths": strengths,
             "actions": actions,
-            "methodology": "Rule-based score using savings rate, budget utilization, monthly expense consistency, and cash buffer.",
+            "methodology": (
+                "Rule-based score using savings rate, budget utilization, "
+                "monthly expense consistency, and cash buffer."
+            ),
         }
 
     @staticmethod
@@ -188,7 +199,11 @@ class InsightsService:
                 "last_date": items[-1]["date"],
             })
 
-        return sorted(results, key=lambda item: item["estimated_monthly_cost"], reverse=True)
+        return sorted(
+            results,
+            key=lambda item: item["estimated_monthly_cost"],
+            reverse=True,
+        )
 
     def anomalies(self, z_threshold: float = 2.5) -> list[dict[str, Any]]:
         rows = self.analytics.recent_expenses(5000)
