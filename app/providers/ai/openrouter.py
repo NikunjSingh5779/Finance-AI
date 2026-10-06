@@ -1,9 +1,9 @@
 """OpenRouter AI provider implementation."""
 
-import json
 import logging
+import os
 import requests
-from typing import Dict, Any, Optional, List
+from typing import Any, List
 from .base import AIProvider
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class OpenRouterProvider(AIProvider):
             Exception: If the API request fails
         """
         # Try each available model until one works
-        for model in self.available_models or ["openrouter/free"]:  # Fallback to openrouter/free
+        for model in self.available_models or [os.getenv("OPENROUTER_MODEL", "openrouter/free")]:
             try:
                 payload = {
                     "model": model,
