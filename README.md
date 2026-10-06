@@ -52,6 +52,11 @@ app/
   static/
   utils/
   main.py
+mobile/
+  app/
+  src/
+  app.json
+  eas.json
 tests/
 ~~~
 
@@ -168,3 +173,33 @@ Expense forecasting and market forecasting are estimates based on historical dat
 ## License
 
 MIT — see LICENSE.
+
+
+## Native mobile app
+
+FinanceAI includes a native Expo / React Native client in the mobile directory. It uses the same FastAPI backend as the web dashboard, so financial calculations, SQLite persistence, analytics, forecasting, market providers, and AI provider secrets remain server-side.
+
+Mobile screens include:
+
+- Home: monthly balance, income, expenses, savings rate, financial health, expense estimate, spending categories, recent activity, accounts and net worth.
+- Transactions: search/filter, add and delete transactions.
+- Planning: goals, budgets, current net worth, 12-month net-worth history and monthly reports.
+- Insights: financial health score, recurring-expense detection and unusual-spending detection.
+- AI: conversational assistant through the existing server-side AI context.
+- Settings: backend URL configuration and connectivity test.
+
+Mobile quick start:
+
+~~~bash
+cd mobile
+npm install
+npx expo install --fix
+npm run typecheck
+npx expo start
+~~~
+
+For an Android emulator use http://10.0.2.2:8000. For a physical phone, run FastAPI on a reachable interface and use the PC LAN IP. The complete mobile build and release guide is in mobile/README.md.
+
+The project targets the Expo SDK 57 line, which is the current stable Expo SDK and uses React Native 0.86 with React 19.2.3. Expo's package alignment command is included so the installed dependency versions can be synchronized with the SDK during setup. 
+
+For public release, the current backend must first be upgraded from a personal single-database service to a multi-user production service with authentication/authorization, per-user data isolation, HTTPS, hosted persistence, secure secret management, privacy/account-deletion flows, backups and monitoring.
