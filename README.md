@@ -19,6 +19,7 @@ AI-assisted personal finance management built with FastAPI, SQLite, vanilla Java
 - Market prices, history, fundamentals, news, and optional experimental forecasting.
 - CSV transaction import.
 - Responsive dark/light dashboard.
+- Native Expo / React Native Android and iOS client under mobile/.
 
 ## Architecture
 
