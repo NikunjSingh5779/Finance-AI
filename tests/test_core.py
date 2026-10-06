@@ -284,3 +284,117 @@ def test_ai_without_provider_returns_controlled_error(client, monkeypatch):
     )
     assert response.status_code == 503
     assert "provider" in response.json()["detail"].lower()
+
+
+def test_goals_crud_and_progress(client):
+    created = client.post(
+        "/goals",
+        json={
+            "name": "Emergency Fund",
+            "target_amount": 60000,
+            "current_amount": 10000,
+            "target_date": "2030-12-31",
+            "category": "Savings",
+        },
+    )
+    assert created.status_code == 201
+    goal = created.json()
+    assert goal["progress_percent"] > 16
+    assert goal["remaining_amount"] == 50000
+    assert goal["monthly_required"] is not None
+    goal_id = goal["id"]
+
+    updated = client.put(
+        f"/goals/{goal_id}",
+        json={"current_amount": 20000},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["current_amount"] == 20000
+
+    invalid = client.put(
+        f"/goals/{goal_id}",
+        json={"current_amount": 70000},
+    )
+    assert invalid.status_code == 422
+
+    deleted = client.delete(f"/goals/{goal_id}")
+    assert deleted.status_code == 200
+
+    missing = client.get(f"/goals/{goal_id}")
+    assert missing.status_code == 404
+
+
+def test_net_worth_snapshot_classifies_credit_as_liability(client):
+    savings = client.post(
+        "/accounts",
+        json={"name": "Savings", "balance": 10000, "type": "savings"},
+    ).json()
+    credit = client.post(
+        "/accounts",
+        json={"name": "Credit Card", "balance": 0, "type": "credit"},
+    ).json()
+
+    client.post(
+        "/transactions",
+        json={
+            "type": "expense",
+            "amount": 1500,
+            "description": "Card purchase",
+            "category": "Shopping",
+            "date": "2026-10-01",
+            "account_id": credit["id"],
+        },
+    )
+    client.post(
+        "/transactions",
+        json={
+            "type": "income",
+            "amount": 500,
+            "description": "Deposit",
+            "category": "Salary",
+            "date": "2026-10-01",
+            "account_id": savings["id"],
+        },
+    )
+
+    snapshot = client.get("/api/net-worth")
+    assert snapshot.status_code == 200
+    payload = snapshot.json()
+    assert payload["asset_total"] == 10500
+    assert payload["liability_total"] == 1500
+    assert payload["net_worth"] == 9000
+
+
+def test_monthly_report(client):
+    client.post(
+        "/transactions",
+        json={
+            "type": "income",
+            "amount": 5000,
+            "description": "Salary",
+            "category": "Salary",
+            "date": "2026-10-02",
+        },
+    )
+    client.post(
+        "/transactions",
+        json={
+            "type": "expense",
+            "amount": 1200,
+            "description": "Rent",
+            "category": "Housing",
+            "date": "2026-10-03",
+        },
+    )
+
+    report = client.get("/api/reports/monthly?month=2026-10")
+    assert report.status_code == 200
+    payload = report.json()
+    assert payload["income"] == 5000
+    assert payload["expense"] == 1200
+    assert payload["net_cash_flow"] == 3800
+    assert payload["savings_rate"] == 76.0
+    assert payload["top_categories"][0]["category"] == "Housing"
+
+    future = client.get("/api/reports/monthly?month=2099-01")
+    assert future.status_code == 422
