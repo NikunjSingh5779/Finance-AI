@@ -1,18 +1,9 @@
 from calendar import monthrange
 from datetime import date
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import GoalNotFoundError, ValidationError
 from app.repositories.goal_repository import GoalRepository
 from app.schemas.goal import GoalCreate, GoalOut, GoalUpdate
-
-
-class GoalNotFoundError(NotFoundError):
-    def __init__(self, goal_id: int):
-        super().__init__(
-            f"Goal with id {goal_id} not found",
-            {"goal_id": goal_id},
-        )
-
 
 class GoalService:
     """Business logic for savings and financial goals."""
