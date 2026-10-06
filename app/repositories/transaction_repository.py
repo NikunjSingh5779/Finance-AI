@@ -17,7 +17,7 @@ class TransactionRepository:
     def list(self, skip: int = 0, limit: int = 100) -> List[TransactionOut]:
         cursor = self.conn.execute(
             "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
-            (skip if limit < 0 else limit, skip),
+            (limit, skip),
         )
         rows = cursor.fetchall()
         return [TransactionOut(**dict(row)) for row in rows]
