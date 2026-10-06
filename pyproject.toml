@@ -1,6 +1,6 @@
 [project]
 name = "finance-ai"
-version = "1.0.0"
+version = "2.0.0"
 description = "AI-powered personal finance manager — track expenses, budgets, and get smart financial advice."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -37,3 +37,9 @@ all = ["finance-ai[market,search,ml]"]
 Homepage = "https://github.com/NikunjSingh5779/Finance-AI"
 Repository = "https://github.com/NikunjSingh5779/Finance-AI"
 Issues = "https://github.com/NikunjSingh5779/Finance-AI/issues"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
