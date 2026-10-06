@@ -29,67 +29,50 @@ class ChatResponse(BaseModel):
     success: bool
 
 
-def _ai_service(conn) -> AIService:
-    return AIService()
-
-
-def _context(conn) -> dict:
-    return _ai_service(conn).build_context(
+def _build_service_context(conn) -> tuple[AIService, dict]:
+    service = AIService()
+    context = service.build_context(
         AnalyticsRepository(conn),
         TransactionRepository(conn),
         BudgetRepository(conn),
     )
+    return service, context
+
+
+async def _generate(request: ChatRequest) -> str:
+    conn = get_db()
+    try:
+        service, context = _build_service_context(conn)
+        return await service.get_financial_advice(
+            question=request.question,
+            financial_context=context,
+            conversation=[message.model_dump() for message in request.messages],
+        )
+    finally:
+        conn.close()
 
 
 @router.post("/api/chat", response_model=ChatResponse)
-@router.post("/ai/advice", response_model=dict)
-async def chat(request: ChatRequest, raw_request: Request):
+async def chat(request: ChatRequest, raw_request: Request) -> ChatResponse:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     check_rate_limit(client_ip)
+    reply = await _generate(request)
+    return ChatResponse(reply=reply, success=True)
 
-    conn = get_db()
-    try:
-        service = _ai_service(conn)
-        context = service.build_context(
-            AnalyticsRepository(conn),
-            TransactionRepository(conn),
-            BudgetRepository(conn),
-        )
-        history = [message.model_dump() for message in request.messages]
-        reply = await service.get_financial_advice(
-            question=request.question,
-            financial_context=context,
-            conversation=history,
-        )
-        if request.messages:
-            return ChatResponse(reply=reply, success=True)
-        return {"advice": reply, "success": True}
-    finally:
-        conn.close()
+
+@router.post("/ai/advice", response_model=dict)
+async def ai_advice(request: ChatRequest, raw_request: Request) -> dict:
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+    return {"advice": await _generate(request), "success": True}
 
 
 @router.post("/ai/advice-enhanced", response_model=dict)
-async def enhanced_advice(request: ChatRequest, raw_request: Request):
+async def enhanced_advice(request: ChatRequest, raw_request: Request) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     check_rate_limit(client_ip)
-
-    conn = get_db()
-    try:
-        service = _ai_service(conn)
-        context = service.build_context(
-            AnalyticsRepository(conn),
-            TransactionRepository(conn),
-            BudgetRepository(conn),
-        )
-        context["mode"] = "enhanced"
-        reply = await service.get_financial_advice(
-            question=request.question,
-            financial_context=context,
-            conversation=[m.model_dump() for m in request.messages],
-        )
-        return {"advice": reply, "success": True}
-    finally:
-        conn.close()
+    reply = await _generate(request)
+    return {"advice": reply, "success": True, "mode": "enhanced"}
 
 
 @router.get("/ai/providers")
@@ -100,23 +83,13 @@ def provider_status():
 
 
 @router.get("/api/chat/test")
-def test_ai():
+async def test_ai():
     conn = get_db()
     try:
-        service = _ai_service(conn)
-        context = service.build_context(
-            AnalyticsRepository(conn),
-            TransactionRepository(conn),
-            BudgetRepository(conn),
-        )
-        # Reuse the regular service so diagnostics exercise the real provider path.
-        import asyncio
-
-        reply = asyncio.run(
-            service.get_financial_advice(
-                "Say hello and confirm FinanceAI is working.",
-                context,
-            )
+        service, context = _build_service_context(conn)
+        reply = await service.get_financial_advice(
+            "Say hello and confirm FinanceAI is working.",
+            context,
         )
         return {"response": reply, "success": True}
     except Exception as exc:
