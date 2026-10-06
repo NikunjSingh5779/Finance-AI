@@ -102,6 +102,24 @@ export class FinanceApi {
     return this.request<Account[]>("/accounts");
   }
 
+  createAccount(payload: {
+    name: string;
+    balance: number;
+    type: "checking" | "savings" | "credit" | "cash" | "investment";
+  }) {
+    return this.request<Account>("/accounts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteAccount(id: number) {
+    return this.request<{ deleted: number }>("/accounts/" + id, {
+      method: "DELETE",
+    });
+  }
+
+
   budgets() {
     return this.request<Budget[]>("/budgets");
   }
