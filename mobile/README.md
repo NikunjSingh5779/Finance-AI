@@ -88,3 +88,29 @@ Before publishing this client for general public use, the backend needs multi-us
 ## Branding
 
 mobile/app.json intentionally leaves out final icon/image assets. Add store-quality icon, adaptive icon and splash assets before the production store build.
+
+
+## First-time EAS setup
+
+From the mobile directory:
+
+    npm install --global eas-cli
+    eas login
+    eas whoami
+    eas init
+    eas build:configure
+
+If Expo asks to create or link an EAS project, choose the FinanceAI project associated with this repository. Keep the Android package ID and iOS bundle ID stable after publishing.
+
+## Recommended release order
+
+1. Finish local development testing.
+2. Create an internal Android APK and install it on a real device.
+3. Deploy the backend to a production HTTPS URL and point the mobile app at that URL.
+4. Add production authentication and per-user data isolation before serving multiple users.
+5. Add final icon, adaptive icon, splash, privacy-policy URL and store screenshots.
+6. Build Android production and upload the AAB to Google Play Console.
+7. Build iOS production and upload it to App Store Connect/TestFlight.
+8. Complete store privacy/data declarations and submit for review.
+
+EAS Build is a cloud build service that produces Android and iOS binaries; Android direct-install builds use APK while Play Store distribution normally uses AAB.
