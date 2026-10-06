@@ -48,17 +48,19 @@ class OpenRouterProvider(AIProvider):
                         continue
 
                     # Check if it's a free model
-                    pricing = model.get("pricing", {})
-                    prompt_cost = pricing.get("prompt", "0")
-                    completion_cost = pricing.get("completion", "0")
+                    pricing = model.get("pricing") or {}
+                    has_explicit_pricing = (
+                        "prompt" in pricing and "completion" in pricing
+                    )
 
-                    # Try to parse costs as floats
-                    try:
-                        prompt_float = float(prompt_cost) if prompt_cost != "" else 0.0
-                        completion_float = float(completion_cost) if completion_cost != "" else 0.0
-                        is_free = prompt_float == 0.0 and completion_float == 0.0
-                    except (ValueError, TypeError):
-                        # If we can't parse, check for :free suffix or /free in the ID
+                    if has_explicit_pricing:
+                        try:
+                            prompt_float = float(pricing["prompt"])
+                            completion_float = float(pricing["completion"])
+                            is_free = prompt_float == 0.0 and completion_float == 0.0
+                        except (ValueError, TypeError):
+                            is_free = ":free" in model_id or "/free" in model_id
+                    else:
                         is_free = ":free" in model_id or "/free" in model_id
 
                     if is_free:
