@@ -13,8 +13,11 @@ from app.controllers.ai_controller import router as ai_router
 from app.controllers.analysis_controller import router as analysis_router
 from app.controllers.budget_controller import router as budget_router
 from app.controllers.general_controller import router as general_router
+from app.controllers.goal_controller import router as goal_router
 from app.controllers.insights_controller import router as insights_router
 from app.controllers.market_controller import router as market_router
+from app.controllers.net_worth_controller import router as net_worth_router
+from app.controllers.report_controller import router as report_router
 from app.controllers.transaction_controller import router as transaction_router
 from app.core.database import init_db
 from app.core.exceptions import (
@@ -124,6 +127,9 @@ app.include_router(general_router)
 app.include_router(market_router)
 app.include_router(ai_router)
 app.include_router(insights_router)
+app.include_router(goal_router)
+app.include_router(net_worth_router)
+app.include_router(report_router)
 
 init_db()
 
