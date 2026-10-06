@@ -1296,7 +1296,6 @@
 
   async function loadInsightsPage() {
     createInsightsPage();
-    createPlanningPage();
     try {
       const payload = await apiFetch("/api/insights/dashboard");
       renderHealth(payload.health);
@@ -1713,6 +1712,7 @@
     if (savedTheme === "light") document.body.classList.add("light");
 
     createInsightsPage();
+    createPlanningPage();
 
     const navHost = document.querySelector(".sidebar > div:nth-of-type(2)");
     if (navHost && !$("planning-nav-item")) {
