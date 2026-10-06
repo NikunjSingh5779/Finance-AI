@@ -86,3 +86,31 @@ class AccountRepository:
             (account_id,),
         ).fetchone()
         return int(row["count"])
+
+    def get_balance_as_of(self, account_id: int, end_date: str) -> float:
+        account = self.get(account_id)
+        if account is None:
+            return 0.0
+
+        row = self.conn.execute(
+            """
+            SELECT
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN type = 'income' THEN amount
+                            ELSE -amount
+                        END
+                    ),
+                    0
+                ) AS net_change
+            FROM transactions
+            WHERE account_id = ?
+              AND date <= ?
+            """,
+            (account_id, end_date),
+        ).fetchone()
+        return round(
+            float(account.balance) + float(row["net_change"] or 0),
+            2,
+        )
