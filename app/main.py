@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -33,10 +34,17 @@ from app.core.exceptions import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="FinanceAI Personal Finance API",
     version="2.0.0",
     description="Personal finance tracking, analytics, forecasting and AI insights.",
+    lifespan=lifespan,
 )
 
 static_dir = Path(__file__).parent / "static"
@@ -130,8 +138,6 @@ app.include_router(insights_router)
 app.include_router(goal_router)
 app.include_router(net_worth_router)
 app.include_router(report_router)
-
-init_db()
 
 SUPPORTED_AI_KEYS = (
     "OMNIROUTE_API_KEY",
