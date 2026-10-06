@@ -28,6 +28,7 @@ class AIService:
         transactions: TransactionRepository,
         budgets: BudgetRepository,
     ) -> dict[str, Any]:
+        """Build financial context from server-side data."""
         start_date, end_date = self._current_period()
         totals = analytics.summary_totals(start_date, end_date)
         category_totals = analytics.category_totals(start_date, end_date)
@@ -72,6 +73,7 @@ class AIService:
             )
 
         prompt = self._build_prompt(question, financial_context, conversation)
+
         try:
             response = await asyncio.to_thread(
                 self.provider.generate_response,
@@ -81,7 +83,11 @@ class AIService:
             raise ProviderUnavailableError("ai", str(exc)) from exc
 
         if not isinstance(response, str) or not response.strip():
-            raise ProviderUnavailableError("ai", "Provider returned an empty response")
+            raise ProviderUnavailableError(
+                "ai",
+                "Provider returned an empty response",
+            )
+
         return response.strip()
 
     def _build_prompt(
@@ -92,23 +98,21 @@ class AIService:
     ) -> str:
         summary = context.get("summary", {})
         recent = context.get("recent_transactions", [])[:10]
-        budgets = context.get("budgets", [])
+        budgets = context.get("budgets", [])[:20]
 
-        recent_text = "
-".join(
+        recent_text = "\n".join(
             f"- {item.get('date')}: {item.get('description')} | "
-            f"{item.get('category')} | {item.get('type')} | ₹{item.get('amount')}"
+            f"{item.get('category')} | {item.get('type')} | "
+            f"₹{item.get('amount')}"
             for item in recent
         ) or "- No recent transactions"
 
-        budget_text = "
-".join(
+        budget_text = "\n".join(
             f"- {item.get('category')}: ₹{item.get('limit_amt')}/month"
             for item in budgets
         ) or "- No budgets configured"
 
-        history_text = "
-".join(
+        history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
             for message in (conversation or [])[-8:]
