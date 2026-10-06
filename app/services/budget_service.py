@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List
 
-from app.core.exceptions import BudgetNotFoundError
+from app.core.exceptions import BudgetNotFoundError, ValidationError
 from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.schemas.budget import BudgetCreate, BudgetOut, BudgetUpdate
@@ -10,6 +10,8 @@ from app.utils.dates import get_period_bounds
 
 class BudgetService:
     """Business rules for budgets and budget utilization."""
+
+    VALID_PERIODS = {"1m", "3m", "6m", "1y", "all"}
 
     def __init__(
         self,
@@ -44,23 +46,22 @@ class BudgetService:
         return deleted
 
     def get_budget_status(self, category: str, period: str = "1m") -> dict:
+        period = period.strip().lower()
+        if period not in self.VALID_PERIODS or period == "all":
+            raise ValidationError("Budget status period must be one of: 1m, 3m, 6m, 1y")
+
         budget = self.get_budget(category)
         start_date, end_date = get_period_bounds(period)
-        transactions = self.transaction_repo.list_by_date_range(
-            start_date, end_date, skip=0, limit=500
-        )
-        spent = sum(
-            txn.amount
-            for txn in transactions
-            if txn.type == "expense" and txn.category == budget.category
+        spent = self.transaction_repo.expense_total_for_category(
+            budget.category, start_date, end_date
         )
 
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         period_start = datetime.strptime(start_date, "%Y-%m-%d")
         period_end = datetime.strptime(end_date, "%Y-%m-%d")
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         elapsed_end = min(today, period_end)
         days_elapsed = max(1, (elapsed_end - period_start).days + 1)
-        days_in_period = self._days_in_period(start_date, end_date)
+        days_in_period = max(1, (period_end - period_start).days + 1)
         daily_rate = spent / days_elapsed
         projected_spend = daily_rate * days_in_period
 
@@ -88,9 +89,3 @@ class BudgetService:
             "projected_overrun": round(max(0.0, projected_spend - budget.limit_amt), 2),
             "is_projection": True,
         }
-
-    @staticmethod
-    def _days_in_period(start_date: str, end_date: str) -> int:
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-        return max(1, (end - start).days + 1)
