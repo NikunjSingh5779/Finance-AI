@@ -748,10 +748,14 @@
       });
     }
 
-    const monthly = selectedRange === "All"
-      ? summaryAll.monthly
-      : summaryAll.monthly;
-    renderCashflowChart(monthly || {});
+    const allMonthly = summaryAll.monthly || {};
+    const entries = Object.entries(allMonthly).sort(([a], [b]) => a.localeCompare(b));
+    const count = selectedRange === "3M" ? 3 :
+      selectedRange === "6M" ? 6 :
+      selectedRange === "1Y" ? 12 :
+      selectedRange === "1M" ? 1 : entries.length;
+    const monthly = Object.fromEntries(entries.slice(-count));
+    renderCashflowChart(monthly);
   }
 
   async function refreshAll() {
