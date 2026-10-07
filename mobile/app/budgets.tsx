@@ -261,9 +261,8 @@ export default function BudgetsScreen() {
               strokeWidth="5"
               fill="none"
               strokeLinecap="round"
-              strokeDasharray={`${dash} ${circumference}`}
-              rotation="-90"
-              origin="32,32"
+              strokeDasharray={[dash, circumference]}
+              transform="rotate(-90 32 32)"
             />
           </Svg>
           <Text style={styles.ringText}>{utilization.toFixed(0)}%</Text>
