@@ -41,12 +41,19 @@ export function Header({
 }) {
   return (
     <View style={styles.header}>
-      <View style={styles.headerLogo}>
-        <Text style={styles.headerLogoText}>💰</Text>
-      </View>
       <View style={{ flex: 1 }}>
+        <Text style={styles.workspaceLabel}>WORKSPACE</Text>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
+
+      <View style={styles.headerActions}>
+        <Pressable style={styles.headerIconButton} accessibilityLabel="Notifications">
+          <Text style={styles.headerIcon}>♧</Text>
+        </Pressable>
+        <View style={styles.headerAvatar}>
+          <Text style={styles.headerAvatarText}>AC</Text>
+        </View>
       </View>
     </View>
   );
@@ -288,21 +295,50 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   header: {
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     marginBottom: 4,
   },
-  headerLogo: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
+  workspaceLabel: {
+    color: colors.subtle,
+    fontSize: 8,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerLogoText: {
-    fontSize: 15,
+  headerIcon: {
+    color: colors.muted,
+    fontSize: 17,
+  },
+  headerAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "rgba(34,197,94,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerAvatarText: {
+    color: colors.primary,
+    fontSize: 9,
+    fontWeight: "800",
   },
   title: {
     color: colors.text,
