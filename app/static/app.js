@@ -1044,7 +1044,6 @@
   }
 
   async function deleteTxn(id) {
-    if (!confirm("Delete this transaction?")) return;
     try {
       await apiFetch("/transactions/" + id, {method: "DELETE"});
       await refreshAll();
@@ -1078,7 +1077,6 @@
   }
 
   async function deleteBudget(category) {
-    if (!confirm(`Remove budget for ${category}?`)) return;
     try {
       await apiFetch("/budgets/" + encodeURIComponent(category), {method: "DELETE"});
       await refreshAll();
@@ -1130,7 +1128,6 @@
   }
 
   async function deleteAccount(id) {
-    if (!confirm("Delete this account? Accounts with linked transactions cannot be deleted.")) return;
     try {
       await apiFetch("/accounts/" + id, {method: "DELETE"});
       await refreshAll();
@@ -1787,7 +1784,6 @@
   }
 
   async function deleteGoal(id){
-    if(!confirm("Delete this financial goal?"))return;
     try{await apiFetch("/goals/"+id,{method:"DELETE"}); await loadPlanningPage(); showToast("Goal deleted.");}catch(error){showToast(error.message,"error");}
   }
 
