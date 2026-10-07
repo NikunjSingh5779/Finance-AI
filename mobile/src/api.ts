@@ -74,7 +74,7 @@ export class FinanceApi {
     return this.request<Summary>("/summary?period=" + encodeURIComponent(period));
   }
 
-  transactions(limit = 500) {
+  transactions(limit = 5000) {
     return this.request<Transaction[]>("/transactions?skip=0&limit=" + limit);
   }
 
@@ -95,6 +95,50 @@ export class FinanceApi {
   deleteTransaction(id: number) {
     return this.request<{ deleted: number }>("/transactions/" + id, {
       method: "DELETE",
+    });
+  }
+
+  updateTransaction(
+    id: number,
+    payload: Partial<{
+      type: "income" | "expense";
+      amount: number;
+      description: string;
+      category: string;
+      date: string;
+      account_id: number | null;
+    }>,
+  ) {
+    return this.request<Transaction>("/transactions/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteAllTransactions() {
+    return this.request<{ deleted: number }>("/transactions/all", {
+      method: "DELETE",
+    });
+  }
+
+  importTransactions(
+    transactions: Array<{
+      type: "income" | "expense";
+      amount: number;
+      description: string;
+      category: string;
+      date: string;
+      account_id?: number | null;
+    }>,
+  ) {
+    return this.request<{
+      created: Transaction[];
+      errors: Array<{ index: number; error: string }>;
+      imported: number;
+      failed: number;
+    }>("/transactions/import", {
+      method: "POST",
+      body: JSON.stringify(transactions),
     });
   }
 
