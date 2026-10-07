@@ -6,7 +6,8 @@
 <title>FinanceAI — Personal Finance</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <link rel="stylesheet" href="/static/style.css">
-<link rel="stylesheet" href="/static/insights.css"></head>
+<link rel="stylesheet" href="/static/insights.css">
+</head>
 <body>
 
 <div class="layout">
@@ -65,8 +66,8 @@
         <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%)"><span class="kbd">⌘K</span></span>
       </div>
       <div class="topbar-actions">
-        <button class="month-btn" onclick="filterThisMonth()">📅 This month</button>
-        <button class="month-btn" onclick="renderAllTxns(txnsData)">All</button>
+        <button class="month-btn active" id="topbar-month-btn" onclick="filterThisMonth()">📅 This month</button>
+        <button class="month-btn" id="topbar-all-btn" onclick="filterAllTime()">All</button>
         <div class="icon-btn" title="Notifications">🔔</div>
         <button class="add-btn" onclick="openModal()">+ Add transaction</button>
       </div>
