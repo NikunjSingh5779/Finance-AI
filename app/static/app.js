@@ -8,6 +8,7 @@
   let editingAccountId = null;
 
   let txnsData = [];
+  let transactionTypeFilter = "all";
   let budgetsData = [];
   let accountsData = [];
   let summaryData = {};
@@ -617,14 +618,33 @@
     });
   }
 
+  function setTransactionTypeFilter(type) {
+    if (!["all", "income", "expense"].includes(type)) return;
+
+    transactionTypeFilter = type;
+    document.querySelectorAll(".txn-filter-btn").forEach(button => {
+      button.classList.toggle("active", button.dataset.filter === type);
+    });
+
+    renderTransactions();
+  }
+
   function renderTransactions() {
     const container = $("all-txns");
     if (!container) return;
     const search = ($("search-input")?.value || "").trim().toLowerCase();
-    const filtered = search ? txnsData.filter(txn =>
-      String(txn.description || "").toLowerCase().includes(search) ||
-      String(txn.category || "").toLowerCase().includes(search)
-    ) : txnsData;
+    let filtered = txnsData;
+
+    if (transactionTypeFilter !== "all") {
+      filtered = filtered.filter(txn => String(txn.type || "").toLowerCase() === transactionTypeFilter);
+    }
+
+    if (search) {
+      filtered = filtered.filter(txn =>
+        String(txn.description || "").toLowerCase().includes(search) ||
+        String(txn.category || "").toLowerCase().includes(search)
+      );
+    }
 
     while (container.firstChild) container.removeChild(container.firstChild);
     if (!filtered.length) {
