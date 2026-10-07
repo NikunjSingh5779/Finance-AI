@@ -89,6 +89,140 @@
     }, 3200);
   }
 
+  function appendInlineMarkdown(parent, text) {
+    const source = String(text ?? "");
+    const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+    let last = 0;
+    let match;
+    while ((match = pattern.exec(source))) {
+      if (match.index > last) parent.appendChild(document.createTextNode(source.slice(last, match.index)));
+      const token = match[0];
+      const node = token.startsWith("**")
+        ? document.createElement("strong")
+        : token.startsWith("`")
+          ? document.createElement("code")
+          : document.createElement("em");
+      node.className = token.startsWith("**") ? "ai-highlight" : "";
+      node.textContent = token.startsWith("**") || token.startsWith("`")"
+        ? token.slice(2, -2)
+        : token.slice(1, -1);
+      parent.appendChild(node);
+      last = pattern.lastIndex;
+    }
+    if (last < source.length) parent.appendChild(document.createTextNode(source.slice(last)));
+  }
+
+  function parseTableRow(line) {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
+  }
+
+  function renderAiMarkdown(container, markdown) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
+    let list = null;
+    let listType = null;
+
+    const resetList = () => { list = null; listType = null; };
+    const ensureList = (ordered) => {
+      if (list && listType === (ordered ? "ol" : "ul")) return list;
+      resetList();
+      list = document.createElement(ordered ? "ol" : "ul");
+      list.className = "ai-list";
+      container.appendChild(list);
+      listType = ordered ? "ol" : "ul";
+      return list;
+    };
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) { resetList(); continue; }
+
+      if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+        resetList();
+        const table = document.createElement("table");
+        table.className = "ai-table";
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        parseTableRow(line).forEach(cellText => {
+          const cell = document.createElement("th");
+          appendInlineMarkdown(cell, cellText);
+          headerRow.appendChild(cell);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        i += 1;
+        const tbody = document.createElement("tbody");
+        while (i + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i + 1].trim())) {
+          i += 1;
+          const row = document.createElement("tr");
+          parseTableRow(lines[i]).forEach(cellText => {
+            const cell = document.createElement("td");
+            appendInlineMarkdown(cell, cellText);
+            row.appendChild(cell);
+          });
+          tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        container.appendChild(table);
+        continue;
+      }
+
+      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) {
+        resetList();
+        const level = Math.min(3, heading[1].length);
+        const element = document.createElement("h" + level);
+        appendInlineMarkdown(element, heading[2]);
+        container.appendChild(element);
+        continue;
+      }
+
+      if (/^-{3,}$/.test(trimmed)) {
+        resetList();
+        container.appendChild(document.createElement("hr"));
+        continue;
+      }
+
+      const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        const currentList = ensureList(false);
+        const item = document.createElement("li");
+        appendInlineMarkdown(item, bullet[1]);
+        currentList.appendChild(item);
+        continue;
+      }
+
+      const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+      if (ordered) {
+        const currentList = ensureList(true);
+        const item = document.createElement("li");
+        appendInlineMarkdown(item, ordered[1]);
+        currentList.appendChild(item);
+        continue;
+      }
+
+      const quote = trimmed.match(/^>\s?(.*)$/);
+      if (quote) {
+        resetList();
+        const blockquote = document.createElement("blockquote");
+        appendInlineMarkdown(blockquote, quote[1]);
+        container.appendChild(blockquote);
+        continue;
+      }
+
+      resetList();
+      const paragraph = document.createElement("p");
+      appendInlineMarkdown(paragraph, trimmed);
+      container.appendChild(paragraph);
+    }
+  }
+
+  function syncTopbarRangeButtons() {
+    $("topbar-month-btn")?.classList.toggle("active", selectedRange === "1M");
+    $("topbar-all-btn")?.classList.toggle("active", selectedRange === "All");
+  }
   function getIcon(category) {
     const map = {
       "housing": "🏠", "food": "🍔", "food & drink": "🍔",
@@ -1117,11 +1251,21 @@
   function filterThisMonth() {
     selectedRange = "1M";
     isAllView = false;
+    syncTopbarRangeButtons();
     updateDashboardByRange();
     renderTransactions();
     $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
       month: "long", year: "numeric"
     });
+  }
+
+  function filterAllTime() {
+    selectedRange = "All";
+    isAllView = true;
+    syncTopbarRangeButtons();
+    updateDashboardByRange();
+    renderTransactions();
+    $("cat-period").textContent = "All time";
   }
 
   function showAllExpenses() {
@@ -1149,6 +1293,7 @@
       button.classList.remove("active")
     );
     element?.classList.add("active");
+    syncTopbarRangeButtons();
     updateDashboardByRange();
   }
 
@@ -1211,7 +1356,7 @@
       aiWrap.className = "chat-msg ai";
       const aiBubble = document.createElement("div");
       aiBubble.className = "chat-bubble ai";
-      aiBubble.textContent = result.advice || result.reply || "No response";
+      renderAiMarkdown(aiBubble, result.advice || result.reply || "No response");
       aiWrap.appendChild(aiBubble);
       chat.appendChild(aiWrap);
     } catch (error) {
@@ -1790,6 +1935,7 @@
     exportCSV,
     filterThisMonth,
     setRange,
+    filterAllTime,
     quickAsk,
     sendChat,
     showAllExpenses,
