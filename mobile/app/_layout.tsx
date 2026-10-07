@@ -18,7 +18,7 @@ export default function RootLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.subtle,
           tabBarStyle: {
-            display: Platform.OS === "web" ? "none" : "flex",
+            display: "flex",
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
             borderTopWidth: 1,
