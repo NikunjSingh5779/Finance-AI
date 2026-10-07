@@ -12,7 +12,7 @@ if (-not $SkipPython) {
   $venv = Join-Path $Root ".venv"
   if (-not (Test-Path $venv)) { python -m venv $venv }
   & (Join-Path $venv "Scripts\python.exe") -m pip install --upgrade pip
-  & (Join-Path $venv "Scripts\pip.exe") install -r (Join-Path $Root "requirements.txt")
+  & (Join-Path $venv "Scripts\pip.exe") install -r (Join-Path $Root "requirements-dev.txt")
   if (-not (Test-Path (Join-Path $Root ".env"))) {
     Copy-Item (Join-Path $Root ".env.example") (Join-Path $Root ".env")
   }
