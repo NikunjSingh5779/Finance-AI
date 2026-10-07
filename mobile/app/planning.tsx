@@ -193,4 +193,4 @@ const styles = StyleSheet.create({
   reportGrid: { flexDirection: "row", gap: 10 },
   reportCard: { flex: 1, minHeight: 115, gap: 6 },
   reportValue: { color: colors.text, fontSize: 25, fontWeight: "900" },
-}
+});
