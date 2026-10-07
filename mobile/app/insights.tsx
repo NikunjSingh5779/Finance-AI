@@ -1,33 +1,87 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { useFinance } from "../src/AppContext";
 import {
   Card,
-  EmptyState,
   ErrorBanner,
   Header,
   LoadingState,
-  Money,
   Pill,
   ProgressBar,
   Screen,
   SectionTitle,
   SmallText,
 } from "../src/components";
-import { useFinance } from "../src/AppContext";
-import type { InsightsDashboard } from "../src/types";
+import type { InsightsDashboard, Summary, Transaction } from "../src/types";
 import { colors } from "../src/theme";
+
+const CHART_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4"];
+
+function money(value: number) {
+  return "₹" + Math.abs(Number(value) || 0).toLocaleString("en-IN");
+}
+
+function SpendTrend({ transactions }: { transactions: Transaction[] }) {
+  const values = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const key = date.toISOString().slice(0, 10);
+      return transactions
+        .filter((txn) => txn.date === key && txn.type === "expense")
+        .reduce((sum, txn) => sum + txn.amount, 0);
+    });
+  }, [transactions]);
+
+  const width = 310;
+  const height = 145;
+  const max = Math.max(...values, 1);
+  const path = values.map((value, index) => {
+    const x = values.length === 1 ? width / 2 : (index / 6) * width;
+    const y = height - 12 - (value / max) * (height - 30);
+    return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+
+  return (
+    <View style={styles.trendChart}>
+      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        {[0, 1, 2, 3].map((row) => (
+          <Path key={row} d={`M0 ${18 + row * 34} L${width} ${18 + row * 34}`} stroke={colors.border} strokeWidth="1" opacity={0.55} />
+        ))}
+        <Path d={path} fill="none" stroke={colors.primary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+      <View style={styles.dayRow}>
+        {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
+          <Text key={day} style={styles.dayText}>{day}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function InsightsScreen() {
   const { api, ready } = useFinance();
-  const [data, setData] = useState<InsightsDashboard | null>(null);
+  const [insights, setInsights] = useState<InsightsDashboard | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     if (!ready) return;
-    setError("");
     try {
-      setData(await api.insightsDashboard());
+      setError("");
+      const [dashboard, monthly, txns] = await Promise.all([
+        api.insightsDashboard(),
+        api.summary("1m"),
+        api.transactions(5000),
+      ]);
+      setInsights(dashboard);
+      setSummary(monthly);
+      setTransactions(txns);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load insights.");
     } finally {
@@ -37,181 +91,130 @@ export default function InsightsScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
-  if (loading && !data) return <Screen><LoadingState /></Screen>;
+  const categories = useMemo(
+    () => Object.entries(summary?.category_totals ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 4),
+    [summary],
+  );
 
-  const health = data?.health;
+  const income = summary?.income ?? 0;
+  const expense = summary?.expense ?? 0;
+  const savingsRate = summary?.savings_rate ?? 0;
+  const comparison = summary?.expense_change ?? 0;
+
+  const summaryText =
+    categories.length
+      ? `You've spent ${money(expense)} this month. ${categories[0][0]} is your largest expense category at ${money(categories[0][1])}.`
+      : "Add more transactions to unlock detailed spending insights.";
+
+  if (loading) return <Screen><LoadingState /></Screen>;
 
   return (
-    <Screen refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.primary} />}>
-      <Header title="Financial Insights" subtitle="Explainable signals calculated from your recorded finances." />
-      <View style={styles.hero}>
-        <SmallText>FINANCE INTELLIGENCE</SmallText>
-        <Text style={styles.heroTitle}>Financial Health & Insights</Text>
-        <Text style={styles.heroSubtitle}>Understand your habits, recurring costs and unusual spending.</Text>
-        <Pressable onPress={() => void load()} style={styles.refreshButton}>
-          <Text style={styles.refreshText}>↻ Refresh</Text>
-        </Pressable>
-      </View>
+    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
+      <Header title="Financial Insights" subtitle="Understand your spending patterns and financial health." />
       {error ? <ErrorBanner message={error} /> : null}
 
-      {health ? (
-        <Card>
-          <View style={styles.scoreRow}>
-            <View>
-              <SmallText>Financial Health Score</SmallText>
-              <Text style={styles.score}>{health.score}</Text>
-              <Pill tone={health.score >= 70 ? "success" : health.score >= 55 ? "warning" : "danger"}>
-                {health.grade}
-              </Pill>
-            </View>
-            <View style={{ width: 140, gap: 8 }}>
-              <ProgressBar value={health.score} />
-              <SmallText>{health.metrics.savings_rate.toFixed(1)}% savings rate</SmallText>
-              <SmallText>{health.metrics.months_of_buffer.toFixed(1)} months cash buffer</SmallText>
-            </View>
-          </View>
+      <Card style={styles.aiSummary}>
+        <View style={styles.aiTitleRow}>
+          <Text style={styles.aiSpark}>✦</Text>
+          <Text style={styles.aiTitle}>AI SUMMARY</Text>
+        </View>
+        <Text style={styles.summaryText}>{summaryText}</Text>
+        {insights?.health.actions.slice(0, 2).map((action) => (
+          <Text key={action} style={styles.actionText}>• {action}</Text>
+        ))}
+      </Card>
 
-          <SectionTitle>Score components</SectionTitle>
-          {[
-            ["Savings", health.components.savings, 30],
-            ["Budgeting", health.components.budgeting, 25],
-            ["Consistency", health.components.expense_consistency, 20],
-            ["Cash buffer", health.components.cash_buffer, 25],
-          ].map(([label, value, max]) => (
-            <View key={String(label)} style={{ gap: 5 }}>
-              <View style={styles.rowBetween}>
-                <SmallText>{label}</SmallText>
-                <SmallText>{Number(value).toFixed(1)}/{max}</SmallText>
-              </View>
-              <ProgressBar value={Number(value)} max={Number(max)} />
-            </View>
-          ))}
+      <View style={styles.sectionHeader}>
+        <SectionTitle>Spend Trend</SectionTitle>
+        <Pill tone="neutral">Last 7 Days</Pill>
+      </View>
+      <Card style={styles.trendCard}>
+        <SpendTrend transactions={transactions} />
+      </Card>
 
-          {health.actions.length ? (
-            <>
-              <SectionTitle>Recommended actions</SectionTitle>
-              {health.actions.map((action) => (
-                <View key={action} style={styles.insightRow}>
-                  <Text style={styles.bullet}>•</Text>
-                  <Text style={styles.body}>{action}</Text>
+      <View style={styles.metricsRow}>
+        <Card style={styles.metricCard}>
+          <SmallText>MOM COMPARISON</SmallText>
+          <Text style={styles.metricValue}>{comparison >= 0 ? "+" : ""}{comparison.toFixed(1)}%</Text>
+          <Text style={styles.metricSub}>vs Previous Month</Text>
+        </Card>
+        <Card style={styles.metricCard}>
+          <SmallText>SAVINGS RATE</SmallText>
+          <Text style={styles.metricValue}>{savingsRate.toFixed(1)}%</Text>
+          <Text style={styles.metricSub}>Income retained</Text>
+        </Card>
+      </View>
+
+      <SectionTitle>Top Categories</SectionTitle>
+      <Card>
+        {categories.map(([category, amount], index) => {
+          const max = categories[0]?.[1] ?? 1;
+          return (
+            <View key={category} style={styles.categoryRow}>
+              <View style={styles.categoryHead}>
+                <View style={styles.categoryNameRow}>
+                  <View style={[styles.categoryDot, { backgroundColor: CHART_COLORS[index] }]} />
+                  <Text style={styles.categoryName}>{category}</Text>
                 </View>
-              ))}
-            </>
-          ) : null}
+                <Text style={styles.categoryAmount}>{money(amount)}</Text>
+              </View>
+              <View style={styles.categoryTrack}>
+                <View style={[styles.categoryFill, { width: `${Math.max(5, (amount / max) * 100)}%`, backgroundColor: CHART_COLORS[index] }]} />
+              </View>
+            </View>
+          );
+        })}
+        {!categories.length ? <SmallText>No expense data yet.</SmallText> : null}
+      </Card>
+
+      {insights ? (
+        <Card>
+          <View style={styles.sectionHeader}>
+            <View>
+              <SmallText>FINANCIAL HEALTH</SmallText>
+              <Text style={styles.healthScore}>{insights.health.score}/100</Text>
+              <Text style={styles.healthGrade}>{insights.health.grade}</Text>
+            </View>
+            <Pill tone={insights.health.score >= 70 ? "success" : insights.health.score >= 50 ? "warning" : "danger"}>
+              {insights.health.score >= 70 ? "Healthy" : insights.health.score >= 50 ? "Fair" : "Needs attention"}
+            </Pill>
+          </View>
+          <ProgressBar value={insights.health.score} tone={insights.health.score >= 70 ? "primary" : insights.health.score >= 50 ? "warning" : "danger"} />
+          <SmallText>Income: {money(income)} · Expenses: {money(expense)}</SmallText>
         </Card>
       ) : null}
-
-      <SectionTitle>Recurring expenses</SectionTitle>
-      {data?.recurring.length ? data.recurring.map((item) => (
-        <Card key={item.description + "-" + item.category}>
-          <View style={styles.rowBetween}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.titleText}>{item.description}</Text>
-              <SmallText>{item.category} · {item.occurrences} occurrences</SmallText>
-            </View>
-            <Money value={item.estimated_monthly_cost} size={17} />
-          </View>
-          <SmallText>
-            Average ₹{item.average_amount.toLocaleString("en-IN")} · last seen {item.last_date}
-          </SmallText>
-        </Card>
-      )) : <Card><EmptyState message="No recurring monthly pattern detected yet." /></Card>}
-
-      <SectionTitle>Unusual spending</SectionTitle>
-      {data?.anomalies.length ? data.anomalies.map((item) => (
-        <Card key={String(item.transaction_id) + "-" + item.date}>
-          <View style={styles.rowBetween}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.titleText}>{item.description}</Text>
-              <SmallText>{item.category} · {item.date}</SmallText>
-            </View>
-            <Pill tone={item.severity === "high" ? "danger" : "warning"}>{item.severity}</Pill>
-          </View>
-          <Money value={item.amount} size={22} />
-          <SmallText>
-            {item.multiple_of_average.toFixed(1)}× category average · z-score {item.z_score.toFixed(2)}
-          </SmallText>
-        </Card>
-      )) : <Card><EmptyState message="No unusual-spending signal detected." /></Card>}
-
-      <SmallText>
-        These are analytical estimates from tracked data, not guaranteed predictions or investment advice.
-      </SmallText>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
+  aiSummary: {
+    borderColor: "rgba(34,197,94,.35)",
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 14,
-    gap: 5,
+    gap: 9,
   },
-  heroTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  heroSubtitle: {
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  refreshButton: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  refreshText: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  scoreRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  score: {
-    color: colors.text,
-    fontSize: 58,
-    lineHeight: 62,
-    fontWeight: "900",
-    marginVertical: 4,
-  },
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-  insightRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "flex-start",
-  },
-  bullet: {
-    color: colors.primary,
-    fontSize: 20,
-    lineHeight: 18,
-  },
-  body: {
-    flex: 1,
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  titleText: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 14,
-  },
+  aiTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  aiSpark: { color: colors.primary, fontSize: 16 },
+  aiTitle: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 0.8 },
+  summaryText: { color: colors.text, fontSize: 13, lineHeight: 19 },
+  actionText: { color: colors.muted, fontSize: 11, lineHeight: 17 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  trendCard: { minHeight: 178, gap: 0 },
+  trendChart: { height: 160 },
+  dayRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 2 },
+  dayText: { color: colors.subtle, fontSize: 8, fontWeight: "700" },
+  metricsRow: { flexDirection: "row", gap: 10 },
+  metricCard: { flex: 1, minHeight: 112, gap: 5 },
+  metricValue: { color: colors.text, fontSize: 25, fontWeight: "900" },
+  metricSub: { color: colors.subtle, fontSize: 9 },
+  categoryRow: { gap: 6, paddingVertical: 7 },
+  categoryHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  categoryNameRow: { flexDirection: "row", alignItems: "center", gap: 7, flex: 1 },
+  categoryDot: { width: 8, height: 8, borderRadius: 999 },
+  categoryName: { color: colors.text, fontSize: 12, fontWeight: "700" },
+  categoryAmount: { color: colors.text, fontSize: 11, fontWeight: "800" },
+  categoryTrack: { height: 5, borderRadius: 999, backgroundColor: colors.surfaceRaised, overflow: "hidden" },
+  categoryFill: { height: "100%", borderRadius: 999 },
+  healthScore: { color: colors.text, fontSize: 27, fontWeight: "900", marginTop: 2 },
+  healthGrade: { color: colors.primary, fontSize: 11, fontWeight: "800", marginTop: 1 },
 });
