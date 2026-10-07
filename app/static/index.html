@@ -187,9 +187,9 @@
             </div>
           </div>
           <div class="transaction-filter-row" aria-label="Transaction type filter">
-            <button class="txn-filter-btn active" data-filter="all" onclick="setTransactionTypeFilter('all')">All</button>
-            <button class="txn-filter-btn" data-filter="income" onclick="setTransactionTypeFilter('income')">Income</button>
-            <button class="txn-filter-btn" data-filter="expense" onclick="setTransactionTypeFilter('expense')">Expense</button>
+            <button type="button" class="add-btn compact-action secondary-action txn-filter-btn active" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" class="add-btn compact-action secondary-action txn-filter-btn" data-filter="income" aria-pressed="false">Income</button>
+            <button type="button" class="add-btn compact-action secondary-action txn-filter-btn" data-filter="expense" aria-pressed="false">Expense</button>
           </div>
           <div class="add-form-grid">
             <div class="fg"><label>Type</label><select id="t-type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
