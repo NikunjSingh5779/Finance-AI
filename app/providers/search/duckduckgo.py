@@ -88,6 +88,7 @@ class DuckDuckGoSearcher:
         query: str,
         max_results: int = 10,
         region: str = "wt-wt",
+        timelimit: str | None = None,
     ) -> list[SearchResult]:
         """Search the web via DuckDuckGo.
 
@@ -100,7 +101,12 @@ class DuckDuckGoSearcher:
             List of SearchResult objects.
         """
         # Try library first (duckduckgo-search package)
-        results = await self._search_library(query, max_results, region)
+        results = await self._search_library(
+            query,
+            max_results,
+            region,
+            timelimit,
+        )
         if results:
             logger.debug("DuckDuckGo search via library", extra={"query": query, "results": len(results)})
             return results
@@ -119,6 +125,7 @@ class DuckDuckGoSearcher:
         query: str,
         max_results: int = 10,
         region: str = "wt-wt",
+        timelimit: str | None = None,
     ) -> list[SearchResult]:
         """Search using the duckduckgo_search library."""
         if self._use_library is False:
@@ -129,7 +136,14 @@ class DuckDuckGoSearcher:
 
             results: list[SearchResult] = []
             with DDGS() as ddgs:
-                for i, r in enumerate(ddgs.text(query, region=region, max_results=max_results)):
+                for i, r in enumerate(
+                    ddgs.text(
+                        query,
+                        region=region,
+                        timelimit=timelimit,
+                        max_results=max_results,
+                    )
+                ):
                     if i >= max_results:
                         break
                     results.append(
