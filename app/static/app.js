@@ -133,6 +133,7 @@
   }
 
   function renderAiMarkdown(container, markdown) {
+    container.classList.add("ai-markdown");
     while (container.firstChild) container.removeChild(container.firstChild);
     const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
     let list = null;
