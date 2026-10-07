@@ -41,7 +41,9 @@ export function Header({
 }) {
   return (
     <View style={styles.header}>
-      <View style={styles.headerDot} />
+      <View style={styles.headerLogo}>
+        <Text style={styles.headerLogoText}>💰</Text>
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -67,7 +69,15 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
 export function Money({ value, size = 24 }: { value: number; size?: number }) {
   const prefix = value < 0 ? "-₹" : "₹";
   return (
-    <Text style={[styles.money, { fontSize: size }]}>
+    <Text
+      style={[
+        styles.money,
+        {
+          fontSize: size,
+          color: value < 0 ? colors.danger : value > 0 ? colors.primary : colors.text,
+        },
+      ]}
+    >
       {prefix}
       {Math.abs(value).toLocaleString("en-IN", {
         maximumFractionDigits: 0,
@@ -283,12 +293,16 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 4,
   },
-  headerDot: {
-    width: 30,
-    height: 30,
+  headerLogo: {
+    width: 32,
+    height: 32,
     borderRadius: 8,
     backgroundColor: colors.primary,
-    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerLogoText: {
+    fontSize: 15,
   },
   title: {
     color: colors.text,
