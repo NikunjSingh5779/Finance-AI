@@ -19,7 +19,7 @@ def _service(conn) -> TransactionService:
 @router.get("", response_model=list[TransactionOut])
 def list_transactions(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=5000),
 ):
     conn = get_db()
     try:
