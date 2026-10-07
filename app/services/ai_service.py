@@ -86,6 +86,7 @@ class AIService:
                 web_results = await searcher.search(
                     search_query,
                     max_results=5,
+                    timelimit="d" if self._is_fresh_query(question) else None,
                 )
             except Exception:
                 web_results = []
@@ -123,6 +124,22 @@ class AIService:
             reply += "\n".join(source_lines)
 
         return reply
+
+    @staticmethod
+    def _is_fresh_query(question: str) -> bool:
+        lowered = question.lower()
+        return any(
+            term in lowered
+            for term in (
+                "latest",
+                "today",
+                "current",
+                "now",
+                "right now",
+                "realtime",
+                "real time",
+            )
+        )
 
     @staticmethod
     def _extract_web_search_query(question: str) -> str | None:
