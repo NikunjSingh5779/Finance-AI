@@ -28,6 +28,12 @@ class TransactionRepository:
         ).fetchall()
         return [TransactionOut(**dict(row)) for row in rows]
 
+    def count(self) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM transactions"
+        ).fetchone()
+        return int(row["count"] or 0)
+
     def get(self, transaction_id: int) -> Optional[TransactionOut]:
         row = self.conn.execute(
             "SELECT * FROM transactions WHERE id = ?",
