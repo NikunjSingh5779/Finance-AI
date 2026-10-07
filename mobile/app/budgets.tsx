@@ -241,7 +241,7 @@ export default function BudgetsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Budgets" />
+      <Header title="Budgets" action="plus" onAction={() => setShowForm((value) => !value)} />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.totalCard}>
@@ -292,9 +292,6 @@ export default function BudgetsScreen() {
         <View style={styles.headerTools}>
           <Pressable onPress={() => void importCSV()} style={styles.toolButton}><Text style={styles.toolText}>Import</Text></Pressable>
           <Pressable onPress={() => void exportCSV()} style={styles.toolButton}><Text style={styles.toolText}>Export</Text></Pressable>
-          <Pressable onPress={() => setShowForm((value) => !value)} style={styles.plusButton}>
-            <Text style={styles.plusText}>{showForm ? "×" : "+"}</Text>
-          </Pressable>
         </View>
       </View>
 
