@@ -166,4 +166,4 @@ const styles = StyleSheet.create({
   devCard: { gap: 12 },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   devTitle: { color: colors.text, fontSize: 13, fontWeight: "800", marginBottom: 3 },
-}
+});
