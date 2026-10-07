@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+
 import { useFinance } from "../src/AppContext";
 import {
   Card,
@@ -35,28 +35,23 @@ function SpendTrend({ transactions }: { transactions: Transaction[] }) {
     });
   }, [transactions]);
 
-  const width = 310;
-  const height = 145;
   const max = Math.max(...values, 1);
-  const path = values.map((value, index) => {
-    const x = values.length === 1 ? width / 2 : (index / 6) * width;
-    const y = height - 12 - (value / max) * (height - 30);
-    return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-  }).join(" ");
 
   return (
-    <View style={styles.trendChart}>
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        {[0, 1, 2, 3].map((row) => (
-          <Path key={row} d={`M0 ${18 + row * 34} L${width} ${18 + row * 34}`} stroke={colors.border} strokeWidth="1" opacity={0.55} />
-        ))}
-        <Path d={path} fill="none" stroke={colors.primary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      </Svg>
-      <View style={styles.dayRow}>
-        {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
-          <Text key={day} style={styles.dayText}>{day}</Text>
-        ))}
-      </View>
+    <View style={styles.barChart}>
+      {values.map((value, index) => (
+        <View key={index} style={styles.barSlot}>
+          <View
+            style={[
+              styles.bar,
+              {
+                height: Math.max(18, (value / max) * 96),
+                backgroundColor: index === values.indexOf(max) ? colors.primary : colors.surfaceRaised,
+              },
+            ]}
+          />
+        </View>
+      ))}
     </View>
   );
 }
@@ -199,10 +194,10 @@ const styles = StyleSheet.create({
   summaryText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   actionText: { color: colors.muted, fontSize: 11, lineHeight: 17 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  trendCard: { minHeight: 178, gap: 0 },
-  trendChart: { height: 160 },
-  dayRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 2 },
-  dayText: { color: colors.subtle, fontSize: 8, fontWeight: "700" },
+  trendCard: { minHeight: 178, justifyContent: "center" },
+  barChart: { height: 126, flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 5 },
+  barSlot: { flex: 1, height: 118, justifyContent: "flex-end", alignItems: "center" },
+  bar: { width: "76%", maxWidth: 30, borderRadius: 3 },
   metricsRow: { flexDirection: "row", gap: 10 },
   metricCard: { flex: 1, minHeight: 112, gap: 5 },
   metricValue: { color: colors.text, fontSize: 25, fontWeight: "900" },
