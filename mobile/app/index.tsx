@@ -182,7 +182,7 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />
       }
     >
-      <Header title="Overview" subtitle="Your personal finance dashboard." />
+      <Header title="Overview" />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.balanceCard}>
