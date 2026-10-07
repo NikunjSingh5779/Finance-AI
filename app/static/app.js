@@ -1289,6 +1289,94 @@
     }
   }
 
+  async function importBudgetsCSV(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      if (!lines.length) {
+        showToast("CSV has no data rows.", "error");
+        return;
+      }
+
+      const parsed = lines.map(parseCSVLine);
+      const first = parsed[0] || [];
+      const firstLower = first.map(value => String(value || "").trim().toLowerCase());
+      const looksLikeHeader =
+        firstLower.length >= 2 &&
+        /(category|cat)/.test(firstLower[0]) &&
+        /(limit|amount|budget)/.test(firstLower[1]);
+
+      const dataRows = looksLikeHeader ? parsed.slice(1) : parsed;
+      let imported = 0;
+      let skipped = 0;
+
+      for (const values of dataRows) {
+        const category = String(values[0] || "").trim();
+        const limit = Number(String(values[1] || "").replace(/,/g, "").replace(/₹/g, "").trim());
+
+        if (!category || !Number.isFinite(limit) || limit <= 0) {
+          skipped += 1;
+          continue;
+        }
+
+        try {
+          await apiFetch("/budgets", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              category,
+              limit_amt: limit
+            })
+          });
+          imported += 1;
+        } catch (error) {
+          skipped += 1;
+          console.warn("Budget import row failed:", category, error);
+        }
+      }
+
+      input.value = "";
+
+      if (!imported) {
+        showToast("No valid budget rows found.", "error");
+        return;
+      }
+
+      await refreshAll();
+      showToast(
+        `Imported ${imported} budget(s)${skipped ? `; skipped ${skipped}`: ""}.`
+      );
+    } catch (error) {
+      input.value = "";
+      showToast("Budget import failed: " + error.message, "error");
+    }
+  }
+
+  function exportBudgetsCSV() {
+    const rows = [["category", "limit_amt"]];
+    budgetsData.forEach(budget => rows.push([budget.category, budget.limit_amt]));
+
+    const csv = rows
+      .map(row => row.map(value => {
+        const text = String(value ?? "");
+        return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+      }).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "financeai-budgets.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function applyDashboardRange(range) {
     selectedRange = range;
     isAllView = range === "All";
@@ -2000,7 +2088,9 @@
     showAllExpenses,
     showMonthlyExpenses,
     refreshCurrentPage,
-    setTransactionTypeFilter
+    setTransactionTypeFilter,
+    importBudgetsCSV,
+    exportBudgetsCSV
   });
 
   window.addEventListener("DOMContentLoaded", init);
