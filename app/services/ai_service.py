@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+from app.providers.search.duckduckgo import get_searcher
+
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
 from app.providers.ai.discovery import get_ai_provider
@@ -72,7 +74,28 @@ class AIService:
                 "No configured provider is available",
             )
 
-        prompt = self._build_prompt(question, financial_context, conversation)
+        web_results: list[Any] = []
+        search_query = self._extract_web_search_query(question)
+
+        if search_query:
+            try:
+                # Fresh web lookup happens before generation. For time-sensitive
+                # queries, add today's date/year so search results bias toward
+                # current information.
+                searcher = get_searcher()
+                web_results = await searcher.search(
+                    search_query,
+                    max_results=5,
+                )
+            except Exception:
+                web_results = []
+
+        prompt = self._build_prompt(
+            question,
+            financial_context,
+            conversation,
+            web_results=web_results,
+        )
 
         try:
             response = await asyncio.to_thread(
@@ -88,13 +111,65 @@ class AIService:
                 "Provider returned an empty response",
             )
 
-        return response.strip()
+        reply = response.strip()
+
+        if web_results:
+            source_lines = ["\n\nSources (fresh web search):"]
+            for index, item in enumerate(web_results[:5], start=1):
+                title = getattr(item, "title", "") or "Source"
+                url = getattr(item, "url", "") or ""
+                if url:
+                    source_lines.append(f"{index}. {title} — {url}")
+            reply += "\n".join(source_lines)
+
+        return reply
+
+    @staticmethod
+    def _extract_web_search_query(question: str) -> str | None:
+        """Return a web-search query only when the user explicitly asks for one."""
+        text = question.strip()
+        lowered = text.lower()
+
+        prefixes = (
+            "search the web for ",
+            "search the web ",
+            "web search for ",
+            "web search ",
+            "search online for ",
+            "search online ",
+            "look up ",
+            "find online ",
+            "search for ",
+            "search ",
+        )
+
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                query = text[len(prefix):].strip()
+                if not query:
+                    return None
+
+                freshness_terms = (
+                    "latest",
+                    "today",
+                    "current",
+                    "now",
+                    "right now",
+                    "realtime",
+                    "real time",
+                )
+                if any(term in query.lower() for term in freshness_terms):
+                    query = f"{query} {datetime.now().strftime('%B %Y')} latest"
+                return query
+
+        return None
 
     def _build_prompt(
         self,
         question: str,
         context: dict[str, Any],
         conversation: list[dict[str, str]] | None,
+        web_results: list[Any] | None = None,
     ) -> str:
         summary = context.get("summary", {})
         recent = context.get("recent_transactions", [])[:10]
@@ -117,6 +192,12 @@ class AIService:
             f"{message.get('content', '')}"
             for message in (conversation or [])[-8:]
         ) or "- None"
+
+        web_text = "\n".join(
+            f"{index}. {getattr(item, 'title', '')} | {getattr(item, 'url', '')}\n"
+            f"   {getattr(item, 'snippet', '')}"
+            for index, item in enumerate((web_results or [])[:5], start=1)
+        ) or "- No web results"
 
         return f"""You are FinanceAI, a practical personal-finance assistant for an Indian user.
 Use only the supplied financial facts. Clearly label estimates and do not promise investment returns.
@@ -143,6 +224,11 @@ BUDGETS
 
 CONVERSATION HISTORY
 {history_text}
+
+WEB SEARCH RESULTS
+These results are available only when the user explicitly requested a web search.
+Prefer these fresh results for time-sensitive claims. Do not invent information not supported by them.
+{web_text}
 
 USER QUESTION
 {question}
