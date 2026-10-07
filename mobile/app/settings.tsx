@@ -28,7 +28,7 @@ const accountTypes: AccountType[] = [
 ];
 
 export default function SettingsScreen() {
-  const { api } = useFinance();
+  const { api, apiBaseUrl } = useFinance();
   const [message, setMessage] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountForm, setAccountForm] = useState(false);
