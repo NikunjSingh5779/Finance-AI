@@ -14,7 +14,8 @@ param(
     "netlify-preview",
     "netlify-production"
   )]
-  [string]$Action = "setup"
+  [string]$Action = "setup",
+  [string]$ApiUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,9 +70,9 @@ switch ($Action) {
     & (Join-Path $PSScriptRoot "build-android.ps1") -Profile production
   }
   "netlify-preview" {
-    & (Join-Path $PSScriptRoot "deploy-netlify.ps1")
+    & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -ApiUrl $ApiUrl
   }
   "netlify-production" {
-    & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -Production
+    & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -Production -ApiUrl $ApiUrl
   }
 }
