@@ -103,7 +103,7 @@
           ? document.createElement("code")
           : document.createElement("em");
       node.className = token.startsWith("**") ? "ai-highlight" : "";
-      node.textContent = token.startsWith("**") || token.startsWith("`")"
+      node.textContent = token.startsWith("**") || token.startsWith("`")
         ? token.slice(2, -2)
         : token.slice(1, -1);
       parent.appendChild(node);
