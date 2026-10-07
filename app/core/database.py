@@ -1,14 +1,19 @@
 import logging
 import os
 import sqlite3
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 def get_db() -> sqlite3.Connection:
     """Open a SQLite connection with consistent safety settings."""
+    db_path = Path(os.getenv("DB_PATH", "finance.db")).expanduser()
+    if db_path.parent != Path("."):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
     conn = sqlite3.connect(
-        os.getenv("DB_PATH", "finance.db"),
+        str(db_path),
         timeout=10,
     )
     conn.row_factory = sqlite3.Row
