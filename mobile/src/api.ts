@@ -163,6 +163,20 @@ export class FinanceApi {
     });
   }
 
+  updateAccount(
+    id: number,
+    payload: Partial<{
+      name: string;
+      balance: number;
+      type: "checking" | "savings" | "credit" | "cash" | "investment";
+    }>,
+  ) {
+    return this.request<Account>("/accounts/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
 
   budgets() {
     return this.request<Budget[]>("/budgets");
