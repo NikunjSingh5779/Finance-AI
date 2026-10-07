@@ -36,9 +36,13 @@ export function Screen({
 export function Header({
   title,
   subtitle,
+  action = "none",
+  onAction,
 }: {
   title: string;
   subtitle?: string;
+  action?: "none" | "notifications" | "plus";
+  onAction?: () => void;
 }) {
   const router = useRouter();
 
@@ -51,10 +55,21 @@ export function Header({
       </View>
 
       <View style={styles.headerActions}>
-        <Pressable style={styles.headerIconButton} accessibilityLabel="Notifications">
-          <Text style={styles.headerIcon}>♧</Text>
-        </Pressable>
-        <Pressable style={styles.headerAvatar} accessibilityLabel="Open settings" onPress={() => router.push("/settings")}>
+        {action !== "none" ? (
+          <Pressable
+            style={styles.headerIconButton}
+            accessibilityLabel={action === "plus" ? "Add" : "Notifications"}
+            onPress={onAction}
+          >
+            <Text style={styles.headerIcon}>{action === "plus" ? "+" : "♧"}</Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          style={styles.headerAvatar}
+          accessibilityLabel="Open settings"
+          onPress={() => router.push("/settings")}
+        >
           <Text style={styles.headerAvatarText}>AC</Text>
         </Pressable>
       </View>
