@@ -15,7 +15,6 @@ import {
   SectionTitle,
   SmallText,
 } from "../src/components";
-import { FinanceApi } from "../src/api";
 import { useFinance } from "../src/AppContext";
 import type { Account, AccountType } from "../src/types";
 import { colors } from "../src/theme";
@@ -29,9 +28,7 @@ const accountTypes: AccountType[] = [
 ];
 
 export default function SettingsScreen() {
-  const { api, apiBaseUrl, setApiBaseUrl } = useFinance();
-  const [draft, setDraft] = useState(apiBaseUrl);
-  const [status, setStatus] = useState<"idle" | "checking" | "ok" | "error">("idle");
+  const { api } = useFinance();
   const [message, setMessage] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountForm, setAccountForm] = useState(false);
@@ -56,29 +53,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
-
-  const saveAndCheck = async () => {
-    const normalized = draft.trim().replace(/\/+$/, "");
-    if (!/^https?:\/\//i.test(normalized)) {
-      setStatus("error");
-      setMessage("API URL must start with http:// or https://");
-      return;
-    }
-
-    setStatus("checking");
-    setMessage("");
-
-    try {
-      const nextApi = new FinanceApi(normalized);
-      const response = await nextApi.health();
-      await setApiBaseUrl(normalized);
-      setStatus("ok");
-      setMessage((response.service || "FinanceAI") + " backend is reachable.");
-    } catch (err) {
-      setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Connection failed.");
-    }
-  };
 
   const createAccount = async () => {
     const balance = Number(accountBalance);
@@ -133,25 +107,10 @@ export default function SettingsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
       }
     >
-      <Header title="Settings" subtitle="Backend connection, accounts and release configuration." />
+      <Header title="Settings" subtitle="Accounts and app configuration." />
 
-      {message && status !== "ok" ? <ErrorBanner message={message} /> : null}
+      {message ? <ErrorBanner message={message} /> : null}
 
-      <Card>
-        <SectionTitle>Backend connection</SectionTitle>
-        <Input
-          label="FinanceAI API URL"
-          value={draft}
-          onChangeText={setDraft}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          placeholder="http://192.168.1.10:8000"
-        />
-        <Button title="Save & test connection" onPress={() => void saveAndCheck()} loading={status === "checking"} />
-        {status === "ok" ? <Pill tone="success">Connected</Pill> : null}
-        {status === "ok" ? <SmallText>{message}</SmallText> : null}
-      </Card>
 
       <View style={styles.rowBetween}>
         <SectionTitle>Accounts</SectionTitle>
@@ -193,14 +152,6 @@ export default function SettingsScreen() {
           </Card>
         ))
       )}
-
-      <Card>
-        <SectionTitle>Local development</SectionTitle>
-        <Text style={styles.body}>
-          Android emulator: http://10.0.2.2:8000. Physical phone: use your PC LAN IP such as http://192.168.x.x:8000.
-          iOS Simulator: http://127.0.0.1:8000. The backend must listen on a reachable interface.
-        </Text>
-      </Card>
 
       <Card>
         <View style={styles.rowBetween}>
