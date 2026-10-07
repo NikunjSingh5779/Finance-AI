@@ -419,7 +419,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .full-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .full-title{font-size:16px;font-weight:700}
 .transaction-header-actions{gap:10px}
-.transaction-actions,.budget-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto;flex:0 0 auto;min-width:max-content}
+.transaction-actions{display:flex!important;flex:1 1 auto;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:8px;margin-left:180px;min-width:0}.budget-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto;flex:0 0 auto;min-width:max-content}
 .compact-action{height:30px;min-height:30px;padding:0 10px;font-size:11px;white-space:nowrap;flex:0 0 auto}
 .secondary-action{background:var(--bg3)!important;color:var(--text)!important;border:1px solid var(--border)}
 .secondary-action:hover{background:var(--bg4)!important}
@@ -842,7 +842,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   .transaction-header-actions,
   .budget-header-actions { align-items: center; }
   .transaction-actions,
-  .budget-actions { gap: 5px; flex-wrap: wrap; flex-direction: row!important; }
+  .budget-actions { gap: 8px; flex-wrap: wrap; flex-direction: row!important; margin-left: 0; flex: 0 1 auto; justify-content: flex-end; }
   .compact-action { min-height: 36px; height: 36px; }
   .icon-add-btn,
   .icon-danger-btn { width: 36px; height: 36px; }
