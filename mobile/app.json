@@ -11,7 +11,7 @@
       "bundleIdentifier": "com.nikunj.financeai.mobile"
     },
     "android": {
-      "package": "com.nikunj.financeai.mobile",
+      "package": "com.nikunj.financeai.mobile"
     },
     "web": {
       "bundler": "metro",
