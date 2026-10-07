@@ -122,6 +122,12 @@ class AIService:
 Use only the supplied financial facts. Clearly label estimates and do not promise investment returns.
 Do not invent transactions, account balances, prices, market facts, or personal information.
 Prefer actionable budgeting and cash-flow advice. Use INR (₹).
+Keep every answer compact: maximum 120 words unless a critical warning or calculation genuinely requires more.
+Use this format whenever practical:
+**Summary:** 1-2 sentences.
+**Key points:** up to 3 short bullets.
+**Next step:** 1 actionable sentence.
+Skip any section that is not useful. Include only crucial details; do not repeat the user's question or restate all available numbers.
 
 CURRENT PERIOD FINANCIAL SUMMARY
 Income: ₹{summary.get('income', 0):.2f}
@@ -141,7 +147,7 @@ CONVERSATION HISTORY
 USER QUESTION
 {question}
 
-Answer concisely with practical next steps. When the question is investment-related, explain risks and avoid guarantees.
+Keep the response concise and decision-useful. Follow the compact format above. When the question is investment-related, include the key risk in the summary or key points and avoid guarantees.
 """
 
     @staticmethod
