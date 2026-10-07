@@ -93,8 +93,8 @@ export default function AIScreen() {
     void loadProviderStatus();
   }, [loadProviderStatus]);
 
-  const send = async () => {
-    const trimmed = question.trim();
+  const sendPrompt = async (preset?: string) => {
+    const trimmed = (preset ?? question).trim();
     if (trimmed.length < 3 || sending) return;
 
     setSending(true);
@@ -157,6 +157,27 @@ export default function AIScreen() {
           </View>
         ))}
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
+          {[
+            ["💚", "Health", "How is my financial health?"],
+            ["📊", "Spending", "Show my spending analysis"],
+            ["💰", "Savings", "How can I improve savings?"],
+          ].map(([icon, label, prompt]) => (
+            <Pressable
+              key={label}
+              style={styles.quickButton}
+              onPress={() => {
+                setQuestion(prompt);
+                if (!sending) {
+                  setTimeout(() => void sendPrompt(prompt), 0);
+                }
+              }}
+            >
+              <Text style={styles.quickText}>{icon} {label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
         <View style={{ height: 10 }} />
         <View style={styles.composer}>
           <TextInput
@@ -170,7 +191,7 @@ export default function AIScreen() {
           />
           <Pressable
             disabled={sending || question.trim().length < 3}
-            onPress={() => void send()}
+            onPress={() => void sendPrompt()}
             style={({ pressed }) => [
               styles.sendButton,
               pressed && { opacity: 0.8 },
@@ -226,6 +247,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "500",
+  },
+  quickRow: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  quickButton: {
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+  },
+  quickText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "700",
   },
   composer: {
     flexDirection: "row",
