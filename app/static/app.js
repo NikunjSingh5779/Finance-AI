@@ -90,26 +90,42 @@
   }
 
   function appendInlineMarkdown(parent, text) {
-    const source = String(text ?? "");
-    const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g;
+    const source = String(text ?? "")
+      .replace(/\\\\([*_])/g, "$1")
+      .replace(/\\\*\\\*/g, "**")
+      .replace(/\\\*/g, "*");
+
+    const pattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\`[^\`]+\`)/g;
     let last = 0;
     let match;
+
     while ((match = pattern.exec(source))) {
-      if (match.index > last) parent.appendChild(document.createTextNode(source.slice(last, match.index)));
+      if (match.index > last) {
+        parent.appendChild(document.createTextNode(source.slice(last, match.index)));
+      }
+
       const token = match[0];
-      const node = token.startsWith("**")
-        ? document.createElement("strong")
-        : token.startsWith("`")
-          ? document.createElement("code")
-          : document.createElement("em");
-      node.className = token.startsWith("**") ? "ai-highlight" : "";
-      node.textContent = token.startsWith("**") || token.startsWith("`")
-        ? token.slice(2, -2)
-        : token.slice(1, -1);
+      let node;
+
+      if (token.startsWith("**") || token.startsWith("__")) {
+        node = document.createElement("strong");
+        node.className = "ai-highlight";
+        node.textContent = token.slice(2, -2);
+      } else if (token.startsWith("`")) {
+        node = document.createElement("code");
+        node.textContent = token.slice(1, -1);
+      } else {
+        node = document.createElement("em");
+        node.textContent = token.slice(1, -1);
+      }
+
       parent.appendChild(node);
       last = pattern.lastIndex;
     }
-    if (last < source.length) parent.appendChild(document.createTextNode(source.slice(last)));
+
+    if (last < source.length) {
+      parent.appendChild(document.createTextNode(source.slice(last)));
+    }
   }
 
   function parseTableRow(line) {
@@ -262,7 +278,18 @@
   function updateBadge(id, value) {
     const element = $(id);
     if (!element) return;
-    const rounded = Math.round(Number(value) || 0);
+
+    const numeric = Number(value);
+    const rounded = Math.round(Number.isFinite(numeric) ? numeric : 0);
+
+    if (rounded === 0) {
+      element.textContent = "";
+      element.style.display = "none";
+      element.classList.remove("up", "down");
+      return;
+    }
+
+    element.style.display = "";
     element.classList.remove("up", "down");
     element.textContent = rounded > 0 ? `+${rounded}%` : `${rounded}%`;
     if (rounded > 0) element.classList.add("up");
@@ -1235,35 +1262,33 @@
     }
   }
 
-  function filterThisMonth() {
-    selectedRange = "1M";
-    isAllView = false;
+  function applyDashboardRange(range) {
+    selectedRange = range;
+    isAllView = range === "All";
     syncTopbarRangeButtons();
-    renderTransactions();
+    document.querySelectorAll(".time-btn").forEach(button => {
+      button.classList.toggle(
+        "active",
+        button.textContent.trim().toLowerCase() === range.toLowerCase()
+      );
+    });
     loadSummary();
+  }
+
+  function filterThisMonth() {
+    applyDashboardRange("1M");
   }
 
   function filterAllTime() {
-    selectedRange = "All";
-    isAllView = true;
-    syncTopbarRangeButtons();
-    renderTransactions();
-    loadSummary();
+    applyDashboardRange("All");
   }
 
   function showAllExpenses() {
-    isAllView = true;
-    renderCatChart(summaryAll.category_totals || {});
-    $("cat-period").textContent = "All time";
-    $("view-all-expenses").textContent = "This month";
+    applyDashboardRange("All");
   }
 
   function showMonthlyExpenses() {
-    isAllView = false;
-    renderCatChart(summaryData.category_totals || {});
-    updateBudgetUI(getFilteredTransactions());
-    $("cat-period").textContent = rangeCategoryLabel(selectedRange.toLowerCase());
-    $("view-all-expenses").textContent = "View all";
+    applyDashboardRange("1M");
   }
 
   function setRange(range, element) {
@@ -1897,8 +1922,8 @@
     });
     $("search-input")?.addEventListener("input", renderTransactions);
     $("view-all-expenses")?.addEventListener("click", () => {
-      if (isAllView) showMonthlyExpenses();
-      else showAllExpenses();
+      if (selectedRange === "1M") showAllExpenses();
+      else showMonthlyExpenses();
     });
 
     $("t-date").value = new Date().toISOString().slice(0, 10);
