@@ -112,28 +112,35 @@ export default function HomeScreen() {
       <Header title="FinanceAI" subtitle="Your money, decisions and progress in one place." />
       {error ? <ErrorBanner message={error} /> : null}
 
-      <Card style={styles.heroCard}>
-        <View style={styles.rowBetween}>
-          <View>
-            <SmallText>This month</SmallText>
-            <Money value={summary?.balance ?? 0} size={34} />
-          </View>
+      <View style={styles.summaryGrid}>
+        <Card style={styles.summaryCard}>
+          <SmallText>Total balance</SmallText>
+          <Money value={summary?.balance ?? 0} size={24} />
+          <SmallText>all recorded cash flow</SmallText>
+        </Card>
+
+        <Card style={styles.summaryCard}>
+          <SmallText>Income</SmallText>
+          <Money value={income} size={24} />
+          <SmallText>this month</SmallText>
+        </Card>
+
+        <Card style={styles.summaryCard}>
+          <SmallText>Expenses</SmallText>
+          <Money value={-expense} size={24} />
+          <SmallText>this month</SmallText>
+        </Card>
+
+        <Card style={styles.summaryCard}>
+          <SmallText>Savings rate</SmallText>
+          <Text style={styles.savingsValue}>{savingsRate.toFixed(1)}%</Text>
           <Pill tone={savingsRate >= 20 ? "success" : "warning"}>
-            {savingsRate.toFixed(1)}% saved
+            {savingsRate >= 20 ? "Healthy" : "Needs attention"}
           </Pill>
-        </View>
-        <View style={styles.statsRow}>
-          <View style={styles.miniStat}>
-            <SmallText>Income</SmallText>
-            <Money value={income} size={20} />
-          </View>
-          <View style={styles.miniStat}>
-            <SmallText>Expenses</SmallText>
-            <Money value={-expense} size={20} />
-          </View>
-        </View>
-        <Button title="Manage transactions" onPress={() => router.push("/transactions")} />
-      </Card>
+        </Card>
+      </View>
+
+      <Button title="+ Add transaction" onPress={() => router.push("/transactions")} />
 
       {netWorth ? (
         <Card>
@@ -257,7 +264,23 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  heroCard: { gap: 16 },
+  summaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  summaryCard: {
+    width: "48%",
+    minHeight: 116,
+    justifyContent: "space-between",
+    padding: 13,
+    gap: 6,
+  },
+  savingsValue: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: "800",
+  },
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
