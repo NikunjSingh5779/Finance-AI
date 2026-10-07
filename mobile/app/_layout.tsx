@@ -1,4 +1,4 @@
-import { Slot, usePathname, useRouter } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { AppProvider } from "../src/AppContext";
@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { path: "/planning", label: "Planning", glyph: "◉" },
   { path: "/insights", label: "Insights", glyph: "◌" },
   { path: "/ai", label: "Assistant", glyph: "✦" },
-];
+] as const;
 
 function BottomNavigation() {
   const pathname = usePathname();
@@ -28,8 +28,9 @@ function BottomNavigation() {
         return (
           <Pressable
             key={item.path}
-            onPress={() => router.push(item.path as never)}
-            accessibilityRole="button"
+            onPress={() => router.push(item.path)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
             accessibilityLabel={item.label}
             style={({ pressed }) => [styles.navItem, pressed && styles.navPressed]}
           >
@@ -50,7 +51,23 @@ export default function RootLayout() {
       <StatusBar style="light" backgroundColor={colors.background} />
       <View style={styles.root}>
         <View style={styles.content}>
-          <Slot />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: {
+                backgroundColor: colors.background,
+              },
+              animation: "fade",
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="transactions" />
+            <Stack.Screen name="budgets" />
+            <Stack.Screen name="planning" />
+            <Stack.Screen name="insights" />
+            <Stack.Screen name="ai" />
+            <Stack.Screen name="settings" />
+          </Stack>
         </View>
         <BottomNavigation />
       </View>
