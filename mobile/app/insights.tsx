@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import {
   Card,
   EmptyState,
@@ -43,7 +43,15 @@ export default function InsightsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.primary} />}>
-      <Header title="Financial Insights" subtitle="Explainable signals from your recorded finances." />
+      <Header title="Financial Insights" subtitle="Explainable signals calculated from your recorded finances." />
+      <View style={styles.hero}>
+        <SmallText>FINANCE INTELLIGENCE</SmallText>
+        <Text style={styles.heroTitle}>Financial Health & Insights</Text>
+        <Text style={styles.heroSubtitle}>Understand your habits, recurring costs and unusual spending.</Text>
+        <Pressable onPress={() => void load()} style={styles.refreshButton}>
+          <Text style={styles.refreshText}>↻ Refresh</Text>
+        </Pressable>
+      </View>
       {error ? <ErrorBanner message={error} /> : null}
 
       {health ? (
@@ -134,6 +142,39 @@ export default function InsightsScreen() {
 }
 
 const styles = StyleSheet.create({
+  hero: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 14,
+    gap: 5,
+  },
+  heroTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  heroSubtitle: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  refreshButton: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  refreshText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: "700",
+  },
   scoreRow: {
     flexDirection: "row",
     justifyContent: "space-between",
