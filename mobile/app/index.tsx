@@ -183,7 +183,7 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />
       }
     >
-      <Header title="Overview" />
+      <Header title="Overview" action="notifications" />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.balanceCard}>
