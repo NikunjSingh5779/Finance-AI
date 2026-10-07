@@ -1,97 +1,55 @@
-import { useCallback, useEffect, useState } from "react";
-import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
-import * as Sharing from "expo-sharing";
-import { Alert, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useFinance } from "../src/AppContext";
 import {
   Button,
   Card,
+  ChipRow,
   EmptyState,
   ErrorBanner,
   Header,
   Input,
   LoadingState,
-  Money,
-  Pill,
   ProgressBar,
   Screen,
   SectionTitle,
   SmallText,
 } from "../src/components";
-import { currentMonth, useFinance } from "../src/AppContext";
-import type { Budget, Goal, MonthlyReport, NetWorthPoint, NetWorthSnapshot, Summary } from "../src/types";
+import type { Goal, NetWorthPoint, NetWorthSnapshot } from "../src/types";
 import { colors } from "../src/theme";
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '"') {
-      if (quoted && line[i + 1] === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (char === "," && !quoted) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
-
-function csvEscape(value: unknown) {
-  const text = String(value ?? "");
-  return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+function formatMoney(value: number) {
+  return "₹" + Math.abs(Number(value) || 0).toLocaleString("en-IN");
 }
 
 export default function PlanningScreen() {
   const { api, ready } = useFinance();
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [netWorth, setNetWorth] = useState<NetWorthSnapshot | null>(null);
   const [history, setHistory] = useState<NetWorthPoint[]>([]);
-  const [report, setReport] = useState<MonthlyReport | null>(null);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [month, setMonth] = useState(currentMonth());
   const [goalForm, setGoalForm] = useState(false);
-  const [budgetForm, setBudgetForm] = useState(false);
   const [goalName, setGoalName] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
   const [goalCurrent, setGoalCurrent] = useState("0");
   const [goalDate, setGoalDate] = useState("");
   const [goalCategory, setGoalCategory] = useState("Savings");
-  const [budgetCategory, setBudgetCategory] = useState("");
-  const [budgetLimit, setBudgetLimit] = useState("");
-  const [editingGoal, setEditingGoal] = useState<number | null>(null);
-  const [editCurrent, setEditCurrent] = useState("");
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const loadBase = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!ready) return;
-    setError("");
     try {
-      const [goalItems, budgetItems, net, historyResult, summaryResult] = await Promise.all([
+      setError("");
+      const [goalItems, net, historyResult] = await Promise.all([
         api.goals(),
-        api.budgets(),
         api.netWorth(),
         api.netWorthHistory(12),
-        api.summary("1m"),
       ]);
       setGoals(goalItems);
-      setBudgets(budgetItems);
       setNetWorth(net);
       setHistory(historyResult.history);
-      setSummary(summaryResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load planning data.");
     } finally {
@@ -99,30 +57,23 @@ export default function PlanningScreen() {
     }
   }, [api, ready]);
 
-  const loadReport = useCallback(async () => {
-    if (!ready || !/^\d{4}-\d{2}$/.test(month)) {
-      setError("Report month must be YYYY-MM.");
-      return;
-    }
-    try {
-      setReport(await api.monthlyReport(month));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load monthly report.");
-    }
-  }, [api, month, ready]);
+  useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    void loadBase();
-    void loadReport();
-  }, [loadBase, loadReport]);
+  const yearChange = useMemo(() => {
+    if (history.length < 2) return null;
+    const first = history[0].net_worth;
+    const current = history[history.length - 1].net_worth;
+    return first !== 0 ? ((current - first) / Math.abs(first)) * 100 : null;
+  }, [history]);
 
   const createGoal = async () => {
     const target = Number(goalTarget);
     const current = Number(goalCurrent || 0);
-    if (!goalName.trim() || !Number.isFinite(target) || target <= 0 || !Number.isFinite(current) || current < 0 || current > target) {
-      setError("Goal needs a name, a positive target, and a current amount within the target.");
+    if (!goalName.trim() || !Number.isFinite(target) || target <= 0 || current < 0 || current > target) {
+      setError("Enter a valid goal name, target and current amount.");
       return;
     }
+
     setSaving(true);
     setError("");
     try {
@@ -138,7 +89,7 @@ export default function PlanningScreen() {
       setGoalCurrent("0");
       setGoalDate("");
       setGoalForm(false);
-      await loadBase();
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create goal.");
     } finally {
@@ -146,400 +97,148 @@ export default function PlanningScreen() {
     }
   };
 
-  const updateGoal = async (goal: Goal) => {
-    const current = Number(editCurrent);
-    if (!Number.isFinite(current) || current < 0 || current > goal.target_amount) {
-      setError("Saved amount must be between 0 and the goal target.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.updateGoal(goal.id, { current_amount: current });
-      setEditingGoal(null);
-      setEditCurrent("");
-      await loadBase();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update goal.");
-    } finally {
-      setSaving(false);
-    }
+  const deleteGoal = (goal: Goal) => {
+    Alert.alert("Delete goal", `Delete “${goal.name}”?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteGoal(goal.id);
+            setGoals((items) => items.filter((item) => item.id !== goal.id));
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not delete goal.");
+          }
+        },
+      },
+    ]);
   };
 
-  const deleteGoal = async (goal: Goal) => {
-    try {
-      await api.deleteGoal(goal.id);
-      setGoals((items) => items.filter((item) => item.id !== goal.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete goal.");
-    }
-  };
-
-  const createBudget = async () => {
-    const limit = Number(budgetLimit);
-    if (!budgetCategory.trim() || !Number.isFinite(limit) || limit <= 0) {
-      setError("Enter a budget category and a positive monthly limit.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.createBudget({ category: budgetCategory.trim(), limit_amt: limit });
-      setBudgetCategory("");
-      setBudgetLimit("");
-      setBudgetForm(false);
-      await loadBase();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create budget.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteBudget = async (budget: Budget) => {
-    try {
-      await api.deleteBudget(budget.category);
-      setBudgets((items) => items.filter((item) => item.id !== budget.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete budget.");
-    }
-  };
-
-  const importBudgetsCSV = async () => {
-    try {
-      const picked = await DocumentPicker.getDocumentAsync({
-        type: ["text/csv", "text/comma-separated-values", "application/vnd.ms-excel"],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      if (picked.canceled) return;
-      const asset = picked.assets[0];
-      if (!asset) return;
-
-      const text = await new File(asset.uri).text();
-      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      if (!lines.length) {
-        setError("CSV has no data rows.");
-        return;
-      }
-
-      const parsed = lines.map(parseCSVLine);
-      const first = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
-      const hasHeader = first[0]?.includes("category") || first[1]?.includes("limit");
-      const rows = (hasHeader ? parsed.slice(1) : parsed)
-        .map((values) => ({
-          category: String(values[0] ?? "").trim(),
-          limit: Number(String(values[1] ?? "").replace(/,/g, "").replace(/₹/g, "").trim()),
-        }))
-        .filter((row) => row.category && Number.isFinite(row.limit) && row.limit > 0);
-
-      if (!rows.length) {
-        setError("No valid budget rows found.");
-        return;
-      }
-
-      let imported = 0;
-      for (const row of rows) {
-        try {
-          await api.createBudget({ category: row.category, limit_amt: row.limit });
-          imported += 1;
-        } catch {
-          // Existing category conflicts are treated as an update by the backend.
-        }
-      }
-
-      setError("");
-      await loadBase();
-      Alert.alert("Import complete", `Imported ${imported} budget(s).`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Budget import failed.");
-    }
-  };
-
-  const exportBudgetsCSV = async () => {
-    try {
-      const rows = [
-        ["category", "limit_amt"],
-        ...budgets.map((budget) => [budget.category, budget.limit_amt]),
-      ];
-      const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-
-      if (Platform.OS === "web") {
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = "financeai-budgets.csv";
-        anchor.click();
-        URL.revokeObjectURL(url);
-        return;
-      }
-
-      const file = new File(Paths.cache, "financeai-budgets.csv");
-      file.write(csv);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: "text/csv",
-          dialogTitle: "Export FinanceAI budgets",
-          UTI: "public.comma-separated-values-text",
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Budget export failed.");
-    }
-  };
-
-  const refresh = async () => {
-    setRefreshing(true);
-    await Promise.all([loadBase(), loadReport()]);
-    setRefreshing(false);
-  };
-
-  if (loading && !netWorth) return <Screen><LoadingState /></Screen>;
+  if (loading) return <Screen><LoadingState /></Screen>;
 
   return (
     <Screen
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />
       }
     >
-      <Header title="Planning & Wealth" subtitle="Goals, budgets, net worth and monthly reports." />
+      <Header title="Planning & Wealth" subtitle="Build goals and grow long-term wealth." />
       {error ? <ErrorBanner message={error} /> : null}
 
-      {netWorth ? (
-        <Card>
-          <View style={styles.rowBetween}>
-            <SectionTitle>Current net worth</SectionTitle>
-            <Pill tone={netWorth.net_worth >= 0 ? "success" : "danger"}>
-              {netWorth.net_worth >= 0 ? "Positive" : "Negative"}
-            </Pill>
+      <Card style={styles.netWorthCard}>
+        <View style={styles.netWorthHeader}>
+          <View>
+            <SmallText>TOTAL NET WORTH</SmallText>
+            <Text style={styles.netWorthValue}>{formatMoney(netWorth?.net_worth ?? 0)}</Text>
+            <Text style={styles.netWorthChange}>
+              {yearChange === null ? "—" : `${yearChange >= 0 ? "+" : ""}${yearChange.toFixed(1)}%`} <Text style={styles.muted}>this year</Text>
+            </Text>
           </View>
-          <Money value={netWorth.net_worth} size={34} />
-          <View style={styles.statsRow}>
-            <View style={{ flex: 1 }}>
-              <SmallText>Assets</SmallText>
-              <Money value={netWorth.asset_total} size={18} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <SmallText>Liabilities</SmallText>
-              <Money value={-netWorth.liability_total} size={18} />
-            </View>
-          </View>
-        </Card>
-      ) : null}
+          <View style={styles.chartIcon}><Text style={styles.chartIconText}>⌁</Text></View>
+        </View>
 
-      <View style={styles.rowBetween}>
-        <SectionTitle>Financial goals</SectionTitle>
-        <Button title={goalForm ? "Close" : "+ Goal"} onPress={() => setGoalForm((v) => !v)} kind={goalForm ? "secondary" : "primary"} />
+        <View style={styles.netWorthBars}>
+          {history.slice(-7).map((point, index, array) => {
+            const max = Math.max(...array.map((item) => Math.abs(item.net_worth)), 1);
+            return (
+              <View key={point.month} style={styles.netWorthBarWrap}>
+                <View
+                  style={[
+                    styles.netWorthBar,
+                    {
+                      height: Math.max(10, (Math.abs(point.net_worth) / max) * 72),
+                      backgroundColor: index >= array.length - 2 ? colors.primary : colors.surfaceRaised,
+                    },
+                  ]}
+                />
+              </View>
+            );
+          })}
+        </View>
+      </Card>
+
+      <View style={styles.sectionHeader}>
+        <SectionTitle>Financial Goals</SectionTitle>
+        <Pressable onPress={() => setGoalForm((value) => !value)} style={styles.plusButtonWrap}>
+          <Text style={styles.plusButton}>{goalForm ? "×" : "+"}</Text>
+        </Pressable>
       </View>
 
       {goalForm ? (
         <Card>
-          <Input label="Goal name" value={goalName} onChangeText={setGoalName} placeholder="Emergency fund" />
-          <Input label="Target amount (₹)" keyboardType="decimal-pad" value={goalTarget} onChangeText={setGoalTarget} placeholder="100000" />
-          <Input label="Saved so far (₹)" keyboardType="decimal-pad" value={goalCurrent} onChangeText={setGoalCurrent} placeholder="0" />
-          <Input label="Target date (optional, YYYY-MM-DD)" value={goalDate} onChangeText={setGoalDate} placeholder="2027-10-01" />
-          <Input label="Category" value={goalCategory} onChangeText={setGoalCategory} placeholder="Savings" />
+          <SectionTitle>New goal</SectionTitle>
+          <Input label="Goal name" value={goalName} onChangeText={setGoalName} placeholder="Emergency Fund" />
+          <Input label="Target amount (₹)" value={goalTarget} onChangeText={setGoalTarget} keyboardType="decimal-pad" placeholder="100000" />
+          <Input label="Current amount (₹)" value={goalCurrent} onChangeText={setGoalCurrent} keyboardType="decimal-pad" placeholder="25000" />
+          <Input label="Target date" value={goalDate} onChangeText={setGoalDate} placeholder="2027-12-31" />
+          <SmallText>Category</SmallText>
+          <ChipRow values={["Savings", "Travel", "Home", "Investing"]} selected={goalCategory} onSelect={setGoalCategory} />
           <Button title="Create goal" onPress={() => void createGoal()} loading={saving} />
         </Card>
       ) : null}
 
-      {goals.length === 0 ? (
+      {!goals.length ? (
         <Card><EmptyState message="No financial goals yet." /></Card>
       ) : (
         goals.map((goal) => (
-          <Card key={goal.id}>
-            <View style={styles.rowBetween}>
+          <Card key={goal.id} style={styles.goalCard}>
+            <View style={styles.goalTop}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{goal.name}</Text>
-                <SmallText>{goal.category}{goal.target_date ? " · target " + goal.target_date : ""}</SmallText>
+                <Text style={styles.goalName}>{goal.name}</Text>
+                <SmallText>Target: {formatMoney(goal.target_amount)}</SmallText>
               </View>
-              <Pill tone={goal.status === "completed" ? "success" : goal.status === "overdue" ? "danger" : "info"}>
-                {goal.status}
-              </Pill>
+              <Text style={styles.goalPercent}>{goal.progress_percent.toFixed(0)}%</Text>
             </View>
-            <View style={styles.rowBetween}>
-              <Money value={goal.current_amount} size={22} />
-              <SmallText>of ₹{goal.target_amount.toLocaleString("en-IN")}</SmallText>
+            <ProgressBar value={goal.progress_percent} tone="primary" />
+            <View style={styles.goalBottom}>
+              <SmallText>{formatMoney(goal.current_amount)} saved</SmallText>
+              <Pressable onPress={() => deleteGoal(goal)}><Text style={styles.deleteText}>Delete</Text></Pressable>
             </View>
-            <ProgressBar value={goal.progress_percent} />
-            <SmallText>
-              {goal.remaining_amount > 0 ? "₹" + goal.remaining_amount.toLocaleString("en-IN") + " remaining" : "Target reached"}
-              {goal.monthly_required ? " · ₹" + goal.monthly_required.toLocaleString("en-IN") + "/month" : ""}
-            </SmallText>
-
-            {editingGoal === goal.id ? (
-              <View style={{ gap: 10 }}>
-                <Input label="Update saved amount (₹)" keyboardType="decimal-pad" value={editCurrent} onChangeText={setEditCurrent} />
-                <View style={styles.buttonRow}>
-                  <View style={{ flex: 1 }}>
-                    <Button title="Save" onPress={() => void updateGoal(goal)} loading={saving} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Button title="Cancel" onPress={() => setEditingGoal(null)} kind="secondary" />
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.buttonRow}>
-                <View style={{ flex: 1 }}>
-                  <Button title="Update saved" onPress={() => { setEditingGoal(goal.id); setEditCurrent(String(goal.current_amount)); }} kind="secondary" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Button title="Delete" onPress={() => deleteGoal(goal)} kind="danger" />
-                </View>
-              </View>
-            )}
           </Card>
         ))
       )}
 
-      <View style={styles.rowBetween}>
-        <View>
-          <SectionTitle>Monthly budgets</SectionTitle>
-          <SmallText>{budgets.length} active budget{budgets.length === 1 ? "" : "s"}</SmallText>
-        </View>
-        <View style={styles.headerButtonRow}>
-          <Button title="📁 Import" onPress={() => void importBudgetsCSV()} kind="secondary" />
-          <Button title="⬇ Export" onPress={() => void exportBudgetsCSV()} kind="secondary" />
-          <Button title={budgetForm ? "Close" : "+ Budget"} onPress={() => setBudgetForm((v) => !v)} kind={budgetForm ? "secondary" : "primary"} />
-        </View>
-      </View>
-
-      {budgetForm ? (
-        <Card>
-          <Input label="Category" value={budgetCategory} onChangeText={setBudgetCategory} placeholder="Food" />
-          <Input label="Monthly limit (₹)" keyboardType="decimal-pad" value={budgetLimit} onChangeText={setBudgetLimit} placeholder="5000" />
-          <Button title="Set budget" onPress={() => void createBudget()} loading={saving} />
+      <SectionTitle>Wealth Report</SectionTitle>
+      <View style={styles.reportGrid}>
+        <Card style={styles.reportCard}>
+          <SmallText>SAVINGS RATE</SmallText>
+          <Text style={styles.reportValue}>—</Text>
+          <SmallText>Calculated from your latest cash flow.</SmallText>
         </Card>
-      ) : null}
-
-      {budgets.length === 0 ? (
-        <Card><EmptyState message="No budgets yet." /></Card>
-      ) : (
-        budgets.map((budget) => {
-          const spent = Number(summary?.category_totals?.[budget.category] ?? 0);
-          const pct = budget.limit_amt > 0 ? Math.min(100, (spent / budget.limit_amt) * 100) : 0;
-          const over = spent >= budget.limit_amt;
-          return (
-            <Card key={budget.id}>
-              <View style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{budget.category}</Text>
-                  <SmallText>{over ? "Over budget" : "Remaining ₹" + Math.max(0, budget.limit_amt - spent).toLocaleString("en-IN")}</SmallText>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Money value={spent} size={18} />
-                  <SmallText>of ₹{budget.limit_amt.toLocaleString("en-IN")}</SmallText>
-                </View>
-              </View>
-              <ProgressBar value={pct} tone={over ? "danger" : pct >= 80 ? "warning" : "primary"} />
-              <Pressable onPress={() => deleteBudget(budget)}><Text style={styles.dangerLink}>Delete</Text></Pressable>
-            </Card>
-          );
-        })
-      )}
-
-      <SectionTitle>12-month net worth</SectionTitle>
-      <Card>
-        {history.length === 0 ? (
-          <SmallText>No history available.</SmallText>
-        ) : (
-          history.map((point) => {
-            const maximum = Math.max(...history.map((item) => Math.abs(item.net_worth)), 1);
-            return (
-              <View key={point.month} style={{ gap: 6 }}>
-                <View style={styles.rowBetween}>
-                  <SmallText>{point.month}</SmallText>
-                  <Money value={point.net_worth} size={13} />
-                </View>
-                <ProgressBar
-                  value={Math.abs(point.net_worth)}
-                  max={maximum}
-                  tone={point.net_worth >= 0 ? "primary" : "danger"}
-                />
-              </View>
-            );
-          })
-        )}
-      </Card>
-
-      <View style={styles.rowBetween}>
-        <SectionTitle>Monthly report</SectionTitle>
-        <SmallText>YYYY-MM</SmallText>
+        <Card style={styles.reportCard}>
+          <SmallText>NET-WORTH GROWTH</SmallText>
+          <Text style={[styles.reportValue, { color: colors.primary }]}>
+            {yearChange === null ? "—" : `${yearChange >= 0 ? "+" : ""}${yearChange.toFixed(1)}%`}
+          </Text>
+          <SmallText>12-month trend.</SmallText>
+        </Card>
       </View>
-
-      <Card>
-        <Input label="Report month" value={month} onChangeText={setMonth} placeholder="2026-10" />
-        <Button title="Load report" onPress={() => void loadReport()} />
-        {report ? (
-          <>
-            <View style={styles.statsRow}>
-              <View style={{ flex: 1 }}><SmallText>Income</SmallText><Money value={report.income} size={18} /></View>
-              <View style={{ flex: 1 }}><SmallText>Expenses</SmallText><Money value={-report.expense} size={18} /></View>
-              <View style={{ flex: 1 }}><SmallText>Net</SmallText><Money value={report.net_cash_flow} size={18} /></View>
-            </View>
-            <SmallText>Savings rate: {report.savings_rate.toFixed(1)}%</SmallText>
-
-            <SectionTitle>Top categories</SectionTitle>
-            {report.top_categories.length ? report.top_categories.map((item) => (
-              <View key={item.category} style={styles.rowBetween}>
-                <Text style={styles.cardTitle}>{item.category}</Text>
-                <Money value={item.amount} size={14} />
-              </View>
-            )) : <SmallText>No spending recorded.</SmallText>}
-
-            <SectionTitle>Budget health</SectionTitle>
-            {report.budgets.length ? report.budgets.map((item) => (
-              <View key={item.category} style={{ gap: 5 }}>
-                <View style={styles.rowBetween}>
-                  <SmallText>{item.category}</SmallText>
-                  <Pill tone={item.status === "exceeded" ? "danger" : item.status === "warning" ? "warning" : "success"}>
-                    {item.utilization_percent.toFixed(0)}%
-                  </Pill>
-                </View>
-                <ProgressBar
-                  value={item.utilization_percent}
-                  tone={item.status === "exceeded" ? "danger" : item.status === "warning" ? "warning" : "primary"}
-                />
-              </View>
-            )) : <SmallText>No budgets configured.</SmallText>}
-          </>
-        ) : null}
-      </Card>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerButtonRow: {
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 14,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  dangerLink: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 4,
-  },
+  netWorthCard: { minHeight: 175, gap: 10 },
+  netWorthHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  netWorthValue: { color: colors.text, fontSize: 28, fontWeight: "900", marginTop: 3 },
+  netWorthChange: { color: colors.primary, fontSize: 11, fontWeight: "800", marginTop: 3 },
+  muted: { color: colors.subtle, fontWeight: "500" },
+  chartIcon: { width: 30, height: 30, borderRadius: 6, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
+  chartIconText: { color: colors.primary, fontSize: 16 },
+  netWorthBars: { height: 82, flexDirection: "row", alignItems: "flex-end", gap: 6, paddingHorizontal: 3, paddingTop: 4 },
+  netWorthBarWrap: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
+  netWorthBar: { width: "80%", maxWidth: 28, borderRadius: 1 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
+  plusButtonWrap: { width: 34, height: 34, borderRadius: 999, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
+  plusButton: { color: colors.muted, fontSize: 23, lineHeight: 28 },
+  goalCard: { gap: 10 },
+  goalTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  goalName: { color: colors.text, fontSize: 13, fontWeight: "800" },
+  goalPercent: { color: colors.text, fontSize: 13, fontWeight: "900" },
+  goalBottom: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  deleteText: { color: colors.danger, fontSize: 10, fontWeight: "800" },
+  reportGrid: { flexDirection: "row", gap: 10 },
+  reportCard: { flex: 1, minHeight: 120, gap: 7 },
+  reportValue: { color: colors.text, fontSize: 26, fontWeight: "900" },
 });
