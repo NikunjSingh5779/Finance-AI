@@ -130,22 +130,13 @@ export default function PlanningScreen() {
     }
   };
 
-  const deleteGoal = (goal: Goal) => {
-    Alert.alert("Delete goal", "Delete " + goal.name + "?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await api.deleteGoal(goal.id);
-            setGoals((items) => items.filter((item) => item.id !== goal.id));
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not delete goal.");
-          }
-        },
-      },
-    ]);
+  const deleteGoal = async (goal: Goal) => {
+    try {
+      await api.deleteGoal(goal.id);
+      setGoals((items) => items.filter((item) => item.id !== goal.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete goal.");
+    }
   };
 
   const createBudget = async () => {
@@ -168,22 +159,13 @@ export default function PlanningScreen() {
     }
   };
 
-  const deleteBudget = (budget: Budget) => {
-    Alert.alert("Delete budget", "Delete the " + budget.category + " budget?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await api.deleteBudget(budget.category);
-            setBudgets((items) => items.filter((item) => item.id !== budget.id));
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not delete budget.");
-          }
-        },
-      },
-    ]);
+  const deleteBudget = async (budget: Budget) => {
+    try {
+      await api.deleteBudget(budget.category);
+      setBudgets((items) => items.filter((item) => item.id !== budget.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete budget.");
+    }
   };
 
   const refresh = async () => {
