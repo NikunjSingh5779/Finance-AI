@@ -26,7 +26,7 @@ import {
   SectionTitle,
   SmallText,
 } from "../src/components";
-import { currentMonth, formatDate, useFinance } from "../src/AppContext";
+import { formatDate, useFinance } from "../src/AppContext";
 import type { Account, Transaction } from "../src/types";
 import { colors } from "../src/theme";
 
@@ -211,6 +211,11 @@ export default function TransactionsScreen() {
     ]);
   };
 
+  const quickAdd = async () => {
+    setEditingId(null);
+    await saveTransaction();
+  };
+
   const deleteAll = () => {
     Alert.alert(
       "Delete all transactions",
@@ -341,6 +346,56 @@ export default function TransactionsScreen() {
 
         <Input label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or category..." />
         <ChipRow values={["All", "Income", "Expense"]} selected={filter} onSelect={(value) => setFilter(value as typeof filter)} />
+
+        <Card style={styles.quickAddCard}>
+          <View style={styles.quickHeader}>
+            <View>
+              <Text style={styles.quickTitle}>Quick Add</Text>
+              <SmallText>Record a transaction without opening a new screen.</SmallText>
+            </View>
+            <Pressable onPress={openNew} style={styles.quickOpenButton}>
+              <Text style={styles.quickOpenText}>Open form</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.quickTypeRow}>
+            <Pressable onPress={() => setType("expense")} style={[styles.quickType, type === "expense" && styles.quickTypeActive]}>
+              <Text style={[styles.quickTypeText, type === "expense" && styles.quickTypeTextActive]}>Expense</Text>
+            </Pressable>
+            <Pressable onPress={() => setType("income")} style={[styles.quickType, type === "income" && styles.quickTypeActive]}>
+              <Text style={[styles.quickTypeText, type === "income" && styles.quickTypeTextActive]}>Income</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.quickRow}>
+            <View style={{ flex: 1 }}>
+              <Input label="Amount (₹)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="2500" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input label="Category" value={category} onChangeText={setCategory} placeholder="Food" />
+            </View>
+          </View>
+
+          <Input label="Description (e.g. Grocery shopping)" value={description} onChangeText={setDescription} placeholder="What was this for?" />
+
+          <View style={styles.quickRow}>
+            <View style={{ flex: 1 }}>
+              <Input label="Date" value={date} onChangeText={setDate} placeholder="Today" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.quickAccountLabel}><Text style={styles.inputLikeLabel}>Account</Text></View>
+              <ChipRow
+                values={["None", ...accounts.map((account) => String(account.id) + ": " + account.name)]}
+                selected={accountId ? String(accountId) + ": " + (accounts.find((a) => a.id === Number(accountId))?.name ?? "") : "None"}
+                onSelect={(value) => setAccountId(value === "None" ? null : value.split(":")[0] ?? null)}
+              />
+            </View>
+          </View>
+
+          <Pressable onPress={() => void quickAdd()} style={styles.quickAddButton}>
+            <Text style={styles.quickAddButtonText}>Add transaction</Text>
+          </Pressable>
+        </Card>
 
         <View style={styles.countRow}>
           <SectionTitle>{filtered.length.toLocaleString("en-IN")} shown</SectionTitle>
@@ -491,6 +546,22 @@ const styles = StyleSheet.create({
   deleteAll: { minHeight: 38, paddingHorizontal: 11, borderRadius: 8, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center" },
   deleteAllText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   countRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  quickAddCard: { gap: 10, padding: 13 },
+  quickHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
+  quickTitle: { color: colors.text, fontSize: 13, fontWeight: "900" },
+  quickOpenButton: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 7, backgroundColor: colors.primary },
+  quickOpenText: { color: colors.background, fontSize: 9, fontWeight: "800" },
+  quickTypeRow: { flexDirection: "row", backgroundColor: colors.surfaceRaised, borderRadius: 9, padding: 3 },
+  quickType: { flex: 1, minHeight: 31, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+  quickTypeActive: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderStrong },
+  quickTypeText: { color: colors.muted, fontSize: 10, fontWeight: "700" },
+  quickTypeTextActive: { color: colors.text },
+  quickRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+  quickAccountLabel: { marginBottom: 4 },
+  inputLikeLabel: { color: colors.muted, fontSize: 9, fontWeight: "700" },
+  quickAddButton: { minHeight: 38, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  quickAddButtonText: { color: colors.background, fontSize: 11, fontWeight: "900" },
+
   transactionCard: { paddingVertical: 11 },
   transactionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   txnIcon: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
