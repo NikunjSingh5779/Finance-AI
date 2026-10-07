@@ -19,7 +19,7 @@ import {
   SmallText,
 } from "../src/components";
 import { currentMonth, useFinance } from "../src/AppContext";
-import type { Budget, Goal, MonthlyReport, NetWorthPoint, NetWorthSnapshot } from "../src/types";
+import type { Budget, Goal, MonthlyReport, NetWorthPoint, NetWorthSnapshot, Summary } from "../src/types";
 import { colors } from "../src/theme";
 
 function parseCSVLine(line: string): string[] {
@@ -58,6 +58,7 @@ export default function PlanningScreen() {
   const [netWorth, setNetWorth] = useState<NetWorthSnapshot | null>(null);
   const [history, setHistory] = useState<NetWorthPoint[]>([]);
   const [report, setReport] = useState<MonthlyReport | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [month, setMonth] = useState(currentMonth());
   const [goalForm, setGoalForm] = useState(false);
   const [budgetForm, setBudgetForm] = useState(false);
@@ -84,11 +85,13 @@ export default function PlanningScreen() {
         api.budgets(),
         api.netWorth(),
         api.netWorthHistory(12),
+        api.summary("1m"),
       ]);
       setGoals(goalItems);
       setBudgets(budgetItems);
       setNetWorth(net);
       setHistory(historyResult.history);
+      setSummary(summaryResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load planning data.");
     } finally {
@@ -412,22 +415,27 @@ export default function PlanningScreen() {
       {budgets.length === 0 ? (
         <Card><EmptyState message="No budgets yet." /></Card>
       ) : (
-        budgets.map((budget) => (
-          <Card key={budget.id}>
-            <View style={styles.rowBetween}>
-              <View>
-                <Text style={styles.cardTitle}>{budget.category}</Text>
-                <SmallText>Monthly limit</SmallText>
+        budgets.map((budget) => {
+          const spent = Number(summary?.category_totals?.[budget.category] ?? 0);
+          const pct = budget.limit_amt > 0 ? Math.min(100, (spent / budget.limit_amt) * 100) : 0;
+          const over = spent >= budget.limit_amt;
+          return (
+            <Card key={budget.id}>
+              <View style={styles.rowBetween}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{budget.category}</Text>
+                  <SmallText>{over ? "Over budget" : "Remaining ₹" + Math.max(0, budget.limit_amt - spent).toLocaleString("en-IN")}</SmallText>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Money value={spent} size={18} />
+                  <SmallText>of ₹{budget.limit_amt.toLocaleString("en-IN")}</SmallText>
+                </View>
               </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Money value={budget.limit_amt} size={18} />
-                <Pressable onPress={() => deleteBudget(budget)}>
-                  <Text style={styles.dangerLink}>Delete</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Card>
-        ))
+              <ProgressBar value={pct} tone={over ? "danger" : pct >= 80 ? "warning" : "primary"} />
+              <Pressable onPress={() => deleteBudget(budget)}><Text style={styles.dangerLink}>Delete</Text></Pressable>
+            </Card>
+          );
+        })
       )}
 
       <SectionTitle>12-month net worth</SectionTitle>
