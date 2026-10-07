@@ -145,11 +145,13 @@ export default function AIScreen() {
             style={message.role === "user" ? styles.userWrap : styles.assistantWrap}
           >
             <Card style={message.role === "user" ? styles.userCard : styles.assistantCard}>
-              <SmallText>{message.role === "user" ? "You" : "FinanceAI"}</SmallText>
               {message.role === "user" ? (
-                <Text style={styles.messageText}>{message.content}</Text>
+                <Text style={styles.userMessageText}>{message.content}</Text>
               ) : (
-                <FormattedAIMessage content={message.content} />
+                <>
+                  <SmallText>FinanceAI</SmallText>
+                  <FormattedAIMessage content={message.content} />
+                </>
               )}
             </Card>
           </View>
@@ -198,23 +200,32 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   userWrap: {
-    alignItems: "flex-end",
+    width: "100%",
+    alignItems: "stretch",
   },
   assistantWrap: {
-    alignItems: "flex-start",
+    width: "100%",
+    alignItems: "stretch",
   },
   userCard: {
-    maxWidth: "92%",
-    backgroundColor: colors.primarySoft,
-    borderColor: "rgba(34,197,94,0.30)",
+    width: "100%",
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
   },
   assistantCard: {
-    maxWidth: "96%",
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 12,
   },
-  messageText: {
-    color: colors.text,
+  userMessageText: {
+    color: colors.background,
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 20,
+    fontWeight: "500",
   },
   composer: {
     flexDirection: "row",
@@ -247,7 +258,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   formattedMessage: {
-    gap: 7,
+    gap: 8,
   },
   headingLine: {
     flexDirection: "row",
@@ -259,8 +270,8 @@ const styles = StyleSheet.create({
     color: colors.primary,
     backgroundColor: colors.primarySoft,
     borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     fontSize: 11,
     fontWeight: "800",
   },
