@@ -5,36 +5,41 @@ import { AppProvider } from "../src/AppContext";
 import { colors } from "../src/theme";
 
 function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
-  return <Text style={{ color, fontSize: 18, fontWeight: "800" }}>{glyph}</Text>;
+  return <Text style={{ color, fontSize: 17, fontWeight: "700" }}>{glyph}</Text>;
 }
 
 export default function RootLayout() {
   return (
     <AppProvider>
-      <StatusBar style="light" />
+      <StatusBar style="light" backgroundColor={colors.background} />
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.muted,
+          tabBarInactiveTintColor: colors.subtle,
           tabBarStyle: {
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
-            height: 66,
-            paddingTop: 7,
-            paddingBottom: 8,
+            borderTopWidth: 1,
+            height: 64,
+            paddingTop: 6,
+            paddingBottom: 7,
           },
           tabBarLabelStyle: {
             fontSize: 10,
-            fontWeight: "700",
+            fontWeight: "600",
+          },
+          tabBarItemStyle: {
+            borderRadius: 8,
+            marginHorizontal: 2,
           },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: ({ color }) => <TabIcon glyph="◉" color={color} /> }} />
+        <Tabs.Screen name="index" options={{ title: "Overview", tabBarIcon: ({ color }) => <TabIcon glyph="⊞" color={color} /> }} />
         <Tabs.Screen name="transactions" options={{ title: "Transactions", tabBarIcon: ({ color }) => <TabIcon glyph="⇄" color={color} /> }} />
         <Tabs.Screen name="planning" options={{ title: "Planning", tabBarIcon: ({ color }) => <TabIcon glyph="◎" color={color} /> }} />
-        <Tabs.Screen name="insights" options={{ title: "Insights", tabBarIcon: ({ color }) => <TabIcon glyph="✦" color={color} /> }} />
-        <Tabs.Screen name="ai" options={{ title: "AI", tabBarIcon: ({ color }) => <TabIcon glyph="◇" color={color} /> }} />
+        <Tabs.Screen name="insights" options={{ title: "Insights", tabBarIcon: ({ color }) => <TabIcon glyph="◈" color={color} /> }} />
+        <Tabs.Screen name="ai" options={{ title: "AI Assistant", tabBarIcon: ({ color }) => <TabIcon glyph="✦" color={color} /> }} />
         <Tabs.Screen name="settings" options={{ title: "Settings", tabBarIcon: ({ color }) => <TabIcon glyph="⚙" color={color} /> }} />
       </Tabs>
     </AppProvider>
