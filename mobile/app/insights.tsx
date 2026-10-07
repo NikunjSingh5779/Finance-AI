@@ -110,7 +110,7 @@ export default function InsightsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Financial Insights" subtitle="Understand your spending patterns and financial health." />
+      <Header title="Financial Insights" />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.aiSummary}>
