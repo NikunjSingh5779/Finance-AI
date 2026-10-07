@@ -48,3 +48,7 @@ mobile/.expo/
 mobile/.expo-shared/
 mobile/dist/
 mobile/web-build/
+
+# Netlify build output
+netlify-dist/
+.netlify/
