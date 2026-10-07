@@ -1049,3 +1049,906 @@
       await refreshAll();
       showToast("Transaction deleted.");
     } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function deleteAllTransactions() {
+    try {
+      const result = await apiFetch("/transactions/all", {method: "DELETE"});
+      await refreshAll();
+      showToast(`${result.deleted || 0} transaction(s) deleted.`);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function addBudget() {
+    const category = $("b-cat").value.trim();
+    const limit = Number($("b-limit").value);
+    if (!category || !Number.isFinite(limit) || limit <= 0) {
+      showToast("Enter a valid category and monthly limit.", "error");
+      return;
+    }
+
+    try {
+      await apiFetch("/budgets", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({category, limit_amt: limit})
+      });
+      $("b-cat").value = "";
+      $("b-limit").value = "";
+      await refreshAll();
+      showToast("Budget saved.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function deleteBudget(category) {
+    try {
+      await apiFetch("/budgets/" + encodeURIComponent(category), {method: "DELETE"});
+      await refreshAll();
+      showToast("Budget removed.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  function openAccountModal(data = null) {
+    editingAccountId = data ? data.id : null;
+    $("account-modal-title").textContent = data ? "Edit Account" : "Add Account";
+    $("ac-name").value = data ? data.name : "";
+    $("ac-balance").value = data ? data.balance : "";
+    $("ac-type").value = data ? data.type : "checking";
+    $("modal-account").classList.add("open");
+  }
+
+  function closeAccountModal() {
+    $("modal-account").classList.remove("open");
+    editingAccountId = null;
+  }
+
+  async function saveAccount() {
+    const name = $("ac-name").value.trim();
+    const balance = Number($("ac-balance").value);
+    const type = $("ac-type").value;
+
+    if (!name || !Number.isFinite(balance)) {
+      showToast("Enter a valid account name and initial balance.", "error");
+      return;
+    }
+
+    try {
+      await apiFetch(
+        editingAccountId ? "/accounts/" + editingAccountId : "/accounts",
+        {
+          method: editingAccountId ? "PUT" : "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name, balance, type})
+        }
+      );
+      closeAccountModal();
+      await refreshAll();
+      showToast(editingAccountId ? "Account updated." : "Account created.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function deleteAccount(id) {
+    try {
+      await apiFetch("/accounts/" + id, {method: "DELETE"});
+      await refreshAll();
+      showToast("Account deleted.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  function editAccount(id) {
+    const account = accountsData.find(item => item.id === id);
+    if (account) openAccountModal(account);
+  }
+
+  function parseCSVLine(line) {
+    const result = [];
+    let current = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === "," && !quoted) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  function normalizeDate(raw) {
+    if (!raw) return new Date().toISOString().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+    const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (match) {
+      let [, month, day, year] = match;
+      if (year.length === 2) year = (Number(year) > 50 ? "19" : "20") + year;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime())
+      ? new Date().toISOString().slice(0, 10)
+      : parsed.toISOString().slice(0, 10);
+  }
+
+  function exportCSV() {
+    window.location.href = "/transactions/export.csv";
+  }
+
+  async function importCSV(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      if (lines.length < 2) {
+        showToast("CSV has no data rows.", "error");
+        return;
+      }
+
+      const headers = parseCSVLine(lines[0]).map(header =>
+        header.toLowerCase().replace(/[^a-z0-9_]/g, "")
+      );
+      const rows = [];
+
+      for (let index = 1; index < lines.length; index += 1) {
+        const values = parseCSVLine(lines[index]);
+        const row = {};
+        headers.forEach((header, position) => {
+          row[header] = (values[position] || "").trim();
+        });
+
+        const amount = Math.abs(Number(row.amount));
+        const category = row.category || row.cat || "";
+        if (!Number.isFinite(amount) || amount <= 0 || !category) continue;
+
+        rows.push({
+          type: row.type === "income" ? "income" : "expense",
+          amount,
+          category,
+          description: row.description || row.desc || row.note || category,
+          date: normalizeDate(row.date),
+          account_id: row.account_id ? Number(row.account_id) : null
+        });
+      }
+
+      input.value = "";
+      if (!rows.length) {
+        showToast("No valid rows found.", "error");
+        return;
+      }
+
+      const result = await apiFetch("/transactions/import", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(rows)
+      });
+
+      showToast(`Imported ${result.imported || result.created?.length || 0} transaction(s).`);
+      await refreshAll();
+    } catch (error) {
+      input.value = "";
+      showToast("Import failed: " + error.message, "error");
+    }
+  }
+
+  function filterThisMonth() {
+    selectedRange = "1M";
+    isAllView = false;
+    syncTopbarRangeButtons();
+    updateDashboardByRange();
+    renderTransactions();
+    $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
+      month: "long", year: "numeric"
+    });
+  }
+
+  function filterAllTime() {
+    selectedRange = "All";
+    isAllView = true;
+    syncTopbarRangeButtons();
+    updateDashboardByRange();
+    renderTransactions();
+    $("cat-period").textContent = "All time";
+  }
+
+  function showAllExpenses() {
+    isAllView = true;
+    renderCatChart(getCategoryTotals(txnsData));
+    updateBudgetUI(txnsData);
+    $("cat-period").textContent = "All time";
+    $("view-all-expenses").textContent = "This month";
+  }
+
+  function showMonthlyExpenses() {
+    isAllView = false;
+    const current = getFilteredTransactions();
+    renderCatChart(getCategoryTotals(current));
+    updateBudgetUI(current);
+    $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
+      month: "long", year: "numeric"
+    });
+    $("view-all-expenses").textContent = "View all";
+  }
+
+  function setRange(range, element) {
+    selectedRange = range;
+    document.querySelectorAll(".time-btn").forEach(button =>
+      button.classList.remove("active")
+    );
+    element?.classList.add("active");
+    syncTopbarRangeButtons();
+    updateDashboardByRange();
+  }
+
+  function setGreeting() {
+    const hour = new Date().getHours();
+    $("greeting").textContent =
+      hour < 12 ? "Good morning" :
+      hour < 17 ? "Good afternoon" : "Good evening";
+  }
+
+  function toggleTheme() {
+    const light = document.body.classList.toggle("light");
+    localStorage.setItem("theme", light ? "light" : "dark");
+  }
+
+  function toggleSidebar() {
+    document.body.classList.toggle("sidebar-open");
+  }
+
+  function quickAsk(text) {
+    $("chat-input").value = text;
+    sendChat();
+  }
+
+  async function sendChat() {
+    const input = $("chat-input");
+    const chat = $("chat-msgs");
+    const message = input.value.trim();
+    if (!message || !chat) return;
+
+    const userWrap = document.createElement("div");
+    userWrap.className = "chat-msg user";
+    const userBubble = document.createElement("div");
+    userBubble.className = "chat-bubble user";
+    userBubble.textContent = message;
+    userWrap.appendChild(userBubble);
+    chat.appendChild(userWrap);
+
+    input.value = "";
+
+    const typing = document.createElement("div");
+    typing.className = "chat-msg ai";
+    typing.id = "typing";
+    const typingBubble = document.createElement("div");
+    typingBubble.className = "chat-bubble ai";
+    typingBubble.textContent = "I'm analyzing your finances... 📊";
+    typing.appendChild(typingBubble);
+    chat.appendChild(typing);
+    chat.scrollTop = chat.scrollHeight;
+
+    try {
+      const result = await apiFetch("/ai/advice", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question: message, messages: []})
+      });
+
+      typing.remove();
+      const aiWrap = document.createElement("div");
+      aiWrap.className = "chat-msg ai";
+      const aiBubble = document.createElement("div");
+      aiBubble.className = "chat-bubble ai";
+      renderAiMarkdown(aiBubble, result.advice || result.reply || "No response");
+      aiWrap.appendChild(aiBubble);
+      chat.appendChild(aiWrap);
+    } catch (error) {
+      typing.remove();
+      const errorWrap = document.createElement("div");
+      errorWrap.className = "chat-msg ai";
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble ai";
+      bubble.textContent = "⚠️ AI is currently unavailable.";
+      errorWrap.appendChild(bubble);
+      chat.appendChild(errorWrap);
+    }
+
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function createInsightsPage() {
+    if ($("page-insights")) return;
+
+    const content = $("content");
+    const page = document.createElement("div");
+    page.className = "page";
+    page.id = "page-insights";
+
+    const hero = document.createElement("div");
+    hero.className = "insights-hero";
+
+    const heroText = document.createElement("div");
+    const eyebrow = document.createElement("div");
+    eyebrow.className = "txn-card-label";
+    eyebrow.textContent = "Finance intelligence";
+    const title = document.createElement("div");
+    title.className = "insights-title";
+    title.textContent = "Financial Health & Insights";
+    const subtitle = document.createElement("div");
+    subtitle.className = "insights-subtitle";
+    subtitle.textContent = "Explainable signals calculated from your recorded finances.";
+    heroText.append(eyebrow, title, subtitle);
+
+    const refresh = document.createElement("button");
+    refresh.className = "insights-refresh";
+    refresh.textContent = "↻ Refresh";
+    refresh.addEventListener("click", loadInsightsPage);
+    hero.append(heroText, refresh);
+
+    const health = document.createElement("div");
+    health.className = "health-grid";
+    health.id = "health-grid";
+
+    const columns = document.createElement("div");
+    columns.className = "insights-columns";
+
+    const recurring = document.createElement("section");
+    recurring.className = "insight-panel";
+    recurring.innerHTML = '<div class="panel-heading"><span>Recurring expenses</span><span class="panel-count" id="recurring-count">0</span></div><div id="recurring-list"></div>';
+
+    const anomalies = document.createElement("section");
+    anomalies.className = "insight-panel";
+    anomalies.innerHTML = '<div class="panel-heading"><span>Unusual spending</span><span class="panel-count" id="anomaly-count">0</span></div><div id="anomaly-list"></div>';
+
+    columns.append(recurring, anomalies);
+
+    const note = document.createElement("div");
+    note.className = "insight-note";
+    note.textContent = "These are analytical signals, not investment or financial advice.";
+
+    page.append(hero, health, columns, note);
+    content.appendChild(page);
+  }
+
+  function activateInsights() {
+    currentPage = "insights";
+    document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+    $("page-insights").classList.add("active");
+    $("insights-nav-item").classList.add("active");
+    $("topbar-title").textContent = "Financial Insights";
+    $("content").style.overflow = "";
+    $("content").style.padding = "";
+    loadInsightsPage();
+  }
+
+  async function loadInsightsPage() {
+    createInsightsPage();
+    try {
+      const payload = await apiFetch("/api/insights/dashboard");
+      renderHealth(payload.health);
+      renderRecurring(payload.recurring || [], payload.counts?.recurring || 0);
+      renderAnomalies(payload.anomalies || [], payload.counts?.anomalies || 0);
+    } catch (error) {
+      const grid = $("health-grid");
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+      const err = document.createElement("div");
+      err.className = "insight-error";
+      err.textContent = "Could not load insights: " + error.message;
+      grid.appendChild(err);
+    }
+  }
+
+  function renderHealth(health) {
+    const grid = $("health-grid");
+    if (!grid) return;
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+    const scoreCard = document.createElement("div");
+    scoreCard.className = "health-score-card";
+    const score = document.createElement("div");
+    score.className = "health-score";
+    score.textContent = Number(health.score || 0);
+    const grade = document.createElement("div");
+    grade.className = "health-grade";
+    grade.textContent = health.grade || "Needs attention";
+    const metrics = document.createElement("div");
+    metrics.className = "health-metrics";
+    metrics.textContent =
+      `Savings ${Number(health.metrics?.savings_rate || 0).toFixed(1)}% · Cash buffer ${Number(health.metrics?.months_of_buffer || 0).toFixed(1)} months`;
+    scoreCard.append(score, grade, metrics);
+
+    const details = document.createElement("div");
+    details.className = "health-details";
+    const heading = document.createElement("div");
+    heading.className = "panel-heading";
+    heading.textContent = "Score breakdown";
+    details.appendChild(heading);
+
+    Object.entries(health.components || {}).forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.className = "score-row";
+      const name = document.createElement("span");
+      name.textContent = key.replaceAll("_", " ");
+      const val = document.createElement("strong");
+      val.textContent = Number(value).toFixed(1);
+      row.append(name, val);
+      details.appendChild(row);
+    });
+
+    grid.append(scoreCard, details);
+  }
+
+  function renderRecurring(items, count) {
+    const list = $("recurring-list");
+    const badge = $("recurring-count");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (badge) badge.textContent = count;
+
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "insight-empty";
+      empty.textContent = "No recurring monthly expenses detected yet.";
+      list.appendChild(empty);
+      return;
+    }
+
+    items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "signal-row";
+      const left = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = item.description || item.category;
+      const meta = document.createElement("div");
+      meta.className = "signal-meta";
+      meta.textContent =
+        `${item.occurrences} occurrences · every ~${item.median_interval_days} days · last ${item.last_date}`;
+      left.append(title, meta);
+      const amount = document.createElement("strong");
+      amount.textContent = fmt(item.estimated_monthly_cost);
+      row.append(left, amount);
+      list.appendChild(row);
+    });
+  }
+
+  function renderAnomalies(items, count) {
+    const list = $("anomaly-list");
+    const badge = $("anomaly-count");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (badge) badge.textContent = count;
+
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "insight-empty";
+      empty.textContent = "No unusually large expenses detected.";
+      list.appendChild(empty);
+      return;
+    }
+
+    items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "signal-row";
+      const left = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = item.description || item.category;
+      const meta = document.createElement("div");
+      meta.className = "signal-meta";
+      meta.textContent =
+        `${item.category} · ${item.date} · ${item.multiple_of_average}× category average`;
+      left.append(title, meta);
+      const amount = document.createElement("strong");
+      amount.textContent = fmt(item.amount);
+      if (item.severity === "high") amount.className = "signal-danger";
+      row.append(left, amount);
+      list.appendChild(row);
+    });
+  }
+
+  let goalsData = [];
+  let netWorthData = {};
+  let netWorthHistory = [];
+  let monthlyReportData = {};
+  let netWorthChart = null;
+
+  function createPlanningPage() {
+    if ($("page-planning")) return;
+    const page = document.createElement("div");
+    page.className = "page";
+    page.id = "page-planning";
+
+    const hero = document.createElement("div");
+    hero.className = "planning-hero";
+    const heroText = document.createElement("div");
+    const eyebrow = document.createElement("div");
+    eyebrow.className = "txn-card-label";
+    eyebrow.textContent = "Planning & wealth";
+    const title = document.createElement("div");
+    title.className = "planning-title";
+    title.textContent = "Goals, Net Worth & Monthly Report";
+    const subtitle = document.createElement("div");
+    subtitle.className = "planning-subtitle";
+    subtitle.textContent = "Track what you are building, what you own, and how the month went.";
+    heroText.append(eyebrow, title, subtitle);
+    const refresh = document.createElement("button");
+    refresh.className = "planning-refresh";
+    refresh.textContent = "↻ Refresh";
+    refresh.addEventListener("click", loadPlanningPage);
+    hero.append(heroText, refresh);
+
+    const wealth = document.createElement("section");
+    wealth.className = "wealth-card";
+    wealth.id = "net-worth-card";
+
+    const goalsPanel = document.createElement("section");
+    goalsPanel.className = "planning-panel";
+    const goalsHeader = document.createElement("div");
+    goalsHeader.className = "planning-panel-header";
+    const goalsTitle = document.createElement("div");
+    goalsTitle.className = "planning-panel-title";
+    goalsTitle.textContent = "Financial goals";
+    goalsHeader.appendChild(goalsTitle);
+    const form = document.createElement("div");
+    form.className = "goal-form";
+    [["goal-name","text","Goal name"],["goal-target","number","Target ₹"],["goal-current","number","Current ₹"],["goal-date","date","Target date"],["goal-category","text","Category"]].forEach(([id,type,placeholder]) => {
+      const input = document.createElement("input");
+      input.id = id; input.type = type; input.placeholder = placeholder;
+      if (id === "goal-category") input.value = "Savings";
+      if (type === "number") { input.min = id === "goal-target" ? "0.01" : "0"; input.step = "0.01"; }
+      form.appendChild(input);
+    });
+    const addButton = document.createElement("button");
+    addButton.className = "btn-add";
+    addButton.textContent = "Add goal";
+    addButton.addEventListener("click", createGoal);
+    form.appendChild(addButton);
+    const goalsList = document.createElement("div");
+    goalsList.id = "goals-list";
+    goalsPanel.append(goalsHeader, form, goalsList);
+
+    const reportPanel = document.createElement("section");
+    reportPanel.className = "planning-panel";
+    const reportHeader = document.createElement("div");
+    reportHeader.className = "planning-panel-header";
+    const reportTitle = document.createElement("div");
+    reportTitle.className = "planning-panel-title";
+    reportTitle.textContent = "Monthly report";
+    const month = document.createElement("input");
+    month.id = "report-month"; month.type = "month";
+    month.addEventListener("change", loadMonthlyReport);
+    reportHeader.append(reportTitle, month);
+    const report = document.createElement("div"); report.id = "monthly-report";
+    reportPanel.append(reportHeader, report);
+
+    const columns = document.createElement("div");
+    columns.className = "planning-columns";
+    columns.append(goalsPanel, reportPanel);
+    page.append(hero, wealth, columns);
+    $("content").appendChild(page);
+  }
+
+  function activatePlanning() {
+    currentPage = "planning";
+    document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+    $("page-planning").classList.add("active");
+    $("planning-nav-item").classList.add("active");
+    $("topbar-title").textContent = "Planning & Wealth";
+    $("content").style.overflow = "";
+    $("content").style.padding = "";
+    loadPlanningPage();
+  }
+
+  async function loadPlanningPage() {
+    createPlanningPage();
+    if (!$("report-month").value) $("report-month").value = new Date().toISOString().slice(0, 7);
+    try {
+      const [goals, netWorth, history] = await Promise.all([
+        apiFetch("/goals"),
+        apiFetch("/api/net-worth"),
+        apiFetch("/api/net-worth/history?months=12")
+      ]);
+      goalsData = goals;
+      netWorthData = netWorth;
+      netWorthHistory = history.history || [];
+      renderGoals();
+      renderNetWorth();
+      await loadMonthlyReport();
+    } catch (error) { showToast("Could not load planning data: " + error.message, "error"); }
+  }
+
+  function renderNetWorth() {
+    const card = $("net-worth-card"); if (!card) return;
+    while (card.firstChild) card.removeChild(card.firstChild);
+    const header = document.createElement("div"); header.className = "wealth-header";
+    const title = document.createElement("div"); title.className = "planning-panel-title"; title.textContent = "Current net worth";
+    const note = document.createElement("span"); note.className = "wealth-note"; note.textContent = "Derived from account balances";
+    header.append(title, note);
+    const summary = document.createElement("div"); summary.className = "wealth-summary";
+    [["Net worth",netWorthData.net_worth,"net"],["Assets",netWorthData.asset_total,"asset"],["Liabilities",netWorthData.liability_total,"liability"]].forEach(([label,value,type]) => {
+      const metric = document.createElement("div"); metric.className = "wealth-metric";
+      const l = document.createElement("div"); l.className = "wealth-metric-label"; l.textContent = label;
+      const v = document.createElement("div"); v.className = "wealth-metric-value " + type; v.textContent = fmtDec(value);
+      metric.append(l,v); summary.appendChild(metric);
+    });
+    const trendWrap = document.createElement("div");
+    trendWrap.className = "wealth-trend-wrap";
+    const trendTitle = document.createElement("div");
+    trendTitle.className = "report-list-title";
+    trendTitle.textContent = "Net worth trend";
+    const canvas = document.createElement("canvas");
+    canvas.id = "net-worth-chart";
+    canvas.height = 90;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "Net worth trend for the last twelve months");
+    trendWrap.append(trendTitle, canvas);
+
+    const breakdown = document.createElement("div"); breakdown.className = "wealth-breakdown";
+    [...(netWorthData.assets || []), ...(netWorthData.liabilities || [])].forEach(item => {
+      const row=document.createElement("div"); row.className="wealth-row";
+      const name=document.createElement("span"); name.textContent=item.name;
+      const kind=document.createElement("span"); kind.className="wealth-type"; kind.textContent=item.type;
+      const amount=document.createElement("strong"); amount.textContent=fmtDec(item.type === "credit" ? -item.balance : item.balance);
+      row.append(name,kind,amount); breakdown.appendChild(row);
+    });
+    if (netWorthChart) netWorthChart.destroy();
+    const chart = $("net-worth-chart");
+    if (chart && typeof Chart !== "undefined" && netWorthHistory.length) {
+      netWorthChart = new Chart(chart.getContext("2d"), {
+        type: "line",
+        data: {
+          labels: netWorthHistory.map(item => item.month),
+          datasets: [{
+            data: netWorthHistory.map(item => item.net_worth),
+            borderColor: "#22c55e",
+            backgroundColor: "rgba(34,197,94,.08)",
+            borderWidth: 2,
+            fill: true,
+            tension: .35,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false }
+          }
+        }
+      });
+    }
+
+    card.append(header,summary,trendWrap,breakdown);
+  }
+
+  function renderGoals() {
+    const list=$("goals-list"); if(!list) return;
+    while(list.firstChild) list.removeChild(list.firstChild);
+    if(!goalsData.length){ const empty=document.createElement("div"); empty.className="planning-empty"; empty.textContent="No financial goals yet. Add your first target above."; list.appendChild(empty); return; }
+    goalsData.forEach(goal => {
+      const item=document.createElement("div"); item.className="goal-item";
+      const top=document.createElement("div"); top.className="goal-top";
+      const info=document.createElement("div");
+      const name=document.createElement("strong"); name.textContent=goal.name;
+      const meta=document.createElement("div"); meta.className="goal-meta"; meta.textContent=goal.category+" · "+(goal.target_date ? "Target "+goal.target_date : "No target date");
+      info.append(name,meta);
+      const status=document.createElement("span"); status.className="goal-status "+goal.status; status.textContent=goal.status;
+      top.append(info,status);
+      const pr=document.createElement("div"); pr.className="goal-progress-row";
+      const amount=document.createElement("span"); amount.textContent=fmtDec(goal.current_amount)+" / "+fmtDec(goal.target_amount);
+      const pct=document.createElement("strong"); pct.textContent=Number(goal.progress_percent).toFixed(0)+"%"; pr.append(amount,pct);
+      const bar=document.createElement("div"); bar.className="goal-bar"; const fill=document.createElement("div"); fill.className="goal-fill"; fill.style.width=Math.min(100,Number(goal.progress_percent)||0).toFixed(1)+"%"; bar.appendChild(fill);
+      const footer=document.createElement("div"); footer.className="goal-footer";
+      const plan=document.createElement("span"); plan.textContent=goal.monthly_required ? fmtDec(goal.monthly_required)+"/month needed" : (goal.status==="completed" ? "Goal completed" : "Set a target date for a monthly plan");
+      const actions=document.createElement("div");
+      const update=document.createElement("button"); update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
+      const remove=document.createElement("button"); remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
+      actions.append(update,remove); footer.append(plan,actions);
+      item.append(top,pr,bar,footer); list.appendChild(item);
+    });
+  }
+
+  async function createGoal(){
+    const name=$("goal-name").value.trim(); const target=Number($("goal-target").value); const current=Number($("goal-current").value||0);
+    const targetDate=$("goal-date").value||null; const category=$("goal-category").value.trim()||"Savings";
+    if(!name||!Number.isFinite(target)||target<=0||!Number.isFinite(current)||current<0||current>target){showToast("Enter a valid goal and keep current amount at or below target.","error");return;}
+    try{
+      await apiFetch("/goals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,target_amount:target,current_amount:current,target_date:targetDate,category})});
+      ["goal-name","goal-target","goal-current","goal-date"].forEach(id=>$(id).value=""); $("goal-category").value="Savings";
+      await loadPlanningPage(); showToast("Goal created.");
+    }catch(error){showToast(error.message,"error");}
+  }
+
+  async function updateGoalPrompt(goal){
+    const raw=prompt("Update saved amount for "+goal.name+" (current: "+goal.current_amount+").",String(goal.current_amount));
+    if(raw===null)return; const current=Number(raw);
+    if(!Number.isFinite(current)||current<0||current>goal.target_amount){showToast("Enter a valid saved amount.","error");return;}
+    try{await apiFetch("/goals/"+goal.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({current_amount:current})}); await loadPlanningPage(); showToast("Goal updated.");}catch(error){showToast(error.message,"error");}
+  }
+
+  async function deleteGoal(id){
+    try{await apiFetch("/goals/"+id,{method:"DELETE"}); await loadPlanningPage(); showToast("Goal deleted.");}catch(error){showToast(error.message,"error");}
+  }
+
+  async function loadMonthlyReport(){
+    const month=$("report-month")?.value; if(!month)return;
+    try{monthlyReportData=await apiFetch("/api/reports/monthly?month="+encodeURIComponent(month)); renderMonthlyReport();}catch(error){showToast("Could not load monthly report: "+error.message,"error");}
+  }
+
+  function renderMonthlyReport(){
+    const container=$("monthly-report"); if(!container)return; while(container.firstChild)container.removeChild(container.firstChild);
+    const metrics=document.createElement("div"); metrics.className="report-metrics";
+    [["Income",monthlyReportData.income],["Expenses",monthlyReportData.expense],["Net cash flow",monthlyReportData.net_cash_flow],["Savings rate",Number(monthlyReportData.savings_rate||0).toFixed(1)+"%"]].forEach(([label,value])=>{
+      const metric=document.createElement("div"); metric.className="report-metric";
+      const l=document.createElement("div"); l.className="report-label"; l.textContent=label;
+      const v=document.createElement("div"); v.className="report-value"; v.textContent=typeof value==="number"?fmtDec(value):String(value); metric.append(l,v); metrics.appendChild(metric);
+    });
+    const compare=document.createElement("div"); compare.className="report-compare";
+    compare.textContent="Previous month: "+fmt(monthlyReportData.previous_month?.income||0)+" income · "+fmt(monthlyReportData.previous_month?.expense||0)+" expenses · "+fmt(monthlyReportData.previous_month?.net_cash_flow||0)+" net";
+    const list=document.createElement("div"); list.className="report-list"; const title=document.createElement("div"); title.className="report-list-title"; title.textContent="Top spending categories"; list.appendChild(title);
+    (monthlyReportData.top_categories||[]).forEach(item=>{const row=document.createElement("div");row.className="report-row";const l=document.createElement("span");l.textContent=item.category;const v=document.createElement("strong");v.textContent=fmt(item.amount);row.append(l,v);list.appendChild(row);});
+    const recurring=document.createElement("div"); recurring.className="report-recurring"; recurring.textContent=(monthlyReportData.recurring_expenses||[]).length ? "Recurring signals detected: "+monthlyReportData.recurring_expenses.length : "No recurring expense signals detected.";
+    container.append(metrics,compare,list,recurring);
+  }
+  function goPage(name, element) {
+    if (name === "insights") {
+      activateInsights();
+      return;
+    }
+    if (name === "planning") {
+      activatePlanning();
+      return;
+    }
+
+    currentPage = name;
+    document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
+    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+
+    const page = $("page-" + name);
+    if (page) page.classList.add("active");
+    if (element) element.classList.add("active");
+
+    const titles = {
+      dashboard: "Overview",
+      transactions: "Transactions",
+      budgets: "Budgets",
+      accounts: "Accounts",
+      planning: "Planning & Wealth",
+      "ai-page": "AI Assistant"
+    };
+    $("topbar-title").textContent = titles[name] || name;
+
+    const content = $("content");
+    if (name === "ai-page") {
+      content.style.overflow = "hidden";
+      content.style.padding = "0";
+    } else {
+      content.style.overflow = "";
+      content.style.padding = "";
+    }
+
+    refreshCurrentPage();
+  }
+
+  function init() {
+    setGreeting();
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "light") document.body.classList.add("light");
+
+    createInsightsPage();
+    createPlanningPage();
+
+    const navHost = document.querySelector(".sidebar > div:nth-of-type(2)");
+    if (navHost && !$("planning-nav-item")) {
+      const item = document.createElement("div");
+      item.className = "nav-item";
+      item.id = "planning-nav-item";
+      const icon = document.createElement("span");
+      icon.className = "nav-icon";
+      icon.textContent = "◎";
+      item.append(icon, document.createTextNode(" Planning & Wealth"));
+      item.addEventListener("click", activatePlanning);
+      navHost.appendChild(item);
+    }
+
+    if (navHost && !$("insights-nav-item")) {
+      const item = document.createElement("div");
+      item.className = "nav-item";
+      item.id = "insights-nav-item";
+      const icon = document.createElement("span");
+      icon.className = "nav-icon";
+      icon.textContent = "◈";
+      item.append(icon, document.createTextNode(" Financial Insights"));
+      item.addEventListener("click", activateInsights);
+      navHost.appendChild(item);
+    }
+
+    $("modal")?.addEventListener("click", event => {
+      if (event.target === $("modal")) closeModal();
+    });
+    $("modal-edit")?.addEventListener("click", event => {
+      if (event.target === $("modal-edit")) closeEditModal();
+    });
+    $("modal-account")?.addEventListener("click", event => {
+      if (event.target === $("modal-account")) closeAccountModal();
+    });
+    $("search-input")?.addEventListener("input", renderTransactions);
+    $("view-all-expenses")?.addEventListener("click", () => {
+      if (isAllView) showMonthlyExpenses();
+      else showAllExpenses();
+    });
+
+    $("t-date").value = new Date().toISOString().slice(0, 10);
+    $("m-date").value = new Date().toISOString().slice(0, 10);
+    $("search-input")?.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        event.target.value = "";
+        renderTransactions();
+      }
+    });
+
+    refreshAll();
+  }
+
+  // Preserve the existing inline onclick API.
+  Object.assign(window, {
+    goPage,
+    toggleTheme,
+    toggleSidebar,
+    openModal,
+    closeModal,
+    submitModal,
+    openEditModal,
+    closeEditModal,
+    saveEdit,
+    addTransaction,
+    deleteTxn,
+    deleteAllTransactions,
+    addBudget,
+    deleteBudget,
+    openAccountModal,
+    closeAccountModal,
+    saveAccount,
+    deleteAccount,
+    editAccount,
+    importCSV,
+    exportCSV,
+    filterThisMonth,
+    setRange,
+    filterAllTime,
+    quickAsk,
+    sendChat,
+    showAllExpenses,
+    showMonthlyExpenses,
+    refreshCurrentPage
+  });
+
+  window.addEventListener("DOMContentLoaded", init);
+})();
