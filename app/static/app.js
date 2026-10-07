@@ -797,8 +797,12 @@
 
   async function loadTransactions() {
     try {
-      txnsData = await apiFetch("/transactions?skip=0&limit=5000");
-      $("txn-count-badge").textContent = txnsData.length;
+      const [transactions, countResult] = await Promise.all([
+        apiFetch("/transactions?skip=0&limit=5000"),
+        apiFetch("/transactions/count")
+      ]);
+      txnsData = transactions;
+      $("txn-count-badge").textContent = Number(countResult.count ?? txnsData.length);
       renderRecentTransactions(txnsData);
       renderTransactions();
     } catch (error) {
