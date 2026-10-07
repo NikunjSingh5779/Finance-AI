@@ -458,7 +458,7 @@
     const income = Number(summaryData.income || 0);
     const expense = Number(summaryData.expense || 0);
     const savings = Number(summaryData.savings_rate || 0);
-    const categories = getCategoryTotals(getFilteredTransactions());
+    const categories = summaryData.category_totals || {};
     const top = Object.entries(categories).sort((a, b) => b[1] - a[1])[0];
 
     const items = [];
@@ -801,56 +801,47 @@
 
   async function loadSummary() {
     try {
-      const [current, all, accounts] = await Promise.all([
-        apiFetch("/summary?period=1m"),
-        apiFetch("/summary?period=all"),
-        apiFetch("/accounts")
+      const period = selectedRange.toLowerCase();
+      const [selected, all] = await Promise.all([
+        apiFetch("/summary?period=" + encodeURIComponent(period)),
+        apiFetch("/summary?period=all")
       ]);
-      summaryData = current;
+
+      summaryData = selected;
       summaryAll = all;
-      accountsData = accounts;
-      renderAccounts();
 
-      const totalBalance = accounts.reduce(
-        (sum, account) => sum + Number(account.current_balance ?? account.balance ?? 0), 0
-      );
-
-      const income = Number(current.income || 0);
-      const expense = Number(current.expense || 0);
-      const savings = Number(current.savings_rate || 0);
-
-      const previousIncome = Number(current.income_change || 0) === 0 ? 0 :
-        income / (1 + Number(current.income_change || 0) / 100);
-      const previousExpense = Number(current.expense_change || 0) === 0 ? 0 :
-        expense / (1 + Number(current.expense_change || 0) / 100);
+      const totalBalance = Number(all.balance || 0);
+      const income = Number(selected.income || 0);
+      const expense = Number(selected.expense || 0);
+      const savings = Number(selected.savings_rate || 0);
+      const balance = Number(selected.balance || 0);
 
       $("s-bal").textContent = fmtDec(totalBalance);
       $("s-inc").textContent = fmtDec(income);
       $("s-exp").textContent = fmtDec(expense);
       $("s-sav").textContent = savings.toFixed(1) + "%";
 
-      updateBadge("badge-inc", calcChange(income, previousIncome));
-      updateBadge("badge-exp", calcChange(expense, previousExpense));
-      updateBadge("badge-bal", totalBalance ? Number(current.balance_change || 0) : 0);
+      updateBadge("badge-inc", Number(selected.income_change || 0));
+      updateBadge("badge-exp", Number(selected.expense_change || 0));
+      updateBadge("badge-bal", 0);
       updateBadge("badge-sav", 0);
 
-      $("cf-amount").textContent = fmtDec(current.balance);
+      $("cf-amount").textContent = fmtDec(balance);
+      $("cf-tag").textContent = rangeCashflowLabel(period);
       $("leg-inc").textContent = fmt(income);
       $("leg-exp").textContent = fmt(expense);
-      $("cat-total").textContent = fmt(expense);
 
-      const now = new Date();
-      $("cat-period").textContent = now.toLocaleDateString("en-US", {
-        month: "long", year: "numeric"
-      });
+      const categoryTotals = selected.category_totals || {};
+      $("cat-total").textContent = fmt(expense);
+      $("cat-period").textContent = rangeCategoryLabel(period);
 
       $("hero-sub").textContent = savings >= 20
         ? `Your savings rate is ${savings.toFixed(1)}%. Keep building consistent cash flow.`
         : `Your savings rate is ${savings.toFixed(1)}%. Let's find opportunities to reduce spending.`;
 
-      const monthly = summaryAll.monthly || {};
-      const incArr = buildSpark(monthly, "income");
-      const expArr = buildSpark(monthly, "expense");
+      const monthlyAll = summaryAll.monthly || {};
+      const incArr = buildSpark(monthlyAll, "income");
+      const expArr = buildSpark(monthlyAll, "expense");
       const balArr = incArr.map((value, index) => value - (expArr[index] || 0));
       const savArr = incArr.map((value, index) =>
         value > 0 ? ((value - (expArr[index] || 0)) / value) * 100 : 0
@@ -861,7 +852,10 @@
       makeSparkline("spark-exp", expArr.length ? expArr : [0, expense], "#ef4444");
       makeSparkline("spark-sav", savArr.length ? savArr : [0, savings], "#f59e0b");
 
-      updateDashboardByRange();
+      renderCatChart(categoryTotals);
+      renderBudgetContainer($("budget-items"), categoryTotals, false);
+      renderBudgetContainer($("budget-page-list"), categoryTotals, true);
+      renderCashflowChart(selected.monthly || {});
       renderInsightsCard();
     } catch (error) {
       console.error("Summary error", error);
@@ -870,26 +864,12 @@
   }
 
   function updateDashboardByRange() {
-    const filtered = getFilteredTransactions();
-    renderCatChart(getCategoryTotals(filtered));
-    updateBudgetUI(filtered);
-
-    if (selectedRange === "All") {
-      $("cat-period").textContent = "All time";
-    } else {
-      $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
-        month: "long", year: "numeric"
-      });
-    }
-
-    const allMonthly = summaryAll.monthly || {};
-    const entries = Object.entries(allMonthly).sort(([a], [b]) => a.localeCompare(b));
-    const count = selectedRange === "3M" ? 3 :
-      selectedRange === "6M" ? 6 :
-      selectedRange === "1Y" ? 12 :
-      selectedRange === "1M" ? 1 : entries.length;
-    const monthly = Object.fromEntries(entries.slice(-count));
-    renderCashflowChart(monthly);
+    const categoryTotals = summaryData.category_totals || {};
+    renderCatChart(categoryTotals);
+    renderBudgetContainer($("budget-items"), categoryTotals, false);
+    renderBudgetContainer($("budget-page-list"), categoryTotals, true);
+    $("cat-period").textContent = rangeCategoryLabel(selectedRange.toLowerCase());
+    renderCashflowChart(summaryData.monthly || {});
   }
 
   async function refreshAll() {
@@ -1259,49 +1239,64 @@
     selectedRange = "1M";
     isAllView = false;
     syncTopbarRangeButtons();
-    updateDashboardByRange();
     renderTransactions();
-    $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
-      month: "long", year: "numeric"
-    });
+    loadSummary();
   }
 
   function filterAllTime() {
     selectedRange = "All";
     isAllView = true;
     syncTopbarRangeButtons();
-    updateDashboardByRange();
     renderTransactions();
-    $("cat-period").textContent = "All time";
+    loadSummary();
   }
 
   function showAllExpenses() {
     isAllView = true;
-    renderCatChart(getCategoryTotals(txnsData));
-    updateBudgetUI(txnsData);
+    renderCatChart(summaryAll.category_totals || {});
     $("cat-period").textContent = "All time";
     $("view-all-expenses").textContent = "This month";
   }
 
   function showMonthlyExpenses() {
     isAllView = false;
-    const current = getFilteredTransactions();
-    renderCatChart(getCategoryTotals(current));
-    updateBudgetUI(current);
-    $("cat-period").textContent = new Date().toLocaleDateString("en-US", {
-      month: "long", year: "numeric"
-    });
+    renderCatChart(summaryData.category_totals || {});
+    updateBudgetUI(getFilteredTransactions());
+    $("cat-period").textContent = rangeCategoryLabel(selectedRange.toLowerCase());
     $("view-all-expenses").textContent = "View all";
   }
 
   function setRange(range, element) {
     selectedRange = range;
+    isAllView = range === "All";
     document.querySelectorAll(".time-btn").forEach(button =>
       button.classList.remove("active")
     );
     element?.classList.add("active");
     syncTopbarRangeButtons();
-    updateDashboardByRange();
+    loadSummary();
+  }
+
+  function rangeCashflowLabel(period) {
+    const labels = {
+      "1m": "Net this month",
+      "3m": "Net last 3 months",
+      "6m": "Net last 6 months",
+      "1y": "Net last 12 months",
+      "all": "Net all time"
+    };
+    return labels[period] || "Net cash flow";
+  }
+
+  function rangeCategoryLabel(period) {
+    const labels = {
+      "1m": new Date().toLocaleDateString("en-US", {month: "long", year: "numeric"}),
+      "3m": "Last 3 months",
+      "6m": "Last 6 months",
+      "1y": "Last 12 months",
+      "all": "All time"
+    };
+    return labels[period] || "Selected period";
   }
 
   function setGreeting() {
