@@ -25,7 +25,13 @@ $env:CORS_ORIGIN_REGEX = '^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|19
 
 $backendUrl = "http://127.0.0.1:$Port"
 
-Start-Process -FilePath $python -ArgumentList "-m uvicorn app.main:app --host 0.0.0.0 --port $Port" -WorkingDirectory $Root
+$existingListener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+if (-not $existingListener) {
+  Start-Process -FilePath $python -ArgumentList "-m uvicorn app.main:app --host 0.0.0.0 --port $Port" -WorkingDirectory $Root
+  Write-Host "Started FinanceAI backend on port $Port" -ForegroundColor Cyan
+} else {
+  Write-Host "Reusing existing listener on port $Port" -ForegroundColor Yellow
+}
 
 $healthy = $false
 for ($i = 0; $i -lt 30; $i++) {
