@@ -1,10 +1,10 @@
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Text } from "react-native";
+import { Text, type ColorValue } from "react-native";
 import { AppProvider } from "../src/AppContext";
 import { colors } from "../src/theme";
 
-function TabIcon({ glyph, color }: { glyph: string; color: string }) {
+function TabIcon({ glyph, color }: { glyph: string; color: ColorValue }) {
   return <Text style={{ color, fontSize: 18, fontWeight: "800" }}>{glyph}</Text>;
 }
 
