@@ -23,7 +23,7 @@ class NetWorthService:
                 "id": account.id,
                 "name": account.name,
                 "type": account.type,
-                "balance": round(balance, 2),
+                "balance": round(abs(balance) if account.type not in self.ASSET_TYPES else balance, 2),
             }
             if account.type in self.ASSET_TYPES:
                 assets.append(item)
@@ -71,7 +71,7 @@ class NetWorthService:
                 if account.type in self.ASSET_TYPES:
                     assets += balance
                 else:
-                    liabilities += balance
+                    liabilities += abs(balance)
 
             points.append({
                 "month": f"{year:04d}-{month_number:02d}",

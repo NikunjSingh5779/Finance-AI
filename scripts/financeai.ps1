@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet(
     "setup",
     "web",
@@ -47,10 +47,10 @@ switch ($Action) {
   "test" {
     if (Test-Path ".venv\Scripts\python.exe") {
       & ".venv\Scripts\python.exe" -m pytest -q
-      & ".venv\Scripts\python.exe" -m flake8 .
+      & ".venv\Scripts\python.exe" -m flake8 app tests
     } else {
       python -m pytest -q
-      python -m flake8 .
+      python -m flake8 app tests
     }
     Push-Location "mobile"
     try {
@@ -76,3 +76,4 @@ switch ($Action) {
     & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -Production -ApiUrl $ApiUrl
   }
 }
+
