@@ -180,8 +180,9 @@
             <div class="full-title">All Transactions</div>
             <div class="transaction-actions">
               <button class="add-btn compact-action" onclick="openModal()" aria-label="Add transaction" title="Add transaction">+ Add transaction</button>
-              <button class="add-btn compact-action secondary-action" onclick="document.getElementById('csv-input').click()" aria-label="Import CSV" title="Import CSV">📁 Import CSV</button>
-              <button class="add-btn compact-action secondary-action" onclick="exportCSV()" aria-label="Export CSV" title="Export CSV">⬇ Export CSV</button>
+              <button class="add-btn compact-action secondary-action" onclick="document.getElementById('budget-csv-input').click()" aria-label="Import budget CSV" title="Import budget CSV">📁 Import CSV</button>
+              <button class="add-btn compact-action secondary-action" onclick="exportBudgetsCSV()" aria-label="Export budgets CSV" title="Export budgets CSV">⬇ Export CSV</button>
+              <input type="file" id="budget-csv-input" accept=".csv" style="display:none" onchange="importBudgetsCSV(this)">
               <button class="add-btn compact-action danger-action" onclick="deleteAllTransactions()" aria-label="Delete all transactions" title="Delete all transactions">🗑 Delete all</button>
               <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
             </div>
