@@ -100,26 +100,13 @@ export default function TransactionsScreen() {
     }
   };
 
-  const remove = (txn: Transaction) => {
-    Alert.alert(
-      "Delete transaction",
-      "Delete " + txn.description + " for ₹" + txn.amount.toLocaleString("en-IN") + "?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.deleteTransaction(txn.id);
-              setTransactions((current) => current.filter((item) => item.id !== txn.id));
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not delete transaction.");
-            }
-          },
-        },
-      ],
-    );
+  const remove = async (txn: Transaction) => {
+    try {
+      await api.deleteTransaction(txn.id);
+      setTransactions((current) => current.filter((item) => item.id !== txn.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete transaction.");
+    }
   };
 
   const refresh = async () => {
@@ -186,7 +173,7 @@ export default function TransactionsScreen() {
         <Card><EmptyState message="No transactions match your filters." /></Card>
       ) : (
         filtered.map((txn) => (
-          <Pressable key={txn.id} onLongPress={() => remove(txn)}>
+          <Pressable key={txn.id} onPress={() => void remove(txn)}>
             <Card style={styles.transactionCard}>
               <View style={styles.rowBetween}>
                 <View style={styles.leftRow}>
@@ -202,7 +189,7 @@ export default function TransactionsScreen() {
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
                   <Money value={txn.type === "income" ? txn.amount : -txn.amount} size={16} />
-                  <SmallText>Hold to delete</SmallText>
+                  <SmallText>Tap to delete</SmallText>
                 </View>
               </View>
             </Card>
