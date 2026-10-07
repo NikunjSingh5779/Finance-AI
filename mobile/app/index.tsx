@@ -84,6 +84,7 @@ export default function HomeScreen() {
   const compact = width < 720;
 
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [summaryAll, setSummaryAll] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -110,14 +111,7 @@ export default function HomeScreen() {
 
     const [selected, all, txn, acc, budget, insight, worth, forecastResult] = results;
     if (selected.status === "fulfilled") setSummary(selected.value);
-    if (all.status === "fulfilled" && selected.status === "fulfilled") {
-      setSummary({
-        ...selected.value,
-        balance: selected.value.balance,
-        income: selected.value.income,
-        expense: selected.value.expense,
-      });
-    }
+    if (all.status === "fulfilled") setSummaryAll(all.value);
     if (txn.status === "fulfilled") setTransactions(txn.value);
     if (acc.status === "fulfilled") setAccounts(acc.value);
     if (budget.status === "fulfilled") setBudgets(budget.value);
@@ -143,6 +137,7 @@ export default function HomeScreen() {
   const income = summary?.income ?? 0;
   const expense = summary?.expense ?? 0;
   const balance = summary?.balance ?? 0;
+  const totalBalance = summaryAll?.balance ?? balance;
   const savingsRate = summary?.savings_rate ?? 0;
 
   const categories = useMemo(
@@ -178,7 +173,7 @@ export default function HomeScreen() {
       <View style={[styles.summaryGrid, compact && styles.summaryGridCompact]}>
         <Card style={styles.summaryCard}>
           <View style={styles.rowBetween}><SmallText>Total balance</SmallText><Pill tone={balance >= 0 ? "success" : "danger"}>{balance >= 0 ? "Positive" : "Negative"}</Pill></View>
-          <Money value={balance} size={28} />
+          <Money value={totalBalance} size={28} />
           <SmallText>after all recorded income & expenses</SmallText>
           <SparkBars values={cashNet} />
         </Card>
