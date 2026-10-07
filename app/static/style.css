@@ -314,11 +314,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .chat-bubble.ai.ai-markdown{
   display:flex;
   flex-direction:column;
-  gap:12px;
+  gap:8px;
 }
 .chat-bubble.ai p{
   margin:0;
-  line-height:1.65;
+  line-height:1.5;
 }
 .chat-bubble.ai h1,
 .chat-bubble.ai h2,
@@ -349,8 +349,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   padding-left:24px;
 }
 .chat-bubble.ai .ai-list li{
-  margin:7px 0;
-  line-height:1.55;
+  margin:4px 0;
+  line-height:1.45;
 }
 .chat-bubble.ai hr{
   width:100%;
@@ -419,8 +419,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .full-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .full-title{font-size:16px;font-weight:700}
 .transaction-header-actions{gap:10px}
-.transaction-actions,.budget-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:5px;margin-left:auto}
-.compact-action{height:30px;min-height:30px;padding:0 9px;font-size:11px;white-space:nowrap}
+.transaction-actions,.budget-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto;flex:0 0 auto;min-width:max-content}
+.compact-action{height:30px;min-height:30px;padding:0 10px;font-size:11px;white-space:nowrap;flex:0 0 auto}
 .secondary-action{background:var(--bg3)!important;color:var(--text)!important;border:1px solid var(--border)}
 .secondary-action:hover{background:var(--bg4)!important}
 .icon-add-btn{width:30px;height:30px;padding:0;border:0;border-radius:7px;background:var(--green);color:#000;font-size:18px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,transform .15s}
@@ -443,7 +443,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .del-btn:hover{background:rgba(239,68,68,0.15)}
 
 .budget-header-actions{gap:8px}
-.budget-actions{gap:4px}
+.budget-actions{gap:8px}
 .budget-actions .add-btn{min-height:30px}
 .budget-page-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 .budget-page-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:20px 22px}
