@@ -123,7 +123,7 @@ export default function PlanningScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />
       }
     >
-      <Header title="Planning & Wealth" subtitle="Build goals and grow long-term wealth." />
+      <Header title="Planning & Wealth" />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.netWorthCard}>
