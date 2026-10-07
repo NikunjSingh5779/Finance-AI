@@ -176,13 +176,15 @@
       <!-- TRANSACTIONS PAGE -->
       <div class="page" id="page-transactions">
         <div class="full-card">
-          <div class="full-header">
+          <div class="full-header transaction-header-actions">
             <div class="full-title">All Transactions</div>
-            <button class="add-btn" onclick="openModal()">+ Add transaction</button>
-            <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">📁 Import CSV</button>
-            <button class="add-btn" onclick="exportCSV()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">⬇ Export CSV</button>
-            <button class="add-btn" onclick="deleteAllTransactions()" style="background:var(--red);color:#fff">🗑 Delete all</button>
-            <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
+            <div class="transaction-actions">
+              <button class="add-btn compact-action" onclick="openModal()">+ Add transaction</button>
+              <button class="add-btn compact-action secondary-action" onclick="document.getElementById('csv-input').click()" aria-label="Import CSV" title="Import CSV">📁 Import CSV</button>
+              <button class="add-btn compact-action secondary-action" onclick="exportCSV()" aria-label="Export CSV" title="Export CSV">⬇ Export CSV</button>
+              <button class="icon-danger-btn" onclick="deleteAllTransactions()" aria-label="Delete all transactions" title="Delete all transactions">🗑</button>
+              <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
+            </div>
           </div>
           <div class="add-form-grid">
             <div class="fg"><label>Type</label><select id="t-type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
@@ -202,8 +204,8 @@
           <div class="full-header budget-header-actions">
             <div class="full-title">Budgets</div>
             <div class="budget-actions">
-              <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">📁 Import CSV</button>
-              <button class="add-btn" onclick="exportCSV()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">⬇ Export CSV</button>
+              <button class="add-btn compact-action secondary-action" onclick="document.getElementById('csv-input').click()" aria-label="Import CSV" title="Import CSV">📁 Import CSV</button>
+              <button class="add-btn compact-action secondary-action" onclick="exportCSV()" aria-label="Export CSV" title="Export CSV">⬇ Export CSV</button>
             </div>
           </div>
           <div class="add-form-grid" style="grid-template-columns:1fr 1fr auto">
