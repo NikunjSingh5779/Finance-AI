@@ -28,8 +28,16 @@ if (-not $SkipMobile) {
   if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "npm is not installed or not on PATH." }
   Push-Location (Join-Path $Root "mobile")
   try {
-    npm install
+    if (Test-Path "node_modules") {
+      Remove-Item "node_modules" -Recurse -Force
+    }
+    if (Test-Path "package-lock.json") {
+      Remove-Item "package-lock.json" -Force
+    }
+    npm install --prefer-dedupe
+    npm dedupe
     npx expo install --fix
+    npm dedupe
     npm run typecheck
     npx expo-doctor
   } finally { Pop-Location }
