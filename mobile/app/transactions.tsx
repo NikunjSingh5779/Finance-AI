@@ -329,7 +329,7 @@ export default function TransactionsScreen() {
   return (
     <>
       <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-        <Header title="Transactions" subtitle="Track every inflow and outflow." />
+        <Header title="Transactions" />
         {error ? <ErrorBanner message={error} /> : null}
 
         <View style={styles.actionRow}>
