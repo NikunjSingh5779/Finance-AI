@@ -44,9 +44,12 @@ class OmniRouteProvider(AIProvider):
             return []
 
     def generate_response(self, prompt: str) -> str:
-        models = self.available_models or [
-            os.getenv("OMNIROUTE_MODEL", "auto")
-        ]
+        configured_model = os.getenv("OMNIROUTE_MODEL", "auto").strip()
+        models = (
+            [configured_model]
+            if configured_model and configured_model.lower() != "auto"
+            else (self.available_models or [configured_model or "auto"])
+        )
         for model in models:
             try:
                 response = self.session.post(

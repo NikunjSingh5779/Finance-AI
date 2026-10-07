@@ -25,7 +25,7 @@ class OpenCodeProvider(AIProvider):
             "OPENCODE_BASE_URL",
             "https://opencode.ai/zen/v1",
         ).rstrip("/")
-        self.model = os.getenv("OPENCODE_MODEL", "mimo-v2.5-free")
+        self.model = os.getenv("OPENCODE_MODEL", "mimo-v2.6-flash-free")
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {self.api_key}",
