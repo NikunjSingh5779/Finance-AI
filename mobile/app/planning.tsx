@@ -102,7 +102,7 @@ export default function PlanningScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Planning & Wealth" />
+      <Header title="Planning & Wealth" action="plus" onAction={() => setFormOpen((v) => !v)} />
       {error ? <ErrorBanner message={error} /> : null}
 
       <Card style={styles.netWorthCard}>
@@ -125,7 +125,9 @@ export default function PlanningScreen() {
 
       <View style={styles.sectionHeader}>
         <SectionTitle>Financial Goals</SectionTitle>
-        <Pressable onPress={() => setFormOpen((v) => !v)} style={styles.circleButton}><Text style={styles.circleButtonText}>{formOpen ? "×" : "+"}</Text></Pressable>
+        <Pressable onPress={() => undefined} style={styles.viewAllButton}>
+          <Text style={styles.viewAllText}>View All</Text>
+        </Pressable>
       </View>
       <SmallText>{goals.length} active goal{goals.length === 1 ? "" : "s"}</SmallText>
 
@@ -179,8 +181,8 @@ const styles = StyleSheet.create({
   barSlot: { flex: 1, height: 74, justifyContent: "flex-end", alignItems: "center" },
   bar: { width: "72%", borderRadius: 2 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  circleButton: { width: 34, height: 34, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 999, alignItems: "center", justifyContent: "center" },
-  circleButtonText: { color: colors.muted, fontSize: 23, lineHeight: 26 },
+  viewAllButton: { paddingHorizontal: 2, paddingVertical: 4 },
+  viewAllText: { color: colors.muted, fontSize: 10, fontWeight: "600" },
   goalCard: { gap: 10 },
   goalTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   goalIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
