@@ -418,9 +418,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .full-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden}
 .full-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .full-title{font-size:16px;font-weight:700}
-.transaction-header-actions{gap:12px}
-.transaction-actions,.budget-actions{display:flex;align-items:center;gap:5px}
-.compact-action{height:30px;min-height:30px;padding:0 11px;font-size:11px}
+.transaction-header-actions{gap:8px}
+.transaction-actions,.budget-actions{display:flex;align-items:center;gap:4px}
+.compact-action{height:30px;min-height:30px;padding:0 9px;font-size:11px}
 .secondary-action{background:var(--bg3)!important;color:var(--text)!important;border:1px solid var(--border)}
 .secondary-action:hover{background:var(--bg4)!important}
 .icon-danger-btn{width:30px;height:30px;padding:0;border-radius:7px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.09);color:var(--red);font-size:14px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
@@ -440,9 +440,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .del-btn{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:var(--red);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}
 .del-btn:hover{background:rgba(239,68,68,0.15)}
 
-.budget-header-actions{gap:12px}
-.budget-actions{display:flex;align-items:center;gap:8px}
-.budget-actions .add-btn{min-height:34px}
+.budget-header-actions{gap:8px}
+.budget-actions{gap:4px}
+.budget-actions .add-btn{min-height:30px}
 .budget-page-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 .budget-page-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:20px 22px}
 .bpi-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
