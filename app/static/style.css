@@ -418,6 +418,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .full-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden}
 .full-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .full-title{font-size:16px;font-weight:700}
+.transaction-header-actions{gap:12px}
+.transaction-actions,.budget-actions{display:flex;align-items:center;gap:5px}
+.compact-action{height:30px;min-height:30px;padding:0 11px;font-size:11px}
+.secondary-action{background:var(--bg3)!important;color:var(--text)!important;border:1px solid var(--border)}
+.secondary-action:hover{background:var(--bg4)!important}
+.icon-danger-btn{width:30px;height:30px;padding:0;border-radius:7px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.09);color:var(--red);font-size:14px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.icon-danger-btn:hover{background:rgba(239,68,68,.18)}
+
 .add-form-grid{display:grid;grid-template-columns:repeat(5,1fr) auto;gap:12px;padding:18px 24px;background:var(--bg3);border-bottom:1px solid var(--border)}
 .fg{display:flex;flex-direction:column;gap:5px}
 .fg label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px}
@@ -829,7 +837,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 
   .budget-header-actions { align-items: flex-start; }
   .budget-actions { flex-wrap: wrap; justify-content: flex-end; }
-  .budget-actions .add-btn { min-height: 40px; }
+  .transaction-header-actions,
+  .budget-header-actions { align-items: center; }
+  .transaction-actions,
+  .budget-actions { gap: 5px; flex-wrap: wrap; }
+  .compact-action { min-height: 36px; height: 36px; }
+  .icon-danger-btn { width: 36px; height: 36px; }
 
   .accounts-grid { grid-template-columns: 1fr; }
 
