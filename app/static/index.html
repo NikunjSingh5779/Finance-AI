@@ -179,7 +179,7 @@
           <div class="full-header transaction-header-actions">
             <div class="full-title">All Transactions</div>
             <div class="transaction-actions">
-              <button class="add-btn compact-action" onclick="openModal()">+ Add transaction</button>
+              <button class="icon-add-btn" onclick="openModal()" aria-label="Add transaction" title="Add transaction">+</button>
               <button class="add-btn compact-action secondary-action" onclick="document.getElementById('csv-input').click()" aria-label="Import CSV" title="Import CSV">📁 Import CSV</button>
               <button class="add-btn compact-action secondary-action" onclick="exportCSV()" aria-label="Export CSV" title="Export CSV">⬇ Export CSV</button>
               <button class="icon-danger-btn" onclick="deleteAllTransactions()" aria-label="Delete all transactions" title="Delete all transactions">🗑</button>
@@ -375,6 +375,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=2026-10-08-1"></script>
+<script src="/static/app.js?v=2026-10-08-2"></script>
 </body>
 </html>
