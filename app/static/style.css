@@ -311,19 +311,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .chat-bubble.ai{
   white-space:normal;
 }
-.chat-bubble.ai .ai-markdown{
+.chat-bubble.ai.ai-markdown{
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:12px;
 }
 .chat-bubble.ai p{
   margin:0;
+  line-height:1.65;
 }
 .chat-bubble.ai h1,
 .chat-bubble.ai h2,
 .chat-bubble.ai h3{
-  margin:8px 0 0;
-  line-height:1.35;
+  margin:4px 0 0;
+  line-height:1.4;
 }
 .chat-bubble.ai h1{font-size:18px}
 .chat-bubble.ai h2{font-size:16px}
@@ -345,19 +346,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 }
 .chat-bubble.ai .ai-list{
   margin:0;
-  padding-left:22px;
+  padding-left:24px;
 }
 .chat-bubble.ai .ai-list li{
-  margin:3px 0;
+  margin:7px 0;
+  line-height:1.55;
 }
 .chat-bubble.ai hr{
   width:100%;
   border:0;
   border-top:1px solid var(--border2);
-  margin:4px 0;
+  margin:2px 0;
 }
 .chat-bubble.ai blockquote{
-  margin:4px 0;
+  margin:2px 0;
   padding:8px 10px;
   border-left:3px solid var(--green);
   background:var(--green-bg2);
@@ -430,6 +432,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .del-btn{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:var(--red);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}
 .del-btn:hover{background:rgba(239,68,68,0.15)}
 
+.budget-header-actions{gap:12px}
+.budget-actions{display:flex;align-items:center;gap:8px}
+.budget-actions .add-btn{min-height:34px}
 .budget-page-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 .budget-page-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:20px 22px}
 .bpi-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -821,6 +826,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   .add-form-grid .btn-add { grid-column: 1 / -1; }
 
   .budget-page-grid { grid-template-columns: 1fr; }
+
+  .budget-header-actions { align-items: flex-start; }
+  .budget-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .budget-actions .add-btn { min-height: 40px; }
 
   .accounts-grid { grid-template-columns: 1fr; }
 
