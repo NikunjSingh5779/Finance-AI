@@ -39,6 +39,8 @@ export function Header({
   title: string;
   subtitle?: string;
 }) {
+  const router = useRouter();
+
   return (
     <View style={styles.header}>
       <View style={{ flex: 1 }}>
@@ -51,9 +53,9 @@ export function Header({
         <Pressable style={styles.headerIconButton} accessibilityLabel="Notifications">
           <Text style={styles.headerIcon}>♧</Text>
         </Pressable>
-        <View style={styles.headerAvatar}>
+        <Pressable style={styles.headerAvatar} accessibilityLabel="Open settings" onPress={() => router.push("/settings")}>
           <Text style={styles.headerAvatarText}>AC</Text>
-        </View>
+        </Pressable>
       </View>
     </View>
   );
