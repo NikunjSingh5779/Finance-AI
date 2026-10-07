@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Text, type ColorValue } from "react-native";
+import { Platform, Text, type ColorValue } from "react-native";
 import { AppProvider } from "../src/AppContext";
 import { colors } from "../src/theme";
 
@@ -18,6 +18,7 @@ export default function RootLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.subtle,
           tabBarStyle: {
+            display: Platform.OS === "web" ? "none" : "flex",
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
             borderTopWidth: 1,
