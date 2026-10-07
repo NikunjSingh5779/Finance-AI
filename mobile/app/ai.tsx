@@ -83,7 +83,7 @@ function WebAIScreen({
   sending: boolean;
   providerReady: boolean | null;
   error: string;
-  onSend: () => void;
+  onSend: (value?: string) => void;
 }) {
   const router = useRouter();
 
@@ -125,8 +125,8 @@ function WebAIScreen({
           </Pressable>
 
           <Pressable onPress={() => navigate("/settings")} style={styles.webNavItem}>
-            <Text style={styles.webNavIcon}>⚙</Text>
-            <Text style={styles.webNavText}>Settings</Text>
+            <Text style={styles.webNavIcon}>🌙</Text>
+            <Text style={styles.webNavText}>Dark/light</Text>
           </Pressable>
         </View>
 
@@ -214,8 +214,7 @@ function WebAIScreen({
                 key={label}
                 style={styles.webQuickBtn}
                 onPress={() => {
-                  setQuestion(prompt);
-                  onSend();
+                  onSend(prompt);
                 }}
               >
                 <Text style={styles.webQuickIcon}>{icon}</Text>
@@ -301,8 +300,8 @@ export default function AIScreen() {
     void loadProviderStatus();
   }, [loadProviderStatus]);
 
-  const send = async () => {
-    const trimmed = question.trim();
+  const send = async (preset?: string) => {
+    const trimmed = (preset ?? question).trim();
     if (trimmed.length < 3 || sending) return;
 
     setSending(true);
@@ -340,7 +339,7 @@ export default function AIScreen() {
         sending={sending}
         providerReady={providerReady}
         error={error}
-        onSend={() => void send()}
+        onSend={(preset) => void send(preset)}
       />
     );
   }
