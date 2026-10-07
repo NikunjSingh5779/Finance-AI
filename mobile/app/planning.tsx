@@ -80,7 +80,7 @@ export default function PlanningScreen() {
     if (!ready) return;
     setError("");
     try {
-      const [goalItems, budgetItems, net, historyResult] = await Promise.all([
+      const [goalItems, budgetItems, net, historyResult, summaryResult] = await Promise.all([
         api.goals(),
         api.budgets(),
         api.netWorth(),
