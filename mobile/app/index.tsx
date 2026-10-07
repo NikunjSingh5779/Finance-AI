@@ -153,8 +153,7 @@ function WebHomeDashboard({
             const end = (cursor / categoryTotal) * 100;
             return `${WEB_CHART_COLORS[index % WEB_CHART_COLORS.length]} ${start}% ${end}%`;
           })
-          .join(", ")
-          .concat(", #1c1c1f 0 100%");
+          .join(", ");
       })()
     : "#1c1c1f 0 100%";
 
