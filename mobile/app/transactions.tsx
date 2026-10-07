@@ -2,7 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { Alert, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import {
   Button,
   Card,
@@ -12,7 +22,6 @@ import {
   Header,
   Input,
   LoadingState,
-  Money,
   Screen,
   SectionTitle,
   SmallText,
@@ -53,9 +62,9 @@ function normalizeDate(value: string) {
 
   const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (match) {
-    let [, dayOrMonth, monthOrDay, year] = match;
+    let [, first, second, year] = match;
     if (year.length === 2) year = (Number(year) > 50 ? "19" : "20") + year;
-    return `${year}-${monthOrDay.padStart(2, "0")}-${dayOrMonth.padStart(2, "0")}`;
+    return `${year}-${second.padStart(2, "0")}-${first.padStart(2, "0")}`;
   }
 
   const parsed = new Date(raw);
@@ -70,18 +79,18 @@ function csvEscape(value: unknown) {
 }
 
 export default function TransactionsScreen() {
-  const { api, ready, apiBaseUrl } = useFinance();
+  const { api, ready } = useFinance();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [filter, setFilter] = useState<"All" | "Income" | "Expense">("All");
   const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [type, setType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [date, setDate] = useState(currentMonth() + "-01");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [accountId, setAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -90,8 +99,8 @@ export default function TransactionsScreen() {
 
   const load = useCallback(async () => {
     if (!ready) return;
-    setError("");
     try {
+      setError("");
       const [items, accountItems] = await Promise.all([
         api.transactions(5000),
         api.accounts(),
@@ -110,25 +119,14 @@ export default function TransactionsScreen() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return transactions.filter((txn) => {
-      const matchesType = filter === "All" || txn.type === filter.toLowerCase();
-      const matchesSearch =
+      const typeMatch = filter === "All" || txn.type === filter.toLowerCase();
+      const searchMatch =
         !query ||
         txn.description.toLowerCase().includes(query) ||
         txn.category.toLowerCase().includes(query);
-      return matchesType && matchesSearch;
+      return typeMatch && searchMatch;
     });
   }, [transactions, filter, search]);
-
-  const resetForm = () => {
-    setEditingId(null);
-    setType("expense");
-    setAmount("");
-    setDescription("");
-    setCategory("");
-    setDate(currentMonth() + "-01");
-    setAccountId(null);
-    setShowForm(false);
-  };
 
   const openNew = () => {
     setEditingId(null);
@@ -136,10 +134,10 @@ export default function TransactionsScreen() {
     setAmount("");
     setDescription("");
     setCategory("");
-    setDate(currentMonth() + "-01");
-    setAccountId(null);
+    setDate(new Date().toISOString().slice(0, 10));
+    setAccountId(accounts[0] ? String(accounts[0].id) : null);
     setError("");
-    setShowForm(true);
+    setModalOpen(true);
   };
 
   const openEdit = (txn: Transaction) => {
@@ -149,15 +147,21 @@ export default function TransactionsScreen() {
     setDescription(txn.description);
     setCategory(txn.category);
     setDate(txn.date);
-    setAccountId(txn.account_id ? String(txn.account_id) : null);
+    setAccountId(txn.account_id ? String(txn.account_id) : accounts[0] ? String(accounts[0].id) : null);
     setError("");
-    setShowForm(true);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    if (saving) return;
+    setModalOpen(false);
+    setEditingId(null);
   };
 
   const saveTransaction = async () => {
     const numericAmount = Number(amount);
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || !description.trim() || !category.trim() || !date.trim()) {
-      setError("Enter a positive amount, description, category and date.");
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || !category.trim() || !date.trim()) {
+      setError("Enter a valid amount, category and date.");
       return;
     }
 
@@ -167,7 +171,7 @@ export default function TransactionsScreen() {
       const payload = {
         type,
         amount: numericAmount,
-        description: description.trim(),
+        description: description.trim() || category.trim(),
         category: category.trim(),
         date: normalizeDate(date),
         account_id: accountId ? Number(accountId) : null,
@@ -181,7 +185,7 @@ export default function TransactionsScreen() {
         setTransactions((current) => [created, ...current]);
       }
 
-      resetForm();
+      closeModal();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transaction could not be saved.");
     } finally {
@@ -190,31 +194,27 @@ export default function TransactionsScreen() {
   };
 
   const remove = (txn: Transaction) => {
-    Alert.alert(
-      "Delete transaction",
-      `Delete “${txn.description || txn.category}”?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.deleteTransaction(txn.id);
-              setTransactions((current) => current.filter((item) => item.id !== txn.id));
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not delete transaction.");
-            }
-          },
+    Alert.alert("Delete transaction", `Delete “${txn.description || txn.category}”?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteTransaction(txn.id);
+            setTransactions((current) => current.filter((item) => item.id !== txn.id));
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not delete transaction.");
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const deleteAll = () => {
     Alert.alert(
       "Delete all transactions",
-      `This will permanently delete all ${transactions.length.toLocaleString("en-IN")} transactions.`,
+      `This will permanently delete ${transactions.length.toLocaleString("en-IN")} transactions.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -240,7 +240,6 @@ export default function TransactionsScreen() {
         copyToCacheDirectory: true,
         multiple: false,
       });
-
       if (picked.canceled) return;
       const asset = picked.assets[0];
       if (!asset) return;
@@ -256,31 +255,23 @@ export default function TransactionsScreen() {
       const first = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
       const hasHeader = first.includes("type") || first.includes("amount") || first.includes("description");
       const dataRows = hasHeader ? parsed.slice(1) : parsed;
-      const headerMap = hasHeader
-        ? Object.fromEntries(first.map((key, index) => [key, index]))
-        : null;
+      const headerMap = hasHeader ? Object.fromEntries(first.map((key, index) => [key, index])) : null;
 
       const rows = dataRows.map((values) => {
-        const read = (key: string, fallbackIndex: number) =>
-          headerMap ? String(values[headerMap[key] ?? -1] ?? "").trim() : String(values[fallbackIndex] ?? "").trim();
+        const read = (key: string, fallback: number) =>
+          headerMap ? String(values[headerMap[key] ?? -1] ?? "").trim() : String(values[fallback] ?? "").trim();
 
         const rawType = read("type", 0).toLowerCase();
         const rawAmount = read("amount", 1);
         const rawDescription = read("description", 2) || read("desc", 2);
         const rawCategory = read("category", 3) || read("cat", 3);
+        const numericAmount = Math.abs(Number(rawAmount.replace(/,/g, "").replace(/₹/g, "")));
 
-        const parsedAmount = Math.abs(Number(rawAmount.replace(/,/g, "").replace(/₹/g, "")));
-        if (
-          !Number.isFinite(parsedAmount) ||
-          parsedAmount <= 0 ||
-          !rawCategory
-        ) {
-          return null;
-        }
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0 || !rawCategory) return null;
 
         return {
           type: rawType === "income" ? "income" as const : "expense" as const,
-          amount: parsedAmount,
+          amount: numericAmount,
           description: rawDescription || rawCategory,
           category: rawCategory,
           date: normalizeDate(read("date", 4)),
@@ -294,9 +285,8 @@ export default function TransactionsScreen() {
       }
 
       const result = await api.importTransactions(rows);
-      setError("");
       await load();
-      Alert.alert("Import complete", `Imported ${result.imported} transaction(s).${result.failed ? ` ${result.failed} row(s) failed.` : ""}`);
+      Alert.alert("Import complete", `Imported ${result.imported} transaction(s).${result.failed ? ` ${result.failed} failed.` : ""}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transaction import failed.");
     }
@@ -304,13 +294,10 @@ export default function TransactionsScreen() {
 
   const exportCSV = async () => {
     try {
-      const rows = [
+      const csv = [
         ["id", "type", "amount", "description", "category", "date", "created", "account_id"],
-        ...transactions.map((txn) => [
-          txn.id, txn.type, txn.amount, txn.description, txn.category, txn.date, txn.created, txn.account_id ?? "",
-        ]),
-      ];
-      const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+        ...transactions.map((txn) => [txn.id, txn.type, txn.amount, txn.description, txn.category, txn.date, txn.created, txn.account_id ?? ""]),
+      ].map((row) => row.map(csvEscape).join(",")).join("\n");
 
       if (Platform.OS === "web") {
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -331,8 +318,6 @@ export default function TransactionsScreen() {
           dialogTitle: "Export FinanceAI transactions",
           UTI: "public.comma-separated-values-text",
         });
-      } else {
-        Alert.alert("Export ready", file.uri);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transaction export failed.");
@@ -342,231 +327,194 @@ export default function TransactionsScreen() {
   if (loading) return <Screen><LoadingState /></Screen>;
 
   return (
-    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Transactions" subtitle="Track every inflow and outflow." />
-      {error ? <ErrorBanner message={error} /> : null}
+    <>
+      <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
+        <Header title="Transactions" subtitle="Track every inflow and outflow." />
+        {error ? <ErrorBanner message={error} /> : null}
 
-      <View style={styles.headerActions}>
-        <ActionButton title="+ Add transaction" onPress={openNew} primary />
-        <ActionButton title="📁 Import CSV" onPress={() => void importCSV()} />
-        <ActionButton title="⬇ Export CSV" onPress={() => void exportCSV()} />
-        <ActionButton title="🗑 Delete all" onPress={deleteAll} danger />
-      </View>
+        <View style={styles.actionRow}>
+          <Pressable style={styles.primaryAction} onPress={openNew}><Text style={styles.primaryActionText}>+ Add transaction</Text></Pressable>
+          <Pressable style={styles.secondaryAction} onPress={() => void importCSV()}><Text style={styles.actionText}>▣ Import CSV</Text></Pressable>
+          <Pressable style={styles.secondaryAction} onPress={() => void exportCSV()}><Text style={styles.actionText}>↓ Export CSV</Text></Pressable>
+          <Pressable style={styles.deleteAll} onPress={deleteAll}><Text style={styles.deleteAllText}>▣ Delete all</Text></Pressable>
+        </View>
 
-      <Card style={styles.searchCard}>
-        <Input label="Search transactions" value={search} onChangeText={setSearch} placeholder="Merchant or category…" />
-      </Card>
+        <Input label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or category..." />
+        <ChipRow values={["All", "Income", "Expense"]} selected={filter} onSelect={(value) => setFilter(value as typeof filter)} />
 
-      <View style={styles.sectionRow}>
-        <SectionTitle>{filtered.length.toLocaleString("en-IN")} transactions</SectionTitle>
-        <SmallText>{transactions.length.toLocaleString("en-IN")} total</SmallText>
-      </View>
+        <View style={styles.countRow}>
+          <SectionTitle>{filtered.length.toLocaleString("en-IN")} shown</SectionTitle>
+          <SmallText>{transactions.length.toLocaleString("en-IN")} total</SmallText>
+        </View>
 
-      <ChipRow values={["All", "Income", "Expense"]} selected={filter} onSelect={(value) => setFilter(value as typeof filter)} />
-
-      {showForm ? (
-        <Card style={styles.formCard}>
-          <View style={styles.sectionRow}>
-            <SectionTitle>{editingId ? "Edit transaction" : "New transaction"}</SectionTitle>
-            <Pressable onPress={resetForm}><Text style={styles.link}>Close</Text></Pressable>
-          </View>
-
-          <ChipRow
-            values={["expense", "income"]}
-            selected={type}
-            onSelect={(value) => setType(value as "income" | "expense")}
-          />
-          <Input label="Amount (₹)" keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="2500" />
-          <Input label="Description" value={description} onChangeText={setDescription} placeholder="Groceries" />
-          <Input label="Category" value={category} onChangeText={setCategory} placeholder="Food" />
-          <Input label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} autoCapitalize="none" />
-          <SmallText>Account (optional)</SmallText>
-          <ChipRow
-            values={["None", ...accounts.map((account) => account.id + ": " + account.name)]}
-            selected={
-              accountId
-                ? accountId + ": " + (accounts.find((account) => account.id === Number(accountId))?.name ?? "")
-                : "None"
-            }
-            onSelect={(value) => {
-              if (value === "None") {
-                setAccountId(null);
-                return;
-              }
-              setAccountId(value.split(":")[0] ?? null);
-            }}
-          />
-          <Button title={editingId ? "Save changes" : "Save transaction"} onPress={() => void saveTransaction()} loading={saving} />
-        </Card>
-      ) : null}
-
-      {filtered.length === 0 ? (
-        <Card><EmptyState message="No transactions match your filters." /></Card>
-      ) : (
-        filtered.map((txn) => (
-          <Card key={txn.id} style={styles.transactionCard}>
-            <View style={styles.transactionMain}>
-              <View style={[styles.iconBox, { backgroundColor: txn.type === "income" ? colors.primarySoft : colors.dangerSoft }]}>
-                <Text style={{ color: txn.type === "income" ? colors.primary : colors.danger, fontSize: 16 }}>
-                  {txn.type === "income" ? "↗" : "↘"}
-                </Text>
-              </View>
-              <View style={styles.transactionInfo}>
-                <Text style={styles.titleText} numberOfLines={1}>{txn.description || txn.category}</Text>
-                <SmallText>{txn.category} · {formatDate(txn.date)}</SmallText>
-                {txn.account_id ? <SmallText>Account #{txn.account_id}</SmallText> : null}
-              </View>
-              <View style={styles.amountColumn}>
-                <Text style={[styles.amount, { color: txn.type === "income" ? colors.primary : colors.danger }]}>
-                  {txn.type === "income" ? "+" : "-"}₹{txn.amount.toLocaleString("en-IN")}
-                </Text>
-                <View style={styles.rowActions}>
-                  <Pressable onPress={() => openEdit(txn)} style={styles.smallButton}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
-                  <Pressable onPress={() => remove(txn)} style={[styles.smallButton, styles.deleteButton]}><Text style={styles.deleteText}>Delete</Text></Pressable>
+        {filtered.length === 0 ? (
+          <Card><EmptyState message="No transactions match your filters." /></Card>
+        ) : (
+          filtered.map((txn) => (
+            <Card key={txn.id} style={styles.transactionCard}>
+              <View style={styles.transactionRow}>
+                <View style={[styles.txnIcon, { backgroundColor: txn.type === "income" ? colors.primarySoft : colors.surfaceRaised }]}>
+                  <Text style={{ color: txn.type === "income" ? colors.primary : colors.muted, fontSize: 15 }}>{txn.type === "income" ? "↗" : "⌁"}</Text>
+                </View>
+                <View style={styles.txnInfo}>
+                  <Text style={styles.txnTitle} numberOfLines={1}>{txn.description || txn.category}</Text>
+                  <SmallText>{txn.category} • {formatDate(txn.date)}</SmallText>
+                </View>
+                <View style={styles.txnRight}>
+                  <Text style={[styles.txnAmount, { color: txn.type === "income" ? colors.primary : colors.text }]}>
+                    {txn.type === "income" ? "+" : "-"}{formatMoney(txn.amount)}
+                  </Text>
+                  <View style={styles.rowButtons}>
+                    <Pressable onPress={() => openEdit(txn)}><Text style={styles.editText}>Edit</Text></Pressable>
+                    <Pressable onPress={() => remove(txn)}><Text style={styles.deleteText}>Delete</Text></Pressable>
+                  </View>
                 </View>
               </View>
-            </View>
-          </Card>
-        ))
-      )}
+            </Card>
+          ))
+        )}
+      </Screen>
+
+      <Modal visible={modalOpen} animationType="slide" transparent={false} onRequestClose={closeModal}>
+        <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={closeModal} disabled={saving}><Text style={styles.closeIcon}>×</Text></Pressable>
+            <Text style={styles.modalTitle}>{editingId ? "Edit Transaction" : "Add Transaction"}</Text>
+            <View style={{ width: 32 }} />
+          </View>
+
+          <ScrollForm
+            type={type}
+            setType={setType}
+            amount={amount}
+            setAmount={setAmount}
+            description={description}
+            setDescription={setDescription}
+            category={category}
+            setCategory={setCategory}
+            date={date}
+            setDate={setDate}
+            accountId={accountId}
+            setAccountId={setAccountId}
+            accounts={accounts}
+            error={error}
+            editingId={editingId}
+            saving={saving}
+            onSave={() => void saveTransaction()}
+          />
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
+  );
+}
+
+function ScrollForm(props: {
+  type: "income" | "expense";
+  setType: (value: "income" | "expense") => void;
+  amount: string;
+  setAmount: (value: string) => void;
+  description: string;
+  setDescription: (value: string) => void;
+  category: string;
+  setCategory: (value: string) => void;
+  date: string;
+  setDate: (value: string) => void;
+  accountId: string | null;
+  setAccountId: (value: string | null) => void;
+  accounts: Account[];
+  error: string;
+  editingId: number | null;
+  saving: boolean;
+  onSave: () => void;
+}) {
+  const {
+    type, setType, amount, setAmount, description, setDescription,
+    category, setCategory, date, setDate, accountId, setAccountId,
+    accounts, error, editingId, saving, onSave,
+  } = props;
+
+  return (
+    <Screen>
+      {error ? <ErrorBanner message={error} /> : null}
+      <View style={styles.modalTypeToggle}>
+        <Pressable onPress={() => setType("income")} style={[styles.typeChoice, type === "income" && styles.typeSelected]}>
+          <Text style={[styles.typeText, type === "income" && styles.typeTextSelected]}>Income</Text>
+        </Pressable>
+        <Pressable onPress={() => setType("expense")} style={[styles.typeChoice, type === "expense" && styles.typeSelected]}>
+          <Text style={[styles.typeText, type === "expense" && styles.typeTextSelected]}>Expense</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.bigAmount}>
+        <Text style={styles.currency}>₹</Text>
+        <Text style={styles.bigAmountText}>{amount || "0"}</Text>
+      </View>
+
+      <Input label="Description" value={description} onChangeText={setDescription} placeholder="What was this for?" />
+      <Input label="Category" value={category} onChangeText={setCategory} placeholder="Select category" />
+
+      <View style={styles.dateAccountRow}>
+        <View style={{ flex: 1 }}>
+          <Input label="Date" value={date} onChangeText={setDate} placeholder="Today" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SmallText>Account</SmallText>
+          <ChipRow
+            values={["None", ...accounts.map((account) => String(account.id) + ": " + account.name)]}
+            selected={accountId ? String(accountId) + ": " + (accounts.find((a) => a.id === Number(accountId))?.name ?? "") : "None"}
+            onSelect={(value) => setAccountId(value === "None" ? null : value.split(":")[0] ?? null)}
+          />
+        </View>
+      </View>
+
+      <View style={styles.receiptRow}>
+        <Text style={styles.receiptIcon}>⌕</Text>
+        <Text style={styles.receiptText}>Attach receipt or image</Text>
+      </View>
+
+      <View style={{ height: 12 }} />
+      <Button title={editingId ? "Save Transaction" : "Save Transaction"} onPress={onSave} loading={saving} />
     </Screen>
   );
 }
 
-function ActionButton({
-  title,
-  onPress,
-  primary = false,
-  danger = false,
-}: {
-  title: string;
-  onPress: () => void;
-  primary?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionButton,
-        primary && styles.actionPrimary,
-        danger && styles.actionDanger,
-        pressed && { opacity: 0.8 },
-      ]}
-    >
-      <Text style={[styles.actionText, primary && styles.actionPrimaryText, danger && styles.actionDangerText]}>{title}</Text>
-    </Pressable>
-  );
+function formatMoney(value: number) {
+  return "₹" + Math.abs(Number(value) || 0).toLocaleString("en-IN");
 }
 
 const styles = StyleSheet.create({
-  headerActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  actionButton: {
-    minHeight: 38,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionPrimary: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  actionDanger: {
-    backgroundColor: colors.danger,
-    borderColor: colors.danger,
-  },
-  actionText: {
-    color: colors.text,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  actionPrimaryText: {
-    color: colors.background,
-  },
-  actionDangerText: {
-    color: "#fff",
-  },
-  searchCard: {
-    paddingBottom: 10,
-  },
-  sectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  formCard: {
-    gap: 10,
-  },
-  transactionCard: {
-    paddingVertical: 12,
-  },
-  transactionMain: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  iconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  transactionInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  titleText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  amountColumn: {
-    alignItems: "flex-end",
-    gap: 7,
-  },
-  amount: {
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  rowActions: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  smallButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 7,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  smallButtonText: {
-    color: colors.text,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  deleteButton: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: "rgba(239,68,68,0.3)",
-  },
-  deleteText: {
-    color: colors.danger,
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  link: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: "800",
-  },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  primaryAction: { minHeight: 38, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  primaryActionText: { color: colors.background, fontSize: 11, fontWeight: "800" },
+  secondaryAction: { minHeight: 38, paddingHorizontal: 11, borderRadius: 8, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
+  actionText: { color: colors.text, fontSize: 11, fontWeight: "700" },
+  deleteAll: { minHeight: 38, paddingHorizontal: 11, borderRadius: 8, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center" },
+  deleteAllText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  countRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  transactionCard: { paddingVertical: 11 },
+  transactionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  txnIcon: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  txnInfo: { flex: 1, minWidth: 0 },
+  txnTitle: { color: colors.text, fontSize: 12, fontWeight: "800" },
+  txnRight: { alignItems: "flex-end", gap: 5 },
+  txnAmount: { fontSize: 12, fontWeight: "900" },
+  rowButtons: { flexDirection: "row", gap: 8 },
+  editText: { color: colors.muted, fontSize: 10, fontWeight: "700" },
+  deleteText: { color: colors.danger, fontSize: 10, fontWeight: "700" },
+  modalRoot: { flex: 1, backgroundColor: colors.background },
+  modalHeader: { minHeight: 62, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  closeIcon: { color: colors.text, fontSize: 32, fontWeight: "300" },
+  modalTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  modalTypeToggle: { flexDirection: "row", padding: 3, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: 17 },
+  typeChoice: { flex: 1, minHeight: 42, alignItems: "center", justifyContent: "center", borderRadius: 9 },
+  typeSelected: { backgroundColor: colors.surfaceRaised },
+  typeText: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  typeTextSelected: { color: colors.text },
+  bigAmount: { minHeight: 92, flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 15 },
+  currency: { color: colors.muted, fontSize: 34, marginRight: 5 },
+  bigAmountText: { color: colors.text, fontSize: 54, fontWeight: "900" },
+  dateAccountRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  receiptRow: { minHeight: 46, borderWidth: 1, borderStyle: "dashed", borderColor: colors.borderStrong, borderRadius: 10, flexDirection: "row", alignItems: "center", paddingHorizontal: 12, gap: 8, marginTop: 2 },
+  receiptIcon: { color: colors.subtle, fontSize: 16 },
+  receiptText: { color: colors.subtle, fontSize: 11, fontWeight: "600" },
 });
