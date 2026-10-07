@@ -199,8 +199,12 @@
       <!-- BUDGETS PAGE -->
       <div class="page" id="page-budgets">
         <div class="full-card" style="margin-bottom:16px">
-          <div class="full-header">
+          <div class="full-header budget-header-actions">
             <div class="full-title">Budgets</div>
+            <div class="budget-actions">
+              <button class="add-btn" onclick="document.getElementById('csv-input').click()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">📁 Import CSV</button>
+              <button class="add-btn" onclick="exportCSV()" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">⬇ Export CSV</button>
+            </div>
           </div>
           <div class="add-form-grid" style="grid-template-columns:1fr 1fr auto">
             <div class="fg"><label>Category</label><input type="text" id="b-cat" placeholder="Food & Drink…"></div>
