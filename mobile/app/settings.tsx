@@ -107,26 +107,13 @@ export default function SettingsScreen() {
     }
   };
 
-  const deleteAccount = (account: Account) => {
-    Alert.alert(
-      "Delete account",
-      "Delete " + account.name + "? Accounts with linked transactions cannot be deleted.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.deleteAccount(account.id);
-              setAccounts((items) => items.filter((item) => item.id !== account.id));
-            } catch (err) {
-              setMessage(err instanceof Error ? err.message : "Could not delete account.");
-            }
-          },
-        },
-      ],
-    );
+  const deleteAccount = async (account: Account) => {
+    try {
+      await api.deleteAccount(account.id);
+      setAccounts((items) => items.filter((item) => item.id !== account.id));
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not delete account.");
+    }
   };
 
   const refresh = async () => {
