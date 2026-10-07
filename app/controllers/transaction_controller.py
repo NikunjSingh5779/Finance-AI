@@ -104,6 +104,16 @@ def update_transaction(txn_id: int, txn: TransactionUpdate):
         conn.close()
 
 
+@router.delete("/all")
+def delete_all_transactions():
+    conn = get_db()
+    try:
+        deleted = _service(conn).delete_all_transactions()
+        return {"deleted": deleted}
+    finally:
+        conn.close()
+
+
 @router.delete("/{txn_id}")
 def delete_transaction(txn_id: int):
     conn = get_db()

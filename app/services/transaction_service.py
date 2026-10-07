@@ -43,6 +43,9 @@ class TransactionService:
             raise TransactionNotFoundError(transaction_id)
         return deleted
 
+    def delete_all_transactions(self) -> int:
+        return self.repository.delete_all()
+
     def list_transactions_by_account(
         self, account_id: int, skip: int = 0, limit: int = 100
     ) -> List[TransactionOut]:

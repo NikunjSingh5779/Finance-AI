@@ -98,6 +98,11 @@ class TransactionRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
+    def delete_all(self) -> int:
+        cursor = self.conn.execute("DELETE FROM transactions")
+        self.conn.commit()
+        return cursor.rowcount
+
     def list_by_account(
         self,
         account_id: int,
