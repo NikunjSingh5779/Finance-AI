@@ -1993,7 +1993,8 @@
     sendChat,
     showAllExpenses,
     showMonthlyExpenses,
-    refreshCurrentPage
+    refreshCurrentPage,
+    setTransactionTypeFilter
   });
 
   window.addEventListener("DOMContentLoaded", init);
