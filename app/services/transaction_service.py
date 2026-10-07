@@ -14,8 +14,8 @@ class TransactionService:
     def list_transactions(self, skip: int = 0, limit: int = 100) -> List[TransactionOut]:
         if skip < 0:
             raise ValidationError("skip must be >= 0")
-        if limit < 1 or limit > 500:
-            raise ValidationError("limit must be between 1 and 500")
+        if limit < 1 or limit > 5000:
+            raise ValidationError("limit must be between 1 and 5000")
         return self.repository.list(skip=skip, limit=limit)
 
     def get_transaction(self, transaction_id: int) -> TransactionOut:
