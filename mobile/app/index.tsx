@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   chartDays: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 4 },
   dayLabel: { color: colors.subtle, fontSize: 9, fontWeight: "500" },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  categoryCard: { width: "48%", minHeight: 108, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12, justifyContent: "space-between" },
+  categoryCard: { width: "47%", minHeight: 108, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12, justifyContent: "space-between" },
   categoryIcon: { width: 29, height: 29, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   categoryName: { color: colors.text, fontSize: 12, fontWeight: "700", marginTop: 3 },
   categoryAmount: { color: colors.text, fontSize: 12, fontWeight: "800", marginTop: 2 },
