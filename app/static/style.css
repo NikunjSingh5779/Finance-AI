@@ -418,9 +418,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
 .full-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden}
 .full-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .full-title{font-size:16px;font-weight:700}
-.transaction-header-actions{gap:10px}
-.transaction-actions{display:grid!important;grid-template-columns:repeat(4,minmax(120px,1fr));flex:1 1 auto;align-items:center;gap:24px;margin-left:90px;min-width:0}
-.transaction-actions .compact-action{justify-self:center}
+.transaction-header-actions{display:grid;grid-template-columns:minmax(180px,1fr) minmax(620px,2.4fr);align-items:center;gap:24px}
+.transaction-actions{display:flex!important;flex:1 1 auto;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:20px;margin-left:0;min-width:0}
+.transaction-actions .compact-action{flex:0 1 auto;min-width:108px;justify-content:center}
 .budget-actions{display:flex!important;flex-direction:row!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto;flex:0 0 auto;min-width:max-content}
 .compact-action{height:30px;min-height:30px;padding:0 10px;font-size:11px;white-space:nowrap;flex:0 0 auto}
 .danger-action{background:var(--red)!important;color:#fff!important;border:1px solid var(--red)!important}
@@ -842,9 +842,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   .budget-actions { flex-wrap: wrap; justify-content: flex-end; }
   .transaction-header-actions,
   .budget-header-actions { align-items: center; }
+  .transaction-header-actions{display:flex;flex-wrap:wrap;gap:8px}
   .transaction-actions,
   .budget-actions { gap: 8px; flex-wrap: wrap; flex-direction: row!important; margin-left: 0; flex: 0 1 auto; justify-content: flex-end; display:flex!important; }
-  .transaction-actions .compact-action { justify-self: auto; }
+  .transaction-actions .compact-action { min-width:0; }
   .compact-action { min-height: 36px; height: 36px; }
 
   .accounts-grid { grid-template-columns: 1fr; }
