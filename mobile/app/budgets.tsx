@@ -232,7 +232,7 @@ export default function BudgetsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Budgets" subtitle="Plan, track and control monthly spending." />
+      <Header title="Budgets" />
       {error ? <ErrorBanner message={error} /> : null}
 
       <View style={styles.summaryGrid}>
