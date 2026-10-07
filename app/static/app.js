@@ -797,7 +797,7 @@
 
   async function loadTransactions() {
     try {
-      txnsData = await apiFetch("/transactions?skip=0&limit=500");
+      txnsData = await apiFetch("/transactions?skip=0&limit=5000");
       $("txn-count-badge").textContent = txnsData.length;
       renderRecentTransactions(txnsData);
       renderTransactions();
