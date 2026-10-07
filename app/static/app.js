@@ -623,7 +623,9 @@
 
     transactionTypeFilter = type;
     document.querySelectorAll(".txn-filter-btn").forEach(button => {
-      button.classList.toggle("active", button.dataset.filter === type);
+      const selected = button.dataset.filter === type;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-pressed", String(selected));
     });
 
     renderTransactions();
@@ -1946,6 +1948,10 @@
       if (event.target === $("modal-account")) closeAccountModal();
     });
     $("search-input")?.addEventListener("input", renderTransactions);
+    document.querySelector(".transaction-filter-row")?.addEventListener("click", event => {
+      const button = event.target.closest(".txn-filter-btn");
+      if (button?.dataset.filter) setTransactionTypeFilter(button.dataset.filter);
+    });
     $("view-all-expenses")?.addEventListener("click", () => {
       if (selectedRange === "1M") showAllExpenses();
       else showMonthlyExpenses();
