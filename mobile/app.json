@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FinanceAI",
-    "slug": "finance-ai",
+    "slug": "nikunj",
     "version": "2.1.0",
     "orientation": "portrait",
     "scheme": "financeai",
@@ -19,6 +19,13 @@
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6818367f-24ce-4533-acf8-96459f708796"
+      }
+    },
+    "owner": "nikunjsingh5579s-team"
   }
 }
