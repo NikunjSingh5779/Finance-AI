@@ -204,3 +204,34 @@ For an Android emulator use http://10.0.2.2:8000. For a physical phone, run Fast
 The project targets the Expo SDK 57 line, which is the current stable Expo SDK and uses React Native 0.86 with React 19.2.3. Expo's package alignment command is included so the installed dependency versions can be synchronized with the SDK during setup. 
 
 For public release, the current backend must first be upgraded from a personal single-database service to a multi-user production service with authentication/authorization, per-user data isolation, HTTPS, hosted persistence, secure secret management, privacy/account-deletion flows, backups and monitoring.
+
+
+## Netlify
+
+A Netlify site already exists for this project:
+
+- Primary site: https://finance-ai-z0z6.netlify.app
+- Netlify project: https://app.netlify.com/projects/finance-ai-z0z6
+
+The Netlify project currently has no confirmed published deploy in the Netlify project record. Publish the latest repository yourself with the CLI or connect the site to this GitHub repository.
+
+Netlify build configuration is already in netlify.toml:
+
+    Build command: node scripts/build-netlify.mjs
+    Publish directory: netlify-dist
+
+The build script injects the public FINANCEAI_API_URL environment variable into the static frontend at build time. For a production frontend, configure this in Netlify:
+
+    FINANCEAI_API_URL=https://YOUR-PRODUCTION-API.example.com
+
+Do not put AI provider keys or database credentials in Netlify frontend variables.
+
+CLI deployment:
+
+    npm install --global netlify-cli
+    netlify login
+    netlify link
+    node scripts/build-netlify.mjs
+    netlify deploy --prod --dir=netlify-dist
+
+A Git-connected Netlify project can instead build automatically from pushes to main. Production deploys replace the primary site version. 
