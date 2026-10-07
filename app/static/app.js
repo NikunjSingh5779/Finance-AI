@@ -17,7 +17,7 @@
   let catChartInst = null;
   const sparkCharts = {};
 
-  const API = "";
+  const API = window.FINANCEAI_API_URL || "";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
     "#a855f7", "#f97316", "#06b6d4", "#84cc16"
