@@ -28,6 +28,15 @@ def list_transactions(
         conn.close()
 
 
+@router.get("/count")
+def count_transactions():
+    conn = get_db()
+    try:
+        return {"count": TransactionRepository(conn).count()}
+    finally:
+        conn.close()
+
+
 @router.get("/export.csv")
 def export_transactions(
     transaction_type: str | None = Query(default=None, pattern="^(income|expense)$"),
