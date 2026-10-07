@@ -52,3 +52,4 @@ mobile/web-build/
 # Netlify build output
 netlify-dist/
 .netlify/
+mobile/.env.local/
