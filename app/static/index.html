@@ -32,10 +32,6 @@
   <span class="nav-badge" id="budget-count-badge">0</span>
 </div>
 
-<!-- ✅ MOVED HERE -->
-<div class="nav-item" onclick="goPage('accounts',this)">
-  <span class="nav-icon">◉</span> Accounts
-</div>
     </div>
     <div class="sidebar-section">General</div>
     <div style="padding:0 8px 4px">
@@ -87,7 +83,7 @@
           <div class="sum-card">
             <div class="sum-header"><span class="sum-label">Total balance</span><span class="sum-badge up" id="badge-bal">+0%</span></div>
             <div class="sum-value" id="s-bal">—</div>
-            <div class="sum-sub">across all accounts</div>
+            <div class="sum-sub">after all recorded income & expenses</div>
             <div class="sum-sparkline"><canvas id="spark-bal" height="40" role="img" aria-label="Balance trend sparkline"></canvas></div>
           </div>
           <div class="sum-card">
@@ -213,17 +209,6 @@
           </div>
         </div>
         <div class="budget-page-grid" id="budget-page-list"><div class="empty-state" style="grid-column:1/-1">No budgets yet</div></div>
-      </div>
-
-      <!-- ACCOUNTS PAGE -->
-      <div class="page" id="page-accounts">
-        <div class="full-card">
-          <div class="full-header">
-            <div class="full-title">Accounts</div>
-            <button class="add-btn" onclick="openAccountModal()">+ Add account</button>
-          </div>
-          <div class="accounts-grid" id="accounts-list"><div class="empty-state">No accounts yet</div></div>
-        </div>
       </div>
 
       <div class="page" id="page-ai-page">
@@ -384,6 +369,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=2026-10-07-2"></script>
+<script src="/static/app.js?v=2026-10-08-1"></script>
 </body>
 </html>
