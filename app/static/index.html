@@ -186,6 +186,11 @@
               <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this)">
             </div>
           </div>
+          <div class="transaction-filter-row" aria-label="Transaction type filter">
+            <button class="txn-filter-btn active" data-filter="all" onclick="setTransactionTypeFilter('all')">All</button>
+            <button class="txn-filter-btn" data-filter="income" onclick="setTransactionTypeFilter('income')">Income</button>
+            <button class="txn-filter-btn" data-filter="expense" onclick="setTransactionTypeFilter('expense')">Expense</button>
+          </div>
           <div class="add-form-grid">
             <div class="fg"><label>Type</label><select id="t-type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
             <div class="fg"><label>Amount (₹)</label><input type="number" id="t-amount" placeholder="0"></div>
