@@ -10,6 +10,7 @@ import {
   Pill,
   ProgressBar,
   Screen,
+  SectionTitle,
   SmallText,
 } from "../src/components";
 import { useFinance } from "../src/AppContext";
