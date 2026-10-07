@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { Alert, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import {
   Button,
   Card,
@@ -18,6 +21,35 @@ import {
 import { currentMonth, useFinance } from "../src/AppContext";
 import type { Budget, Goal, MonthlyReport, NetWorthPoint, NetWorthSnapshot } from "../src/types";
 import { colors } from "../src/theme";
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
 
 export default function PlanningScreen() {
   const { api, ready } = useFinance();
@@ -168,6 +200,90 @@ export default function PlanningScreen() {
     }
   };
 
+  const importBudgetsCSV = async () => {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ["text/csv", "text/comma-separated-values", "application/vnd.ms-excel"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (picked.canceled) return;
+      const asset = picked.assets[0];
+      if (!asset) return;
+
+      const text = await new File(asset.uri).text();
+      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) {
+        setError("CSV has no data rows.");
+        return;
+      }
+
+      const parsed = lines.map(parseCSVLine);
+      const first = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+      const hasHeader = first[0]?.includes("category") || first[1]?.includes("limit");
+      const rows = (hasHeader ? parsed.slice(1) : parsed)
+        .map((values) => ({
+          category: String(values[0] ?? "").trim(),
+          limit: Number(String(values[1] ?? "").replace(/,/g, "").replace(/₹/g, "").trim()),
+        }))
+        .filter((row) => row.category && Number.isFinite(row.limit) && row.limit > 0);
+
+      if (!rows.length) {
+        setError("No valid budget rows found.");
+        return;
+      }
+
+      let imported = 0;
+      for (const row of rows) {
+        try {
+          await api.createBudget({ category: row.category, limit_amt: row.limit });
+          imported += 1;
+        } catch {
+          // Existing category conflicts are treated as an update by the backend.
+        }
+      }
+
+      setError("");
+      await loadBase();
+      Alert.alert("Import complete", `Imported ${imported} budget(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Budget import failed.");
+    }
+  };
+
+  const exportBudgetsCSV = async () => {
+    try {
+      const rows = [
+        ["category", "limit_amt"],
+        ...budgets.map((budget) => [budget.category, budget.limit_amt]),
+      ];
+      const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "financeai-budgets.csv";
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      const file = new File(Paths.cache, "financeai-budgets.csv");
+      file.write(csv);
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "text/csv",
+          dialogTitle: "Export FinanceAI budgets",
+          UTI: "public.comma-separated-values-text",
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Budget export failed.");
+    }
+  };
+
   const refresh = async () => {
     setRefreshing(true);
     await Promise.all([loadBase(), loadReport()]);
@@ -274,8 +390,15 @@ export default function PlanningScreen() {
       )}
 
       <View style={styles.rowBetween}>
-        <SectionTitle>Monthly budgets</SectionTitle>
-        <Button title={budgetForm ? "Close" : "+ Budget"} onPress={() => setBudgetForm((v) => !v)} kind={budgetForm ? "secondary" : "primary"} />
+        <View>
+          <SectionTitle>Monthly budgets</SectionTitle>
+          <SmallText>{budgets.length} active budget{budgets.length === 1 ? "" : "s"}</SmallText>
+        </View>
+        <View style={styles.headerButtonRow}>
+          <Button title="📁 Import" onPress={() => void importBudgetsCSV()} kind="secondary" />
+          <Button title="⬇ Export" onPress={() => void exportBudgetsCSV()} kind="secondary" />
+          <Button title={budgetForm ? "Close" : "+ Budget"} onPress={() => setBudgetForm((v) => !v)} kind={budgetForm ? "secondary" : "primary"} />
+        </View>
       </View>
 
       {budgetForm ? (
@@ -379,6 +502,13 @@ export default function PlanningScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerButtonRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
