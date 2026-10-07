@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
+import Svg, { Circle, Path } from "react-native-svg";
 import {
   Card,
   ErrorBanner,
@@ -10,7 +11,6 @@ import {
   Pill,
   ProgressBar,
   Screen,
-  SectionTitle,
   SmallText,
 } from "../src/components";
 import { useFinance } from "../src/AppContext";
@@ -25,53 +25,138 @@ import type {
 } from "../src/types";
 import { colors } from "../src/theme";
 
-function SparkBars({
-  values,
-  tone = "primary",
-}: {
-  values: number[];
-  tone?: "primary" | "danger" | "warning";
-}) {
-  const color = tone === "danger" ? colors.danger : tone === "warning" ? colors.warning : colors.primary;
-  const safe = values.length ? values : [0, 1];
-  const max = Math.max(...safe.map((v) => Math.abs(v)), 1);
+const WEB_LIKE_CATEGORY_COLORS = [
+  "#22c55e",
+  "#f59e0b",
+  "#3b82f6",
+  "#ef4444",
+  "#a855f7",
+  "#f97316",
+];
+
+const AnimatedView = Animated.View;
+
+function money(value: number) {
+  return "₹" + Math.abs(Number(value) || 0).toLocaleString("en-IN");
+}
+
+function linePath(values: number[], width: number, height: number, padding = 8) {
+  if (!values.length) return "";
+  const max = Math.max(...values.map((value) => Math.abs(value)), 1);
+  const min = Math.min(...values.map((value) => value), 0);
+  const range = Math.max(max - min, 1);
+
+  return values.map((value, index) => {
+    const x = values.length === 1 ? width / 2 : padding + (index / (values.length - 1)) * (width - padding * 2);
+    const y = padding + (1 - (value - min) / range) * (height - padding * 2);
+    return (index === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+  }).join(" ");
+}
+
+function AnimatedMiniChart({ values, color = colors.primary }: { values: number[]; color?: string }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 450, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, translateY]);
+
   return (
-    <View style={styles.sparkWrap}>
-      {safe.slice(-12).map((value, index) => (
-        <View
-          key={String(index)}
-          style={[
-            styles.sparkBar,
-            {
-              height: Math.max(3, (Math.abs(value) / max) * 32),
-              backgroundColor: color,
-            },
-          ]}
+    <AnimatedView style={[styles.miniChart, { opacity, transform: [{ translateY }] }]}>
+      <Svg width="100%" height="42" viewBox="0 0 240 42">
+        <Path
+          d={linePath(values.slice(-12), 240, 42, 4)}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
-      ))}
+      </Svg>
+    </AnimatedView>
+  );
+}
+
+function CashFlowChart({ monthly }: { monthly: Summary["monthly"] }) {
+  const points = Object.entries(monthly || {}).sort(([a], [b]) => a.localeCompare(b)).slice(-12);
+  const income = points.map(([, value]) => Number(value.income || 0));
+  const expense = points.map(([, value]) => Number(value.expense || 0));
+
+  const max = Math.max(...income, ...expense, 1);
+  const width = 360;
+  const height = 190;
+  const paddingX = 14;
+  const paddingY = 12;
+
+  const buildPath = (values: number[]) =>
+    values.map((value, index) => {
+      const x = values.length <= 1 ? width / 2 : paddingX + (index / (values.length - 1)) * (width - paddingX * 2);
+      const y = height - paddingY - (value / max) * (height - paddingY * 2);
+      return (index === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+    }).join(" ");
+
+  return (
+    <View style={styles.cashChart}>
+      <Svg width="100%" height="190" viewBox={`0 0 ${width} ${height}`}>
+        {[0, 1, 2, 3, 4].map((row) => (
+          <Path
+            key={row}
+            d={`M0 ${18 + row * 40} L${width} ${18 + row * 40}`}
+            stroke={colors.border}
+            strokeWidth="1"
+            opacity={0.6}
+          />
+        ))}
+        <Path d={buildPath(income)} fill="none" stroke={colors.primary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d={buildPath(expense)} fill="none" stroke={colors.danger} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+
+      <View style={styles.chartAxisLabels}>
+        {points.map(([month]) => <Text key={month} style={styles.chartLabel}>{month.slice(5)}</Text>)}
+      </View>
     </View>
   );
 }
 
-function CashFlowBars({ monthly }: { monthly: Summary["monthly"] }) {
-  const points = Object.entries(monthly || {}).sort(([a], [b]) => a.localeCompare(b)).slice(-8);
-  const max = Math.max(...points.flatMap(([, v]) => [v.income, v.expense]), 1);
+function SpendingDonut({ categories }: { categories: Array<[string, number]> }) {
+  const total = categories.reduce((sum, [, value]) => sum + Number(value), 0);
+  const radius = 66;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
 
   return (
-    <View style={styles.chartArea}>
-      <View style={styles.chartGrid}>
-        {[0, 1, 2, 3].map((line) => <View key={line} style={[styles.gridLine, { top: line * 25 + "%" }]} />)}
-      </View>
-      <View style={styles.barChart}>
-        {points.map(([month, value]) => (
-          <View key={month} style={styles.barGroup}>
-            <View style={styles.barPair}>
-              <View style={[styles.chartBar, { height: Math.max(4, (value.income / max) * 112), backgroundColor: colors.primary }]} />
-              <View style={[styles.chartBar, { height: Math.max(4, (value.expense / max) * 112), backgroundColor: colors.danger }]} />
-            </View>
-            <Text style={styles.chartLabel}>{month.slice(5)}</Text>
-          </View>
-        ))}
+    <View style={styles.donutWrap}>
+      <Svg width={170} height={170} viewBox="0 0 170 170">
+        <Circle cx="85" cy="85" r={radius} stroke={colors.surfaceRaised} strokeWidth="28" fill="none" />
+        {categories.map(([category, value], index) => {
+          const portion = total > 0 ? Number(value) / total : 0;
+          const segment = circumference * portion;
+          const dashOffset = -offset;
+          offset += segment;
+          return (
+            <Circle
+              key={category}
+              cx="85"
+              cy="85"
+              r={radius}
+              stroke={WEB_LIKE_CATEGORY_COLORS[index % WEB_LIKE_CATEGORY_COLORS.length]}
+              strokeWidth="28"
+              fill="none"
+              strokeDasharray={`${segment} ${circumference - segment}`}
+              strokeDashoffset={dashOffset}
+              strokeLinecap="butt"
+              rotation="-90"
+              origin="85, 85"
+            />
+          );
+        })}
+      </Svg>
+      <View style={styles.donutCenter}>
+        <Text style={styles.donutLabel}>TOTAL</Text>
+        <Text style={styles.donutValue}>{money(total)}</Text>
       </View>
     </View>
   );
@@ -83,6 +168,7 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const compact = width < 720;
 
+  const [selectedRange, setSelectedRange] = useState<"1M" | "3M" | "6M" | "1Y" | "All">("1Y");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [summaryAll, setSummaryAll] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -98,33 +184,36 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     if (!ready) return;
     setError("");
-    const results = await Promise.allSettled([
-      api.summary("1y"),
-      api.summary("all"),
-      api.transactions(5000),
-      api.accounts(),
-      api.budgets(),
-      api.insightsDashboard(),
-      api.netWorth(),
-      api.forecast(),
-    ]);
+    try {
+      const [selectedResult, allResult, txnResult, accountResult, budgetResult, insightResult, netResult, forecastResult] =
+        await Promise.allSettled([
+          api.summary(selectedRange === "All" ? "all" : selectedRange === "1M" ? "1m" : selectedRange === "3M" ? "3m" : selectedRange === "6M" ? "6m" : "1y"),
+          api.summary("all"),
+          api.transactions(5000),
+          api.accounts(),
+          api.budgets(),
+          api.insightsDashboard(),
+          api.netWorth(),
+          api.forecast(),
+        ]);
 
-    const [selected, all, txn, acc, budget, insight, worth, forecastResult] = results;
-    if (selected.status === "fulfilled") setSummary(selected.value);
-    if (all.status === "fulfilled") setSummaryAll(all.value);
-    if (txn.status === "fulfilled") setTransactions(txn.value);
-    if (acc.status === "fulfilled") setAccounts(acc.value);
-    if (budget.status === "fulfilled") setBudgets(budget.value);
-    if (insight.status === "fulfilled") setInsights(insight.value);
-    if (worth.status === "fulfilled") setNetWorth(worth.value);
-    if (forecastResult.status === "fulfilled") setForecast(forecastResult.value);
+      if (selectedResult.status === "fulfilled") setSummary(selectedResult.value);
+      if (allResult.status === "fulfilled") setSummaryAll(allResult.value);
+      if (txnResult.status === "fulfilled") setTransactions(txnResult.value);
+      if (accountResult.status === "fulfilled") setAccounts(accountResult.value);
+      if (budgetResult.status === "fulfilled") setBudgets(budgetResult.value);
+      if (insightResult.status === "fulfilled") setInsights(insightResult.value);
+      if (netResult.status === "fulfilled") setNetWorth(netResult.value);
+      if (forecastResult.status === "fulfilled") setForecast(forecastResult.value);
 
-    const firstFailure = results.find((item) => item.status === "rejected");
-    if (firstFailure?.status === "rejected") {
-      setError(firstFailure.reason instanceof Error ? firstFailure.reason.message : "Some dashboard data could not be loaded.");
+      const failure = [selectedResult, txnResult, accountResult].find((item) => item.status === "rejected");
+      if (failure?.status === "rejected") {
+        setError(failure.reason instanceof Error ? failure.reason.message : "Some dashboard data could not be loaded.");
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [api, ready]);
+  }, [api, ready, selectedRange]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -155,6 +244,12 @@ export default function HomeScreen() {
     return { ...budget, spent, pct };
   });
 
+  const rangeLabel =
+    selectedRange === "1M" ? "this month" :
+    selectedRange === "3M" ? "last 3 months" :
+    selectedRange === "6M" ? "last 6 months" :
+    selectedRange === "1Y" ? "last 12 months" : "all time";
+
   if (loading && !summary) return <Screen><LoadingState /></Screen>;
 
   return (
@@ -172,38 +267,40 @@ export default function HomeScreen() {
 
       <View style={[styles.summaryGrid, compact && styles.summaryGridCompact]}>
         <Card style={styles.summaryCard}>
-          <View style={styles.rowBetween}><SmallText>Total balance</SmallText><Pill tone={balance >= 0 ? "success" : "danger"}>{balance >= 0 ? "Positive" : "Negative"}</Pill></View>
-          <Money value={totalBalance} size={28} />
+          <View style={styles.rowBetween}><SmallText>Total balance</SmallText><SmallText>All time</SmallText></View>
+          <Money value={totalBalance} size={29} />
           <SmallText>after all recorded income & expenses</SmallText>
-          <SparkBars values={cashNet} />
+          <AnimatedMiniChart values={cashNet} />
         </Card>
 
         <Card style={styles.summaryCard}>
-          <View style={styles.rowBetween}><SmallText>Income</SmallText><SmallText>this period</SmallText></View>
-          <Money value={income} size={28} />
-          <SmallText>vs. previous period</SmallText>
-          <SparkBars values={cashIncome} />
+          <View style={styles.rowBetween}><SmallText>Income</SmallText><SmallText>{rangeLabel}</SmallText></View>
+          <Money value={income} size={29} />
+          <SmallText>recorded income</SmallText>
+          <AnimatedMiniChart values={cashIncome} />
         </Card>
 
         <Card style={styles.summaryCard}>
-          <View style={styles.rowBetween}><SmallText>Expenses</SmallText><Pill tone={expense <= income ? "success" : "danger"}>{expense <= income ? "On track" : "High"}</Pill></View>
-          <Money value={-expense} size={28} />
+          <View style={styles.rowBetween}><SmallText>Expenses</SmallText><SmallText>{rangeLabel}</SmallText></View>
+          <Money value={-expense} size={29} />
           <SmallText>recorded spending</SmallText>
-          <SparkBars values={cashExpense} tone="danger" />
+          <AnimatedMiniChart values={cashExpense} color={colors.danger} />
         </Card>
 
         <Card style={styles.summaryCard}>
           <View style={styles.rowBetween}><SmallText>Savings rate</SmallText><SmallText>goal: 40%</SmallText></View>
           <Text style={styles.savingsValue}>{savingsRate.toFixed(1)}%</Text>
           <ProgressBar value={savingsRate} tone={savingsRate >= 40 ? "primary" : "warning"} />
-          <SmallText>{savingsRate >= 40 ? "Healthy savings pace" : "Needs attention"}</SmallText>
+          <SmallText>{savingsRate >= 40 ? "Healthy" : "Needs attention"}</SmallText>
         </Card>
       </View>
 
-      <Card style={styles.addCard}>
-        <Text style={styles.addText}>Keep your cash flow current.</Text>
-        <PressableLike title="+ Add transaction" onPress={() => router.push("/transactions")} />
-      </Card>
+      <Pressable
+        onPress={() => router.push("/transactions")}
+        style={({ pressed }) => [styles.addCard, pressed && { opacity: 0.86 }]}
+      >
+        <Text style={styles.addButtonText}>+ Add transaction</Text>
+      </Pressable>
 
       <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         <Card style={styles.largeCard}>
@@ -213,35 +310,53 @@ export default function HomeScreen() {
               <Text style={styles.panelValue}>{MoneyText(balance)}</Text>
               <Pill tone={balance >= 0 ? "success" : "danger"}>{balance >= 0 ? "Net positive" : "Net negative"}</Pill>
             </View>
-            <View style={styles.rangeRow}>
-              {["1M", "3M", "6M", "1Y", "All"].map((range, index) => (
-                <View key={range} style={[styles.rangePill, index === 3 && styles.rangeActive]}><Text style={styles.rangeText}>{range}</Text></View>
-              ))}
-            </View>
           </View>
+
+          <View style={styles.rangeRow}>
+            {["1M", "3M", "6M", "1Y", "All"].map((range) => {
+              const active = selectedRange === range;
+              return (
+                <Pressable
+                  key={range}
+                  onPress={() => setSelectedRange(range as typeof selectedRange)}
+                  style={[styles.rangePill, active && styles.rangeActive]}
+                >
+                  <Text style={[styles.rangeText, active && styles.rangeTextActive]}>{range}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <View style={styles.legendRow}>
             <Legend color={colors.primary} text={"Income " + money(income)} />
             <Legend color={colors.danger} text={"Expenses " + money(expense)} />
           </View>
-          <CashFlowBars monthly={summary?.monthly ?? {}} />
+          <CashFlowChart monthly={summary?.monthly ?? {}} />
         </Card>
 
         <Card style={styles.largeCard}>
           <View style={styles.rowBetween}>
-            <View><SmallText>Spending by category</SmallText><Text style={styles.panelTitle}>All time</Text></View>
-            <PressableLike title="View all" kind="link" onPress={() => router.push("/transactions")} />
+            <View><SmallText>Spending by category</SmallText><Text style={styles.panelTitle}>{selectedRange === "All" ? "All time" : rangeLabel}</Text></View>
+            <Pressable onPress={() => router.push("/transactions")}><Text style={styles.link}>View all</Text></Pressable>
           </View>
-          {categories.map(([category, amount], index) => {
-            const total = categories.reduce((sum, [, value]) => sum + value, 0) || 1;
-            const percentage = (amount / total) * 100;
-            return (
-              <View key={category} style={styles.categoryRow}>
-                <View style={styles.rowBetween}><Text style={styles.categoryName}>{category}</Text><Money value={amount} size={13} /></View>
-                <View style={styles.categoryTrack}><View style={[styles.categoryFill, { width: percentage + "%", backgroundColor: [colors.primary, colors.warning, colors.info, colors.danger, "#a855f7", "#f97316"][index] }]} /></View>
-              </View>
-            );
-          })}
-          {!categories.length ? <SmallText>No expense categories yet.</SmallText> : null}
+
+          <SpendingDonut categories={categories} />
+          <View style={styles.categoryList}>
+            {categories.map(([category, amount], index) => {
+              const total = categories.reduce((sum, [, value]) => sum + value, 0) || 1;
+              return (
+                <View key={category} style={styles.categoryLegendRow}>
+                  <View style={styles.categoryLegendLeft}>
+                    <View style={[styles.legendDot, { backgroundColor: WEB_LIKE_CATEGORY_COLORS[index % WEB_LIKE_CATEGORY_COLORS.length] }]} />
+                    <Text style={styles.categoryName}>{category}</Text>
+                  </View>
+                  <Text style={styles.categoryPercent}>{Math.round((amount / total) * 100)}%</Text>
+                  <Text style={styles.categoryAmount}>{money(amount)}</Text>
+                </View>
+              );
+            })}
+            {!categories.length ? <SmallText>No expense data for this period.</SmallText> : null}
+          </View>
         </Card>
       </View>
 
@@ -249,10 +364,10 @@ export default function HomeScreen() {
         <Card style={styles.largeCard}>
           <View style={styles.rowBetween}>
             <View><SmallText>Recent transactions</SmallText><Text style={styles.panelTitle}>Latest activity</Text></View>
-            <PressableLike title="View all" kind="link" onPress={() => router.push("/transactions")} />
+            <Pressable onPress={() => router.push("/transactions")}><Text style={styles.link}>View all</Text></Pressable>
           </View>
           {transactions.slice(0, 6).map((txn) => (
-            <View key={txn.id} style={styles.transactionRow}>
+            <Pressable key={txn.id} onPress={() => router.push("/transactions")} style={styles.transactionRow}>
               <View style={[styles.iconBox, { backgroundColor: txn.type === "income" ? colors.primarySoft : colors.dangerSoft }]}>
                 <Text style={{ color: txn.type === "income" ? colors.primary : colors.danger, fontSize: 16 }}>{txn.type === "income" ? "↗" : "↘"}</Text>
               </View>
@@ -261,15 +376,15 @@ export default function HomeScreen() {
                 <SmallText>{txn.category} · {txn.date}</SmallText>
               </View>
               <Text style={[styles.transactionAmount, { color: txn.type === "income" ? colors.primary : colors.danger }]}>{txn.type === "income" ? "+" : "-"}₹{txn.amount.toLocaleString("en-IN")}</Text>
-            </View>
+            </Pressable>
           ))}
           {!transactions.length ? <SmallText>No transactions yet.</SmallText> : null}
         </Card>
 
         <Card style={styles.largeCard}>
           <View style={styles.rowBetween}>
-            <View><SmallText>Budgets</SmallText><Text style={styles.panelTitle}>{budgets.length} active</Text></View>
-            <PressableLike title="Manage" kind="link" onPress={() => router.push("/planning")} />
+            <View><SmallText>Budgets</SmallText><Text style={styles.panelTitle}>{budgets.length} active budgets</Text></View>
+            <Pressable onPress={() => router.push("/planning")}><Text style={styles.link}>Manage</Text></Pressable>
           </View>
           {budgetSnapshot.map((budget) => (
             <View key={budget.id} style={styles.budgetRow}>
@@ -287,7 +402,7 @@ export default function HomeScreen() {
       <View style={[styles.twoColumn, compact && styles.oneColumn]}>
         {netWorth ? (
           <Card style={styles.smallCard}>
-            <SmallText>Net worth</SmallText>
+            <View style={styles.rowBetween}><SmallText>Net worth</SmallText><Pill tone={netWorth.net_worth >= 0 ? "success" : "danger"}>{netWorth.net_worth >= 0 ? "Positive" : "Negative"}</Pill></View>
             <Text style={styles.netWorth}>{money(netWorth.net_worth)}</Text>
             <View style={styles.statsRow}>
               <View><SmallText>Assets</SmallText><Text style={styles.statValue}>{money(netWorth.asset_total)}</Text></View>
@@ -297,18 +412,20 @@ export default function HomeScreen() {
         ) : null}
 
         {insights ? (
-          <Card style={styles.smallCard}>
-            <View style={styles.rowBetween}><SmallText>AI insights</SmallText><Pill tone="success">Updated</Pill></View>
-            <Text style={styles.netWorth}>{insights.health.score}/100</Text>
-            <Text style={styles.healthGrade}>{insights.health.grade}</Text>
-            <ProgressBar value={insights.health.score} />
-            <PressableLike title="View insights" kind="link" onPress={() => router.push("/insights")} />
-          </Card>
+          <Pressable onPress={() => router.push("/insights")} style={styles.smallCardWrap}>
+            <Card style={styles.smallCard}>
+              <View style={styles.rowBetween}><SmallText>AI insights</SmallText><Pill tone="success">Updated now</Pill></View>
+              <Text style={styles.netWorth}>{insights.health.score}/100</Text>
+              <Text style={styles.healthGrade}>{insights.health.grade}</Text>
+              <ProgressBar value={insights.health.score} />
+              <Text style={styles.link}>View insights</Text>
+            </Card>
+          </Pressable>
         ) : null}
 
         {forecast ? (
           <Card style={styles.smallCard}>
-            <View style={styles.rowBetween}><SmallText>Next-month expense estimate</SmallText><Pill tone="info">{forecast.confidence.toFixed(0)}%</Pill></View>
+            <View style={styles.rowBetween}><SmallText>Next-month expense estimate</SmallText><Pill tone="info">{forecast.confidence.toFixed(0)}% confidence</Pill></View>
             <Text style={[styles.netWorth, { color: colors.primary }]}>{money(forecast.prediction)}</Text>
             <SmallText>{forecast.next_month} · {forecast.model_used}</SmallText>
           </Card>
@@ -318,7 +435,7 @@ export default function HomeScreen() {
       <Card>
         <View style={styles.rowBetween}>
           <View><SmallText>Accounts</SmallText><Text style={styles.panelTitle}>{accounts.length} configured</Text></View>
-          <PressableLike title="Manage" kind="link" onPress={() => router.push("/settings")} />
+          <Pressable onPress={() => router.push("/settings")}><Text style={styles.link}>Manage</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRow}>
           {accounts.map((account) => (
@@ -335,32 +452,12 @@ export default function HomeScreen() {
   );
 }
 
-function money(value: number) {
-  return "₹" + Math.abs(Number(value) || 0).toLocaleString("en-IN");
-}
-
 function MoneyText(value: number) {
   return (value < 0 ? "-₹" : "₹") + Math.abs(value).toLocaleString("en-IN");
 }
 
 function Legend({ color, text }: { color: string; text: string }) {
   return <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: color }]} /><Text style={styles.legendText}>{text}</Text></View>;
-}
-
-function PressableLike({
-  title,
-  onPress,
-  kind = "primary",
-}: {
-  title: string;
-  onPress: () => void;
-  kind?: "primary" | "link";
-}) {
-  return (
-    <Text onPress={onPress} style={kind === "link" ? styles.link : styles.addButton}>
-      {title}
-    </Text>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -371,44 +468,45 @@ const styles = StyleSheet.create({
   summaryGrid: { flexDirection: "row", gap: 10 },
   summaryGridCompact: { flexWrap: "wrap" },
   summaryCard: { flex: 1, minWidth: 0, minHeight: 148, gap: 7, padding: 14 },
-  addCard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  addText: { flex: 1, color: colors.muted, fontSize: 12 },
-  addButton: { color: colors.background, backgroundColor: colors.primary, fontWeight: "800", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 8, overflow: "hidden" },
+  addCard: { minHeight: 43, borderRadius: 9, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  addButtonText: { color: colors.background, fontSize: 13, fontWeight: "800" },
   savingsValue: { color: colors.text, fontSize: 28, fontWeight: "800" },
-  sparkWrap: { height: 36, flexDirection: "row", alignItems: "flex-end", gap: 4, marginTop: 2 },
-  sparkBar: { flex: 1, maxWidth: 16, borderRadius: 4, opacity: 0.8 },
+  miniChart: { height: 42, width: "100%", marginTop: 2 },
   twoColumn: { flexDirection: "row", gap: 12 },
   oneColumn: { flexDirection: "column" },
   largeCard: { flex: 1, minWidth: 0 },
   smallCard: { flex: 1, minWidth: 0 },
+  smallCardWrap: { flex: 1 },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   panelValue: { color: colors.text, fontSize: 29, fontWeight: "800", marginTop: 2 },
   panelTitle: { color: colors.text, fontSize: 16, fontWeight: "800", marginTop: 2 },
-  rangeRow: { flexDirection: "row", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" },
-  rangePill: { paddingHorizontal: 7, paddingVertical: 5, backgroundColor: colors.surfaceRaised, borderRadius: 7 },
+  rangeRow: { flexDirection: "row", gap: 5, justifyContent: "flex-end", flexWrap: "wrap" },
+  rangePill: { paddingHorizontal: 9, paddingVertical: 6, backgroundColor: colors.surfaceRaised, borderRadius: 7 },
   rangeActive: { backgroundColor: colors.surfaceHover },
-  rangeText: { color: colors.muted, fontSize: 9, fontWeight: "700" },
+  rangeText: { color: colors.muted, fontSize: 10, fontWeight: "700" },
+  rangeTextActive: { color: colors.text },
   legendRow: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   legendDot: { width: 7, height: 7, borderRadius: 999 },
   legendText: { color: colors.muted, fontSize: 10 },
-  chartArea: { height: 170, position: "relative", marginTop: 4 },
-  chartGrid: { ...StyleSheet.absoluteFillObject },
-  gridLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: colors.border, opacity: 0.55 },
-  barChart: { position: "absolute", left: 2, right: 2, top: 10, bottom: 22, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
-  barGroup: { flex: 1, alignItems: "center", gap: 5 },
-  barPair: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 118 },
-  chartBar: { width: 6, borderRadius: 3 },
-  chartLabel: { color: colors.subtle, fontSize: 8 },
-  categoryRow: { gap: 6 },
+  cashChart: { height: 215, position: "relative", marginTop: 2 },
+  chartAxisLabels: { position: "absolute", left: 8, right: 8, bottom: 0, flexDirection: "row", justifyContent: "space-between" },
+  chartLabel: { color: colors.subtle, fontSize: 9 },
+  donutWrap: { height: 185, alignItems: "center", justifyContent: "center", position: "relative" },
+  donutCenter: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  donutLabel: { color: colors.subtle, fontSize: 9, fontWeight: "700" },
+  donutValue: { color: colors.text, fontSize: 18, fontWeight: "800", marginTop: 3 },
+  categoryList: { gap: 7 },
+  categoryLegendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  categoryLegendLeft: { flexDirection: "row", alignItems: "center", gap: 7, flex: 1 },
   categoryName: { color: colors.text, fontSize: 12, fontWeight: "700", textTransform: "capitalize" },
-  categoryTrack: { height: 6, borderRadius: 999, backgroundColor: colors.surfaceRaised, overflow: "hidden" },
-  categoryFill: { height: "100%", borderRadius: 999 },
+  categoryPercent: { color: colors.muted, fontSize: 10, width: 32, textAlign: "right" },
+  categoryAmount: { color: colors.text, fontSize: 11, fontWeight: "700", width: 78, textAlign: "right" },
   transactionRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.border },
   iconBox: { width: 34, height: 34, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   transactionTitle: { color: colors.text, fontSize: 12, fontWeight: "700" },
   transactionAmount: { fontSize: 12, fontWeight: "800" },
-  budgetRow: { gap: 6 },
+  budgetRow: { gap: 6, marginTop: 3 },
   budgetAmounts: { color: colors.muted, fontSize: 10 },
   statsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   statValue: { color: colors.text, fontSize: 15, fontWeight: "800", marginTop: 2 },
