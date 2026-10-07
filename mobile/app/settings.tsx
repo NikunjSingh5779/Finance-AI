@@ -32,6 +32,7 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountForm, setAccountForm] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [accountName, setAccountName] = useState("");
   const [accountBalance, setAccountBalance] = useState("0");
   const [accountType, setAccountType] = useState<AccountType>("checking");
@@ -54,6 +55,22 @@ export default function SettingsScreen() {
     void loadAccounts();
   }, [loadAccounts]);
 
+  const openAccountForm = (account?: Account) => {
+    if (account) {
+      setEditingAccountId(account.id);
+      setAccountName(account.name);
+      setAccountBalance(String(account.balance));
+      setAccountType(account.type);
+    } else {
+      setEditingAccountId(null);
+      setAccountName("");
+      setAccountBalance("0");
+      setAccountType("checking");
+    }
+    setMessage("");
+    setAccountForm(true);
+  };
+
   const createAccount = async () => {
     const balance = Number(accountBalance);
     if (!accountName.trim() || !Number.isFinite(balance)) {
@@ -63,19 +80,29 @@ export default function SettingsScreen() {
 
     setSavingAccount(true);
     try {
-      const account = await api.createAccount({
+      const payload = {
         name: accountName.trim(),
         balance,
         type: accountType,
-      });
-      setAccounts((items) => items.concat(account));
+      };
+
+      const account = editingAccountId
+        ? await api.updateAccount(editingAccountId, payload)
+        : await api.createAccount(payload);
+
+      setAccounts((items) =>
+        editingAccountId
+          ? items.map((item) => (item.id === editingAccountId ? account : item))
+          : items.concat(account),
+      );
+      setEditingAccountId(null);
       setAccountName("");
       setAccountBalance("0");
       setAccountType("checking");
       setAccountForm(false);
       setMessage("");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not create account.");
+      setMessage(err instanceof Error ? err.message : "Could not save account.");
     } finally {
       setSavingAccount(false);
     }
@@ -114,11 +141,12 @@ export default function SettingsScreen() {
 
       <View style={styles.rowBetween}>
         <SectionTitle>Accounts</SectionTitle>
-        <Button title={accountForm ? "Close" : "+ Account"} onPress={() => setAccountForm((v) => !v)} kind={accountForm ? "secondary" : "primary"} />
+        <Button title={accountForm ? "Close" : "+ Account"} onPress={() => accountForm ? setAccountForm(false) : openAccountForm()} kind={accountForm ? "secondary" : "primary"} />
       </View>
 
       {accountForm ? (
         <Card>
+          <SectionTitle>{editingAccountId ? "Edit account" : "New account"}</SectionTitle>
           <Input label="Account name" value={accountName} onChangeText={setAccountName} placeholder="Main bank" />
           <Input label="Opening balance (₹)" value={accountBalance} onChangeText={setAccountBalance} keyboardType="decimal-pad" placeholder="25000" />
           <SmallText>Type</SmallText>
@@ -127,7 +155,7 @@ export default function SettingsScreen() {
             selected={accountType}
             onSelect={(value) => setAccountType(value as AccountType)}
           />
-          <Button title="Create account" onPress={() => void createAccount()} loading={savingAccount} />
+          <Button title={editingAccountId ? "Save changes" : "Create account"} onPress={() => void createAccount()} loading={savingAccount} />
         </Card>
       ) : null}
 
@@ -148,7 +176,10 @@ export default function SettingsScreen() {
                 <SmallText>current balance</SmallText>
               </View>
             </View>
-            <Button title="Delete account" onPress={() => deleteAccount(account)} kind="danger" />
+            <View style={styles.accountActions}>
+              <Button title="Edit" onPress={() => openAccountForm(account)} kind="secondary" />
+              <Button title="Delete" onPress={() => deleteAccount(account)} kind="danger" />
+            </View>
           </Card>
         ))
       )}
@@ -198,5 +229,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     fontWeight: "800",
+  },
+  accountActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignSelf: "flex-end",
   },
 });
