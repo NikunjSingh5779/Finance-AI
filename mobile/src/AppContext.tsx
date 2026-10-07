@@ -1,23 +1,49 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
+import { createContext, useContext, useMemo, useState } from "react";
 import { FinanceApi } from "./api";
 
-const STORAGE_KEY = "financeai.apiUrl";
+function firstValid(values: Array<string | undefined | null>): string | null {
+  for (const value of values) {
+    const normalized = value?.trim().replace(/\/+$/, "");
+    if (normalized && /^https?:\/\//i.test(normalized)) return normalized;
+  }
+  return null;
+}
 
-function defaultApiUrl(): string {
+function detectApiUrl(): string {
   const envValue =
     typeof process !== "undefined" ? process.env.EXPO_PUBLIC_API_URL : undefined;
+
+  const configured = Constants.expoConfig?.extra?.apiUrl as string | undefined;
+
+  const webHost =
+    Platform.OS === "web" && typeof window !== "undefined"
+      ? window.location.hostname
+      : undefined;
+
+  if (webHost) {
+    const protocol = window.location.protocol === "https:" ? "https" : "http";
+    return `${protocol}://${webHost}:8000`;
+  }
+
+  // Expo development exposes the host machine through hostUri.
+  // Reuse that host and switch only the backend port from 8081 to 8000.
+  const hostUri = Constants.expoConfig?.hostUri;
+  const expoHost = hostUri?.split(":")[0];
+
   return (
-    envValue ||
-    (Constants.expoConfig?.extra?.apiUrl as string | undefined) ||
-    "http://127.0.0.1:8000"
+    firstValid([envValue, configured]) ||
+    (expoHost && expoHost !== "localhost" && expoHost !== "127.0.0.1"
+      ? `http://${expoHost}:8000`
+      : Platform.OS === "android"
+        ? "http://10.0.2.2:8000"
+        : "http://127.0.0.1:8000")
   );
 }
 
 interface AppContextValue {
   apiBaseUrl: string;
-  setApiBaseUrl: (url: string) => Promise<void>;
   api: FinanceApi;
   ready: boolean;
 }
@@ -25,27 +51,11 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [apiBaseUrl, setApiBaseUrlState] = useState(defaultApiUrl());
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => {
-        if (stored?.trim()) setApiBaseUrlState(stored.trim());
-      })
-      .finally(() => setReady(true));
-  }, []);
-
-  const setApiBaseUrl = async (url: string) => {
-    const normalized = url.trim().replace(/\/+$/, "");
-    setApiBaseUrlState(normalized);
-    await AsyncStorage.setItem(STORAGE_KEY, normalized);
-  };
-
+  const [apiBaseUrl] = useState(detectApiUrl());
   const api = useMemo(() => new FinanceApi(apiBaseUrl), [apiBaseUrl]);
 
   return (
-    <AppContext.Provider value={{ apiBaseUrl, setApiBaseUrl, api, ready }}>
+    <AppContext.Provider value={{ apiBaseUrl, api, ready: true }}>
       {children}
     </AppContext.Provider>
   );
