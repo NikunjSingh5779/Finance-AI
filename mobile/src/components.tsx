@@ -6,6 +6,8 @@ import {
   Text,
   TextInput,
   View,
+  type DimensionValue,
+  type RefreshControlProps,
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
@@ -16,7 +18,7 @@ export function Screen({
   refreshControl,
 }: {
   children: React.ReactNode;
-  refreshControl?: React.ReactElement;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
 }) {
   return (
     <ScrollView
@@ -30,7 +32,6 @@ export function Screen({
     </ScrollView>
   );
 }
-
 export function Header({
   title,
   subtitle,
@@ -135,7 +136,7 @@ export function ProgressBar({
         style={[
           styles.progressFill,
           {
-            width: Math.min(100, Math.max(0, (value / max) * 100)) + "%",
+            width: (Math.min(100, Math.max(0, (value / max) * 100)) + "%") as DimensionValue,
             backgroundColor: fill,
           },
         ]}
@@ -264,8 +265,6 @@ export function ErrorBanner({ message }: { message: string }) {
     </View>
   );
 }
-
-export const commonStyles = styles;
 
 const styles = StyleSheet.create({
   screen: {
@@ -427,3 +426,5 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+
+export const commonStyles = styles;
