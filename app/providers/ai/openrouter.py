@@ -64,9 +64,21 @@ class OpenRouterProvider(AIProvider):
             return []
 
     def generate_response(self, prompt: str) -> str:
-        models = self.available_models or [
-            os.getenv("OPENROUTER_MODEL", "openrouter/free")
-        ]
+        configured_model = os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
+        models = []
+        if configured_model:
+            models.append(configured_model)
+
+        # Prefer the explicitly configured model. The OpenRouter free router
+        # then provides a reliable free fallback before individual free models.
+        if configured_model != "openrouter/free":
+            models.append("openrouter/free")
+
+        for model in self.available_models:
+            if model not in models:
+                models.append(model)
+
+        failures = []
         for model in models:
             try:
                 response = self.session.post(
@@ -80,6 +92,10 @@ class OpenRouterProvider(AIProvider):
                     timeout=30,
                 )
                 if not response.ok:
+                    body = response.text[:300].replace("\n", " ")
+                    failures.append(
+                        f"{model} -> HTTP {response.status_code}: {body}"
+                    )
                     continue
                 data = response.json()
                 choices = data.get("choices") or []
@@ -93,7 +109,10 @@ class OpenRouterProvider(AIProvider):
                     model,
                     exc,
                 )
-        raise RuntimeError("All configured OpenRouter models failed")
+        raise RuntimeError(
+            "All configured OpenRouter models failed"
+            + (": " + failures[-1] if failures else "")
+        )
 
     def is_available(self) -> bool:
         if not self.api_key:
