@@ -8,7 +8,7 @@ from app.providers.search.duckduckgo import get_searcher
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
-from app.providers.ai.discovery import get_ai_provider
+from app.providers.ai.discovery import get_ai_provider, get_ai_providers
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
@@ -18,7 +18,15 @@ class AIService:
     """Build trusted financial context and delegate generation to a provider."""
 
     def __init__(self, provider: AIProvider | None = None):
-        self.provider = provider if provider is not None else get_ai_provider()
+        # An injected provider is used for tests/custom integrations. Otherwise,
+        # discover all reachable providers so runtime failures can fall through
+        # to the next configured provider.
+        self.provider = provider
+
+    def _provider_candidates(self) -> list[AIProvider]:
+        if self.provider is not None:
+            return [self.provider]
+        return get_ai_providers()
 
     @property
     def available(self) -> bool:
@@ -68,7 +76,8 @@ class AIService:
         financial_context: dict[str, Any],
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
-        if not self.available:
+        providers = self._provider_candidates()
+        if not providers:
             raise ProviderUnavailableError(
                 "ai",
                 "No configured provider is available",
@@ -98,21 +107,33 @@ class AIService:
             web_results=web_results,
         )
 
-        try:
-            response = await asyncio.to_thread(
-                self.provider.generate_response,
-                prompt,
-            )
-        except Exception as exc:
-            raise ProviderUnavailableError("ai", str(exc)) from exc
+        response = None
+        failures: list[str] = []
 
-        if not isinstance(response, str) or not response.strip():
+        for provider in providers:
+            provider_name = provider.__class__.__name__
+            try:
+                candidate = await asyncio.to_thread(
+                    provider.generate_response,
+                    prompt,
+                )
+                if isinstance(candidate, str) and candidate.strip():
+                    response = candidate.strip()
+                    break
+                failures.append(f"{provider_name}: empty response")
+            except Exception as exc:
+                # A configured provider can still reject a request at runtime
+                # (for example, a free-tier policy). Continue to the next one.
+                failures.append(f"{provider_name}: {exc}")
+                continue
+
+        if response is None:
             raise ProviderUnavailableError(
                 "ai",
-                "Provider returned an empty response",
+                "All configured AI providers failed: " + " | ".join(failures),
             )
 
-        reply = response.strip()
+        reply = response
 
         if web_results:
             source_lines = ["\n\nSources (fresh web search):"]
