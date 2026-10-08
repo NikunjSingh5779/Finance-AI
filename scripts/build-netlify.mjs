@@ -14,9 +14,8 @@ const appPath = path.join(output, "app.js");
 
 let index = fs.readFileSync(indexPath, "utf8");
 index = index
-  .replaceAll('href="/static/style.css"', 'href="/style.css"')
-  .replaceAll('href="/static/insights.css"', 'href="/insights.css"')
-  .replaceAll('src="/static/app.js"', 'src="/app.js"');
+  .replace(/href="\/static\/([^"]+)"/g, 'href="/$1"')
+  .replace(/src="\/static\/([^"]+)"/g, 'src="/$1"');
 
 let app = fs.readFileSync(appPath, "utf8");
 const apiUrl = process.env.FINANCEAI_API_URL || "";
