@@ -1,7 +1,12 @@
-"""OmniRoute AI provider implementation."""
+"""OmniRoute AI provider implementation.
+
+FinanceAI uses OmniRoute's OpenAI Responses endpoint so the gateway can route
+requests to the exact combo configured by the user.
+"""
 
 import logging
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -10,82 +15,113 @@ from .base import AIProvider
 logger = logging.getLogger(__name__)
 
 
-class OmniRouteProvider(AIProvider):
-    """OpenAI-compatible OmniRoute client."""
+def _normalize_v1_base_url(value: str) -> str:
+    """Normalize an OmniRoute URL to its /v1 API root.
 
-    def __init__(self, api_key: str, base_url: str):
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+    Accepts:
+      http://localhost:20128
+      http://localhost:20128/v1
+      http://localhost:20128/v1/responses
+    """
+    raw = (value or "").strip().rstrip("/")
+    if not raw:
+        return "http://127.0.0.1:20128/v1"
+
+    parts = urlsplit(raw)
+    path = parts.path.rstrip("/")
+
+    for suffix in ("/responses", "/chat/completions"):
+        if path.endswith(suffix):
+            path = path[: -len(suffix)].rstrip("/")
+
+    if path.endswith("/v1"):
+        return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+    return urlunsplit((parts.scheme, parts.netloc, path + "/v1", "", ""))
+
+
+class OmniRouteProvider(AIProvider):
+    """OpenAI Responses-compatible OmniRoute client.
+
+    Only the explicitly configured combo/model name is sent to OmniRoute.
+    Automatic model discovery is intentionally not used for generation.
+    """
+
+    def __init__(self, api_key: str, base_url: str, combo_name: str):
+        self.api_key = api_key.strip()
+        self.base_url = _normalize_v1_base_url(base_url)
+        self.combo_name = combo_name.strip()
         self.session = requests.Session()
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
             }
         )
-        self.available_models = self._discover_models()
 
-    def _discover_models(self) -> list[str]:
-        try:
-            response = self.session.get(
-                f"{self.base_url}/v1/models",
-                timeout=10,
-            )
-            if not response.ok:
-                return []
-            data = response.json()
-            return [
-                model["id"]
-                for model in data.get("data", [])
-                if model.get("id")
-            ]
-        except Exception as exc:
-            logger.warning("OmniRoute model discovery failed: %s", exc)
-            return []
+    @property
+    def responses_url(self) -> str:
+        return f"{self.base_url}/responses"
 
     def generate_response(self, prompt: str) -> str:
-        configured_model = os.getenv("OMNIROUTE_MODEL", "auto").strip()
-        models = (
-            [configured_model]
-            if configured_model and configured_model.lower() != "auto"
-            else (self.available_models or [configured_model or "auto"])
+        if not self.combo_name:
+            raise RuntimeError(
+                "OMNIROUTE_COMBO_NAME (or OMNIROUTE_MODEL) must contain "
+                "the exact OmniRoute combo name"
+            )
+
+        payload = {
+            "model": self.combo_name,
+            "input": prompt,
+            "stream": False,
+            "max_output_tokens": 1024,
+        }
+
+        response = self.session.post(
+            self.responses_url,
+            json=payload,
+            timeout=45,
         )
-        for model in models:
-            try:
-                response = self.session.post(
-                    f"{self.base_url}/v1/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 1024,
-                        "temperature": 0.7,
-                    },
-                    timeout=30,
-                )
-                if not response.ok:
-                    continue
-                data = response.json()
-                choices = data.get("choices") or []
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "")
-                    if isinstance(content, str) and content.strip():
-                        return content.strip()
-            except Exception as exc:
-                logger.warning(
-                    "OmniRoute model %s failed: %s",
-                    model,
-                    exc,
-                )
-        raise RuntimeError("All configured OmniRoute models failed")
+
+        if not response.ok:
+            raise RuntimeError(
+                f"OmniRoute returned HTTP {response.status_code}: "
+                f"{response.text[:500]}"
+            )
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise RuntimeError("OmniRoute returned invalid JSON") from exc
+
+        output_text = data.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text.strip()
+
+        chunks: list[str] = []
+        for item in data.get("output") or []:
+            for content in item.get("content") or []:
+                text = content.get("text")
+                if isinstance(text, str) and text.strip():
+                    chunks.append(text.strip())
+
+        if chunks:
+            return "\n".join(chunks)
+
+        raise RuntimeError(
+            "OmniRoute returned a Responses payload without usable output"
+        )
 
     def is_available(self) -> bool:
-        if not self.api_key:
+        if not self.api_key or not self.combo_name:
             return False
         try:
             response = self.session.get(
-                f"{self.base_url}/v1/models",
+                f"{self.base_url}/models",
                 timeout=5,
             )
             return response.ok
-        except Exception:
+        except Exception as exc:
+            logger.warning("OmniRoute availability check failed: %s", exc)
             return False
