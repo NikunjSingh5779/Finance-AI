@@ -40,9 +40,22 @@ def _try_omniroute() -> AIProvider | None:
     api_key = os.getenv("OMNIROUTE_API_KEY")
     if not api_key:
         return None
+    combo_name = (
+        os.getenv("OMNIROUTE_COMBO_NAME")
+        or os.getenv("OMNIROUTE_MODEL")
+        or ""
+    ).strip()
+    if not combo_name or combo_name.lower() == "auto":
+        logger.warning(
+            "OmniRoute is configured but no exact combo name is set; "
+            "set OMNIROUTE_COMBO_NAME to the combo created in OmniRoute."
+        )
+        return None
+
     return OmniRouteProvider(
         api_key.strip(),
-        os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128"),
+        os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"),
+        combo_name,
     )
 
 
