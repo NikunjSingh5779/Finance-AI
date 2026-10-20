@@ -316,7 +316,7 @@ class AIService:
 
     @staticmethod
     def _extract_web_search_query(question: str) -> str | None:
-        """Return a web-search query only when the user explicitly asks for one."""
+        """Build a focused web query for explicit or clearly current questions."""
         text = question.strip()
         lowered = text.lower()
 
@@ -331,28 +331,78 @@ class AIService:
             "find online ",
             "search for ",
             "search ",
+            "browse for ",
+            "browse ",
+            "fetch ",
         )
 
+        query = None
         for prefix in prefixes:
             if lowered.startswith(prefix):
                 query = text[len(prefix):].strip()
-                if not query:
-                    return None
+                break
 
-                freshness_terms = (
-                    "latest",
-                    "today",
-                    "current",
-                    "now",
-                    "right now",
-                    "realtime",
-                    "real time",
-                )
-                if any(term in query.lower() for term in freshness_terms):
-                    query = f"{query} {datetime.now().strftime('%B %Y')} latest"
-                return query
+        web_signals = (
+            "latest",
+            "today",
+            "current",
+            "now",
+            "right now",
+            "realtime",
+            "real time",
+            "recent",
+            "news",
+            "what happened",
+            "who won",
+            "price today",
+            "as of today",
+        )
 
-        return None
+        if query is None and not any(signal in lowered for signal in web_signals):
+            return None
+
+        query = query or text
+        query = re.sub(
+            r"(?i)\b(\d{1,2})\s*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(20\d{2})\b",
+            lambda match: f"{match.group(1)} {match.group(2)} {match.group(3)}",
+            query,
+        )
+        query = re.sub(
+            r"\b(\d{1,2})(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)(20\d{2})\b",
+            lambda match: f"{match.group(1)} {match.group(2)} {match.group(3)}",
+            query,
+            flags=re.IGNORECASE,
+        )
+
+        market_type = AIService._market_type(query)
+        symbol = AIService._market_symbol(query, market_type or "")
+        if market_type == "stock" and symbol and any(
+            term in query.lower() for term in ("price", "share", "stock", "close", "quote")
+        ):
+            target_date = AIService._extract_date(query)
+            suffix = f" {target_date}" if target_date else ""
+            return f"{symbol} historical stock price{suffix}".strip()
+
+        if market_type == "commodity" and symbol and any(
+            term in query.lower() for term in ("price", "gold", "silver", "oil")
+        ):
+            target_date = AIService._extract_date(query)
+            suffix = f" {target_date}" if target_date else " today"
+            return f"{query.split()[0]} spot price{suffix}"
+
+        if market_type == "crypto" and symbol and any(
+            term in query.lower() for term in ("price", "quote", "value")
+        ):
+            target_date = AIService._extract_date(query)
+            suffix = f" {target_date}" if target_date else " today"
+            return f"{symbol} price{suffix}"
+
+        if any(term in query.lower() for term in (
+            "latest", "today", "current", "now", "right now", "realtime", "real time", "recent"
+        )):
+            query = f"{query} {datetime.now().strftime('%B %Y')}"
+
+        return query
 
     def _build_prompt(
         self,
