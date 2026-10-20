@@ -67,16 +67,28 @@ class MarketDataProvider:
             latest = data.iloc[-1]
             prev_close = data.iloc[-2]["Close"] if len(data) > 1 else latest["Close"]
 
+            # Prefer yfinance fast_info for the latest available quote when
+            # present; fall back to the latest daily close.
+            price = float(latest["Close"])
+            try:
+                fast_info = ticker.fast_info
+                fast_price = fast_info.get("last_price")
+                if fast_price is not None:
+                    price = float(fast_price)
+            except Exception:
+                pass
+
             return {
                 "symbol": symbol.upper(),
-                "price": round(float(latest["Close"]), 2),
+                "price": round(price, 2),
+                "last_daily_close": round(float(latest["Close"]), 2),
                 "open": round(float(latest["Open"]), 2),
                 "high": round(float(latest["High"]), 2),
                 "low": round(float(latest["Low"]), 2),
                 "volume": int(latest["Volume"]),
-                "change": round(float(latest["Close"] - prev_close), 2),
+                "change": round(float(price - prev_close), 2),
                 "change_pct": round(
-                    float((latest["Close"] - prev_close) / prev_close * 100)
+                    float((price - prev_close) / prev_close * 100)
                 ) if prev_close else 0.0,
                 "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
                 "source": "yfinance",
