@@ -71,12 +71,21 @@ class OmniRouteProvider(AIProvider):
                 "the exact OmniRoute combo name"
             )
 
+        # FinanceAI is intentionally concise. Low reasoning plus a smaller
+        # output budget reduces latency while preserving enough room for the
+        # compact Summary/Key points/Next step response format.
+        reasoning_effort = os.getenv(
+            "OMNIROUTE_REASONING_EFFORT", "low"
+        ).strip().lower()
+
         payload = {
             "model": self.combo_name,
             "input": prompt,
             "stream": False,
-            "max_output_tokens": 1024,
+            "max_output_tokens": 512,
         }
+        if reasoning_effort in {"none", "minimal", "low", "medium", "high", "max"}:
+            payload["reasoning"] = {"effort": reasoning_effort}
 
         response = self.session.post(
             self.responses_url,
