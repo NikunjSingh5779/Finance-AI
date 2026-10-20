@@ -114,14 +114,8 @@ class OmniRouteProvider(AIProvider):
         )
 
     def is_available(self) -> bool:
-        if not self.api_key or not self.combo_name:
-            return False
-        try:
-            response = self.session.get(
-                f"{self.base_url}/models",
-                timeout=5,
-            )
-            return response.ok
-        except Exception as exc:
-            logger.warning("OmniRoute availability check failed: %s", exc)
-            return False
+        # Availability is configuration-based here. Some OmniRoute deployments
+        # intentionally expose /v1/responses without a /v1/models endpoint.
+        # The actual Responses request remains the authoritative health check,
+        # and AIService will fall back if that request fails.
+        return bool(self.api_key and self.combo_name and self.responses_url)
