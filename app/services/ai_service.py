@@ -3,8 +3,11 @@
 import asyncio
 from datetime import datetime
 from typing import Any
+import re
+from datetime import date
 
-from app.providers.search.duckduckgo import get_searcher
+from app.providers.market.market_data import get_market_provider
+from app.services.web_research_service import get_web_researcher
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
@@ -27,6 +30,123 @@ class AIService:
         if self.provider is not None:
             return [self.provider]
         return get_ai_providers()
+    
+    @staticmethod
+    def _market_type(question: str) -> str | None:
+        lowered = question.lower()
+        if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
+            return "stock"
+        if any(term in lowered for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")):
+            return "crypto"
+        if any(term in lowered for term in ("gold", "silver", "crude oil", "oil price", "commodity")):
+            return "commodity"
+        return None
+
+    @staticmethod
+    def _extract_date(question: str) -> str | None:
+        text = question.strip().lower()
+        patterns = (
+            r"(?P<d>\d{1,2})[-/](?P<m>\d{1,2})[-/](?P<y>20\d{2})",
+            r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
+            r"(?P<d>\d{1,2})\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
+        )
+        months = {
+            "jan": 1, "january": 1, "feb": 2, "february": 2,
+            "mar": 3, "march": 3, "apr": 4, "april": 4, "may": 5,
+            "jun": 6, "june": 6, "jul": 7, "july": 7, "aug": 8,
+            "august": 8, "sep": 9, "sept": 9, "september": 9,
+            "oct": 10, "october": 10, "nov": 11, "november": 11,
+            "dec": 12, "december": 12,
+        }
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            try:
+                day = int(match.group("d"))
+                year = int(match.group("y"))
+                month = int(match.group("m")) if match.groupdict().get("m") else months[match.group("mon")]
+                return date(year, month, day).isoformat()
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        if any(term in text for term in ("today", "right now", "now", "current")):
+            return date.today().isoformat()
+        return None
+
+    @staticmethod
+    def _market_symbol(question: str, market_type: str) -> str | None:
+        lowered = question.lower()
+        aliases = {
+            "nvidia": "NVDA",
+            "nvda": "NVDA",
+            "apple": "AAPL",
+            "aapl": "AAPL",
+            "microsoft": "MSFT",
+            "msft": "MSFT",
+            "tesla": "TSLA",
+            "tsla": "TSLA",
+            "amazon": "AMZN",
+            "amzn": "AMZN",
+            "google": "GOOGL",
+            "alphabet": "GOOGL",
+            "meta": "META",
+            "reliance": "RELIANCE.NS",
+            "tcs": "TCS.NS",
+            "infosys": "INFY.NS",
+            "bitcoin": "BTC-USD",
+            "btc": "BTC-USD",
+            "ethereum": "ETH-USD",
+            "eth": "ETH-USD",
+            "solana": "SOL-USD",
+            "sol": "SOL-USD",
+            "gold": "GC=F",
+            "silver": "SI=F",
+            "crude oil": "CL=F",
+            "oil": "CL=F",
+        }
+        for alias, symbol in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
+            if alias in lowered:
+                return symbol
+        return None
+
+    async def _get_market_evidence(self, question: str) -> str:
+        market_type = self._market_type(question)
+        if not market_type:
+            return ""
+        symbol = self._market_symbol(question, market_type)
+        if not symbol:
+            try:
+                from app.services.market_service import MarketService
+                matches = await MarketService().search_ticker(question)
+                symbol = matches[0].get("symbol") if matches else None
+            except Exception:
+                symbol = None
+        if not symbol:
+            return ""
+        
+        provider = get_market_provider()
+        target_date = self._extract_date(question)
+        data = None
+        if target_date:
+            data = await provider.get_price_on_date(symbol, target_date)
+        if data is None and target_date in (None, date.today().isoformat()):
+            data = await provider.get_current_price(symbol)
+
+        if not data:
+            return ""
+        return (
+            "STRUCTURED MARKET EVIDENCE\n"
+            f"Symbol: {data.get('symbol')}\n"
+            f"Date: {data.get('date') or data.get('timestamp')}\n"
+            f"Open: {data.get('open')}\n"
+            f"High: {data.get('high')}\n"
+            f"Low: {data.get('low')}\n"
+            f"Close/price: {data.get('close', data.get('price'))}\n"
+            f"Volume: {data.get('volume')}\n"
+            f"Currency: {data.get('currency')}\n"
+            f"Source: {data.get('source')}\n"
+        )
 
     @property
     def available(self) -> bool:
@@ -83,28 +203,33 @@ class AIService:
                 "No configured provider is available",
             )
 
+        market_evidence = await self._get_market_evidence(question)
+
         web_results: list[Any] = []
+        web_pages: list[Any] = []
         search_query = self._extract_web_search_query(question)
 
         if search_query:
             try:
-                # Fresh web lookup happens before generation. For time-sensitive
-                # queries, add today's date/year so search results bias toward
-                # current information.
-                searcher = get_searcher()
-                web_results = await searcher.search(
+                preferred_domains = self._preferred_domains(question)
+                researcher = get_web_researcher()
+                web_results, web_pages = await researcher.search_and_fetch(
                     search_query,
-                    max_results=5,
+                    max_results=6,
+                    fetch_count=3,
                     timelimit="d" if self._is_fresh_query(question) else None,
+                    preferred_domains=preferred_domains,
                 )
             except Exception:
-                web_results = []
+                web_results, web_pages = [], []
 
         prompt = self._build_prompt(
             question,
             financial_context,
             conversation,
             web_results=web_results,
+            web_pages=web_pages,
+            market_evidence=market_evidence,
         )
 
         response = None
@@ -145,6 +270,33 @@ class AIService:
             reply += "\n".join(source_lines)
 
         return reply
+
+    @staticmethod
+    def _preferred_domains(question: str) -> tuple[str, ...]:
+        lowered = question.lower()
+        if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
+            return (
+                "finance.yahoo.com",
+                "nasdaq.com",
+                "investing.com",
+                "reuters.com",
+                "sec.gov",
+            )
+        if any(term in lowered for term in ("gold", "silver", "commodity", "oil")):
+            return (
+                "lbma.org.uk",
+                "cmegroup.com",
+                "reuters.com",
+                "kitco.com",
+            )
+        if any(term in lowered for term in ("news", "latest", "today", "recent")):
+            return (
+                "reuters.com",
+                "apnews.com",
+                "bbc.com",
+                "cnbc.com",
+            )
+        return ()
 
     @staticmethod
     def _is_fresh_query(question: str) -> bool:
@@ -208,6 +360,8 @@ class AIService:
         context: dict[str, Any],
         conversation: list[dict[str, str]] | None,
         web_results: list[Any] | None = None,
+        web_pages: list[Any] | None = None,
+        market_evidence: str = "",
     ) -> str:
         summary = context.get("summary", {})
         recent = context.get("recent_transactions", [])[:10]
@@ -231,10 +385,11 @@ class AIService:
             for message in (conversation or [])[-8:]
         ) or "- None"
 
-        web_text = "\n".join(
-            f"{index}. {getattr(item, 'title', '')} | {getattr(item, 'url', '')}\n"
-            f"   {getattr(item, 'snippet', '')}"
-            for index, item in enumerate((web_results or [])[:5], start=1)
+        from app.services.web_research_service import WebResearchService
+        web_text = WebResearchService.format_evidence(
+            web_results or [],
+            web_pages or [],
+            max_chars=9000,
         ) or "- No web results"
 
         return f"""You are FinanceAI, a practical personal-finance assistant for an Indian user.
@@ -263,9 +418,13 @@ BUDGETS
 CONVERSATION HISTORY
 {history_text}
 
-WEB SEARCH RESULTS
-These results are available only when the user explicitly requested a web search.
-Prefer these fresh results for time-sensitive claims. Do not invent information not supported by them.
+STRUCTURED MARKET EVIDENCE
+Use this evidence first for exact market prices and dates. If it is present and conflicts with a generic web result, prefer the structured market source and clearly identify its source.
+{market_evidence or "- No structured market evidence"}
+
+WEB SEARCH / PAGE EVIDENCE
+These sources were gathered because the question explicitly requested web information or clearly requires current information.
+Use the fetched page content when available. Ignore irrelevant pages and do not invent facts.
 {web_text}
 
 USER QUESTION
