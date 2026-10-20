@@ -49,6 +49,7 @@ class AIService:
             r"(?P<d>\d{1,2})[-/](?P<m>\d{1,2})[-/](?P<y>20\d{2})",
             r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
             r"(?P<d>\d{1,2})\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
+            r"(?P<d>\d{1,2})\s*(?P<mon>jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)(?P<y>20\d{2})",
         )
         months = {
             "jan": 1, "january": 1, "feb": 2, "february": 2,
