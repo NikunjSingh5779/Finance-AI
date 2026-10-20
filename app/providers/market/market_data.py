@@ -11,7 +11,7 @@ and the ARES KronosPredictorAgent data pipeline.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,58 @@ class MarketDataProvider:
 
         except Exception as e:
             logger.error(f"Failed to fetch price for {symbol}: {e}")
+            return None
+
+    async def get_price_on_date(
+        self,
+        symbol: str,
+        target_date: str,
+    ) -> dict[str, Any] | None:
+        """Get the exact daily OHLCV record for an ISO calendar date."""
+        if not self.available:
+            return None
+
+        try:
+            import yfinance as yf
+
+            target = date.fromisoformat(target_date)
+            end = target + timedelta(days=2)
+            data = yf.Ticker(symbol).history(
+                start=target.isoformat(),
+                end=end.isoformat(),
+                interval="1d",
+            )
+
+            if data.empty:
+                return None
+
+            wanted = None
+            for idx, row in data.iterrows():
+                row_date = (
+                    idx.date().isoformat()
+                    if hasattr(idx, "date")
+                    else str(idx)[:10]
+                )
+                if row_date == target.isoformat():
+                    wanted = row
+                    break
+
+            if wanted is None:
+                return None
+
+            return {
+                "symbol": symbol.upper(),
+                "date": target.isoformat(),
+                "open": round(float(wanted["Open"]), 2),
+                "high": round(float(wanted["High"]), 2),
+                "low": round(float(wanted["Low"]), 2),
+                "close": round(float(wanted["Close"]), 2),
+                "volume": int(wanted["Volume"]),
+                "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
+                "source": "yfinance",
+            }
+        except Exception as exc:
+            logger.error("Failed to fetch %s price for %s: %s", symbol, target_date, exc)
             return None
 
     async def get_history(
