@@ -389,7 +389,12 @@ class AIService:
         ):
             target_date = AIService._extract_date(query)
             suffix = f" {target_date}" if target_date else " today"
-            return f"{query.split()[0]} spot price{suffix}"
+            commodity = {
+                "GC=F": "gold",
+                "SI=F": "silver",
+                "CL=F": "crude oil",
+            }.get(symbol, "commodity")
+            return f"{commodity} price {suffix}".strip()
 
         if market_type == "crypto" and symbol and any(
             term in query.lower() for term in ("price", "quote", "value")
@@ -470,7 +475,7 @@ CONVERSATION HISTORY
 {history_text}
 
 STRUCTURED MARKET EVIDENCE
-Use this evidence first for exact market prices and dates. If it is present and conflicts with a generic web result, prefer the structured market source and clearly identify its source.
+Use structured market evidence first when the instrument and metric match the question exactly. A commodity quote may represent a futures contract rather than spot pricing. If generic web evidence is more directly matched to the requested instrument, say so and prefer the better-matched source.
 {market_evidence or "- No structured market evidence"}
 
 WEB SEARCH / PAGE EVIDENCE
