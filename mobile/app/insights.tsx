@@ -15,6 +15,7 @@ import {
 } from "../src/components";
 import type { InsightsDashboard, Summary, Transaction } from "../src/types";
 import { colors } from "../src/theme";
+import { Icon } from "../src/icons";
 
 const CHART_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4"];
 
@@ -110,7 +111,7 @@ export default function InsightsScreen() {
 
       <Card style={styles.aiSummary}>
         <View style={styles.aiTitleRow}>
-          <Text style={styles.aiSpark}>✦</Text>
+          <Icon name="assistant" size={17} color={colors.primary} />
           <Text style={styles.aiTitle}>AI SUMMARY</Text>
         </View>
         <Text style={styles.summaryText}>{summaryText}</Text>
@@ -118,6 +119,23 @@ export default function InsightsScreen() {
           <Text key={action} style={styles.actionText}>• {action}</Text>
         ))}
       </Card>
+
+      {insights ? (
+        <Card>
+          <View style={styles.sectionHeader}>
+            <View>
+              <SmallText>FINANCIAL HEALTH</SmallText>
+              <Text style={styles.healthScore}>{insights.health.score}/100</Text>
+              <Text style={styles.healthGrade}>{insights.health.grade}</Text>
+            </View>
+            <Pill tone={insights.health.score >= 70 ? "success" : insights.health.score >= 50 ? "warning" : "danger"}>
+              {insights.health.score >= 70 ? "Healthy" : insights.health.score >= 50 ? "Fair" : "Needs attention"}
+            </Pill>
+          </View>
+          <ProgressBar value={insights.health.score} tone={insights.health.score >= 70 ? "primary" : insights.health.score >= 50 ? "warning" : "danger"} />
+          <SmallText>Income: {money(income)} · Expenses: {money(expense)}</SmallText>
+        </Card>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <SectionTitle>Spend Trend</SectionTitle>
@@ -140,7 +158,7 @@ export default function InsightsScreen() {
         </Card>
       </View>
 
-      <SectionTitle>Top Categories</SectionTitle>
+      <SectionTitle>Top Spending</SectionTitle>
       <Card>
         {categories.map(([category, amount], index) => {
           const max = categories[0]?.[1] ?? 1;
@@ -162,21 +180,46 @@ export default function InsightsScreen() {
         {!categories.length ? <SmallText>No expense data yet.</SmallText> : null}
       </Card>
 
+
       {insights ? (
-        <Card>
-          <View style={styles.sectionHeader}>
-            <View>
-              <SmallText>FINANCIAL HEALTH</SmallText>
-              <Text style={styles.healthScore}>{insights.health.score}/100</Text>
-              <Text style={styles.healthGrade}>{insights.health.grade}</Text>
+        <>
+          <View style={styles.sectionHeader}><SectionTitle>Recurring Expenses</SectionTitle><Pill tone="neutral">{insights.counts.recurring}</Pill></View>
+          <Card>
+            {insights.recurring.slice(0, 3).map((item) => (
+              <View key={item.description + item.category} style={styles.itemRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle} numberOfLines={1}>{item.description}</Text>
+                  <SmallText>{item.category} · {item.occurrences} occurrences</SmallText>
+                </View>
+                <Text style={styles.itemValue}>{money(item.estimated_monthly_cost)}</Text>
+              </View>
+            ))}
+            {!insights.recurring.length ? <SmallText>No recurring expenses detected.</SmallText> : null}
+          </Card>
+
+          <View style={styles.sectionHeader}><SectionTitle>Unusual Spending</SectionTitle><Pill tone={insights.counts.anomalies ? "warning" : "neutral"}>{insights.counts.anomalies}</Pill></View>
+          <Card>
+            {insights.anomalies.slice(0, 3).map((item) => (
+              <View key={String(item.transaction_id)} style={styles.itemRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>{item.description}</Text>
+                  <SmallText>{item.category} · {item.multiple_of_average.toFixed(1)}× category average</SmallText>
+                </View>
+                <Text style={[styles.itemValue, { color: colors.warning }]}>{money(item.amount)}</Text>
+              </View>
+            ))}
+            {!insights.anomalies.length ? <SmallText>No unusual spending detected.</SmallText> : null}
+          </Card>
+
+          <Card style={styles.unavailableCard}>
+            <Icon name="warning" size={18} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.unavailableTitle}>Some metrics unavailable</Text>
+              <SmallText>Complete account and transaction history can unlock more detailed insights.</SmallText>
             </View>
-            <Pill tone={insights.health.score >= 70 ? "success" : insights.health.score >= 50 ? "warning" : "danger"}>
-              {insights.health.score >= 70 ? "Healthy" : insights.health.score >= 50 ? "Fair" : "Needs attention"}
-            </Pill>
-          </View>
-          <ProgressBar value={insights.health.score} tone={insights.health.score >= 70 ? "primary" : insights.health.score >= 50 ? "warning" : "danger"} />
-          <SmallText>Income: {money(income)} · Expenses: {money(expense)}</SmallText>
-        </Card>
+          </Card>
+          <Text style={styles.disclaimer}>Insights are informational and should not be treated as financial advice.</Text>
+        </>
       ) : null}
     </Screen>
   );
@@ -212,4 +255,10 @@ const styles = StyleSheet.create({
   categoryFill: { height: "100%", borderRadius: 999 },
   healthScore: { color: colors.text, fontSize: 27, fontWeight: "900", marginTop: 2 },
   healthGrade: { color: colors.primary, fontSize: 11, fontWeight: "800", marginTop: 1 },
+  itemRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  itemTitle: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  itemValue: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  unavailableCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: colors.surfaceWarning, borderColor: "rgba(245,168,0,.25)" },
+  unavailableTitle: { color: colors.warning, fontSize: 13, fontWeight: "700", marginBottom: 3 },
+  disclaimer: { color: colors.subtle, fontSize: 11, lineHeight: 16, textAlign: "center", paddingHorizontal: 8 }
 });

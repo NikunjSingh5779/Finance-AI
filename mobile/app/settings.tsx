@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button, Card, ChipRow, EmptyState, ErrorBanner, Header, Input, LoadingState, Money, Pill, Screen, SectionTitle, SmallText } from "../src/components";
 import { useFinance } from "../src/AppContext";
 import type { Account, AccountType } from "../src/types";
 import { colors } from "../src/theme";
+import { Icon } from "../src/icons";
 
 const accountTypes: AccountType[] = ["checking", "savings", "cash", "credit", "investment"];
 
-function accountGlyph(type: AccountType) {
-  if (type === "investment") return "↗";
-  if (type === "credit") return "▣";
-  if (type === "cash") return "₹";
-  if (type === "savings") return "◉";
-  return "▤";
+function accountIcon(type: AccountType) {
+  if (type === "investment") return "insights" as const;
+  if (type === "credit") return "credit-card" as const;
+  if (type === "cash") return "wallet" as const;
+  if (type === "savings") return "savings" as const;
+  return "wallet" as const;
 }
 
 export default function SettingsScreen() {
@@ -25,14 +26,25 @@ export default function SettingsScreen() {
   const [balance, setBalance] = useState("0");
   const [type, setType] = useState<AccountType>("checking");
   const [loading, setLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<"unknown" | "ok" | "offline">("unknown");
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setAccounts(await api.accounts()); }
-    catch (err) { setMessage(err instanceof Error ? err.message : "Could not load accounts."); }
-    finally { setLoading(false); }
+    try {
+      const results = await Promise.allSettled([api.accounts(), api.health()]);
+      const accountsResult = results[0];
+      const healthResult = results[1];
+      if (accountsResult.status === "fulfilled") setAccounts(accountsResult.value);
+      else throw accountsResult.reason;
+      setBackendStatus(healthResult.status === "fulfilled" && healthResult.value.status === "ok" ? "ok" : "offline");
+      if (healthResult.status === "rejected") setBackendStatus("offline");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not load settings.");
+    } finally {
+      setLoading(false);
+    }
   }, [api]);
 
   useEffect(() => { void load(); }, [load]);
@@ -44,31 +56,56 @@ export default function SettingsScreen() {
       setBalance(String(account.balance));
       setType(account.type);
     } else {
-      setEditingId(null); setName(""); setBalance("0"); setType("checking");
+      setEditingId(null);
+      setName("");
+      setBalance("0");
+      setType("checking");
     }
-    setMessage(""); setFormOpen(true);
+    setMessage("");
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (saving) return;
+    setFormOpen(false);
+    setEditingId(null);
   };
 
   const saveAccount = async () => {
     const numeric = Number(balance);
-    if (!name.trim() || !Number.isFinite(numeric)) { setMessage("Enter an account name and a valid balance."); return; }
-    setSaving(true); setMessage("");
+    if (!name.trim() || !Number.isFinite(numeric)) {
+      setMessage("Enter an account name and a valid balance.");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
     try {
       const payload = { name: name.trim(), balance: numeric, type };
       const saved = editingId ? await api.updateAccount(editingId, payload) : await api.createAccount(payload);
       setAccounts((items) => editingId ? items.map((item) => item.id === editingId ? saved : item) : items.concat(saved));
-      setFormOpen(false); setEditingId(null); setName(""); setBalance("0"); setType("checking");
-    } catch (err) { setMessage(err instanceof Error ? err.message : "Could not save account."); }
-    finally { setSaving(false); }
+      closeForm();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not save account.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const deleteAccount = (account: Account) => {
     Alert.alert("Delete account", "Delete “" + account.name + "”? ", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
-        try { await api.deleteAccount(account.id); setAccounts((items) => items.filter((item) => item.id !== account.id)); }
-        catch (err) { setMessage(err instanceof Error ? err.message : "Could not delete account."); }
-      }},
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteAccount(account.id);
+            setAccounts((items) => items.filter((item) => item.id !== account.id));
+          } catch (err) {
+            setMessage(err instanceof Error ? err.message : "Could not delete account.");
+          }
+        },
+      },
     ]);
   };
 
@@ -78,92 +115,174 @@ export default function SettingsScreen() {
   };
 
   return (
-    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Settings" action="none" />
-      {message ? <ErrorBanner message={message} /> : null}
+    <>
+      <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
+        <Header title="Settings" action="back" />
+        {message ? <ErrorBanner message={message} /> : null}
 
-      <Card style={styles.profileCard}>
-        <View style={styles.profileRow}>
-          <View style={styles.profileIcon}><Text style={styles.profileIconText}>⚙</Text></View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.profileTitle}>FinanceAI</Text>
-            <SmallText>Connection, accounts and developer settings.</SmallText>
-          </View>
-          <Pill tone="success">Local</Pill>
-        </View>
-      </Card>
-
-      <View style={styles.sectionHeader}>
-        <View><SectionTitle>Accounts</SectionTitle><SmallText>{accounts.length} configured</SmallText></View>
-        <Pressable onPress={() => formOpen ? setFormOpen(false) : openForm()} style={styles.circleButton}><Text style={styles.circleText}>{formOpen ? "×" : "+"}</Text></Pressable>
-      </View>
-
-      {formOpen ? (
-        <Card>
-          <SectionTitle>{editingId ? "Edit account" : "New account"}</SectionTitle>
-          <Input label="Account name" value={name} onChangeText={setName} placeholder="Main Wallet" />
-          <Input label="Opening balance (₹)" value={balance} onChangeText={setBalance} keyboardType="decimal-pad" placeholder="50000" />
-          <SmallText>Account type</SmallText>
-          <ChipRow values={accountTypes} selected={type} onSelect={(value) => setType(value as AccountType)} />
-          <Button title={editingId ? "Save changes" : "Create account"} onPress={() => void saveAccount()} loading={saving} />
-        </Card>
-      ) : null}
-
-      {loading ? <Card><LoadingState /></Card> : accounts.length === 0 ? (
-        <Card><EmptyState message="No accounts configured yet." /></Card>
-      ) : (
-        accounts.map((account, index) => (
-          <Card key={account.id} style={styles.accountCard}>
-            <View style={styles.accountTop}>
-              <View style={[styles.accountIcon, { backgroundColor: [colors.primarySoft, colors.infoSoft, colors.warningSoft, colors.dangerSoft][index % 4] }]}><Text style={{ color: [colors.primary, colors.info, colors.warning, colors.danger][index % 4], fontSize: 15 }}>{accountGlyph(account.type)}</Text></View>
-              <View style={{ flex: 1 }}><Text style={styles.accountName}>{account.name}</Text><SmallText>{account.type}</SmallText></View>
-              <Money value={account.current_balance ?? account.balance} size={17} />
+        <Card style={styles.profileCard}>
+          <View style={styles.profileRow}>
+            <View style={styles.profileIcon}>
+              <Icon name="settings" size={20} color={colors.primary} />
             </View>
-            <View style={styles.accountBottom}>
-              <SmallText>Current balance</SmallText>
-              <View style={styles.inlineActions}>
-                <Pressable style={styles.editButton} onPress={() => openForm(account)}><Text style={styles.editText}>Edit</Text></Pressable>
-                <Pressable style={styles.deleteButton} onPress={() => deleteAccount(account)}><Text style={styles.deleteText}>Delete</Text></Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profileTitle}>FinanceAI</Text>
+              <SmallText>Connection, accounts and developer settings.</SmallText>
+            </View>
+            <Pill tone="success">Local</Pill>
+          </View>
+        </Card>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <SmallText>ACCOUNTS</SmallText>
+            <SectionTitle>{accounts.length} linked account{accounts.length === 1 ? "" : "s"}</SectionTitle>
+          </View>
+          <Pressable style={styles.iconButton} onPress={() => openForm()} accessibilityRole="button" accessibilityLabel="Add account">
+            <Icon name="plus" size={18} color={colors.text} />
+          </Pressable>
+        </View>
+
+        {loading ? <Card><LoadingState /></Card> : accounts.length === 0 ? (
+          <Card><EmptyState message="No accounts configured yet." actionLabel="Add account" onAction={() => openForm()} /></Card>
+        ) : (
+          <View style={styles.accountList}>
+            {accounts.map((account, index) => (
+              <Card key={account.id} style={styles.accountCard}>
+                <View style={styles.accountTop}>
+                  <View style={[styles.accountIcon, { backgroundColor: [colors.primarySoft, colors.infoSoft, colors.warningSoft, colors.dangerSoft][index % 4] }]}>
+                    <Icon name={accountIcon(account.type)} size={19} color={[colors.primary, colors.info, colors.warning, colors.danger][index % 4]} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.accountName}>{account.name}</Text>
+                    <SmallText>{account.type}</SmallText>
+                  </View>
+                  <View style={styles.accountRight}>
+                    <Money value={account.current_balance ?? account.balance} size={15} />
+                    <Pressable onPress={() => openForm(account)} accessibilityLabel={"Edit " + account.name}>
+                      <Icon name="edit" size={16} color={colors.muted} />
+                    </Pressable>
+                    <Pressable onPress={() => deleteAccount(account)} accessibilityLabel={"Delete " + account.name}>
+                      <Icon name="trash" size={16} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.sectionBlock}>
+          <SmallText>DEVELOPER & API</SmallText>
+          <SectionTitle>Developer API</SectionTitle>
+          <Card style={styles.apiCard}>
+            <View style={styles.sectionRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.devTitle}>API documentation</Text>
+                <SmallText>Inspect FastAPI routes and backend health.</SmallText>
               </View>
+              <Pill tone="info">Swagger</Pill>
+            </View>
+            <Button title="Open /docs" onPress={() => void openDocs()} kind="secondary" />
+          </Card>
+
+          <Card style={styles.backendCard}>
+            <View style={styles.backendIcon}><Icon name="settings" size={18} color={colors.muted} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.devTitle}>Backend status</Text>
+              <SmallText>{backendStatus === "ok" ? "Backend is reachable and healthy." : backendStatus === "offline" ? "Backend is unavailable right now." : "Not checked — open /docs to verify connectivity."}</SmallText>
+            </View>
+            <Pill tone={backendStatus === "ok" ? "success" : backendStatus === "offline" ? "danger" : "neutral"}>
+              {backendStatus === "ok" ? "Healthy" : backendStatus === "offline" ? "Offline" : "Unknown"}
+            </Pill>
+          </Card>
+
+          <Card style={styles.securityCard}>
+            <Icon name="warning" size={18} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.securityTitle}>Security warning</Text>
+              <SmallText>Before public release, add authentication, authorization, per-user data isolation, HTTPS, secure secret handling and production monitoring.</SmallText>
             </View>
           </Card>
-        ))
-      )}
+        </View>
 
-      <SectionTitle>Developer & API</SectionTitle>
-      <Card style={styles.devCard}>
-        <View style={styles.sectionRow}><View><Text style={styles.devTitle}>API documentation</Text><SmallText>Inspect the FastAPI routes and backend health.</SmallText></View><Pill tone="info">Swagger</Pill></View>
-        <Button title="Open /docs" onPress={() => void openDocs()} kind="secondary" />
-      </Card>
+        <View style={styles.sectionBlock}>
+          <SmallText>APPEARANCE</SmallText>
+          <Card style={styles.appearanceCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.devTitle}>Theme</Text>
+              <SmallText>Dark mode</SmallText>
+            </View>
+            <Pill tone="success">Active</Pill>
+          </Card>
+        </View>
 
-      <Card>
-        <Text style={styles.devTitle}>Public release requirement</Text>
-        <SmallText>Before exposing this personal backend publicly, add authentication, authorization, per-user data isolation, HTTPS, secure secret handling, account deletion and production monitoring.</SmallText>
-      </Card>
-    </Screen>
+        <View style={styles.sectionBlock}>
+          <SmallText>PROFILE</SmallText>
+          <Card style={styles.profileSmallCard}>
+            <View style={styles.profileSmallAvatar}><Text style={styles.profileSmallText}>AC</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.devTitle}>Alex Carter</Text>
+              <SmallText>Personal FinanceAI workspace</SmallText>
+            </View>
+          </Card>
+        </View>
+      </Screen>
+
+      <Modal visible={formOpen} animationType="slide" transparent={false} onRequestClose={closeForm}>
+        <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={closeForm} disabled={saving} accessibilityRole="button" accessibilityLabel="Close">
+              <Icon name="close" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={styles.modalTitle}>{editingId ? "Edit Account" : "Create Account"}</Text>
+            <View style={{ width: 44 }} />
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+            {message ? <ErrorBanner message={message} /> : null}
+            <Input label="Account name" value={name} onChangeText={setName} placeholder="Main Wallet" />
+            <Input label={editingId ? "Current balance (₹)" : "Opening balance (₹)"} value={balance} onChangeText={setBalance} keyboardType="decimal-pad" placeholder="50000" />
+            <SmallText>Account type</SmallText>
+            <ChipRow values={accountTypes} selected={type} onSelect={(value) => setType(value as AccountType)} />
+            <Button title={editingId ? "Save changes" : "Create account"} onPress={() => void saveAccount()} loading={saving} />
+            {editingId ? <Button title="Delete account" onPress={() => {
+              const account = accounts.find((item) => item.id === editingId);
+              if (account) deleteAccount(account);
+            }} kind="danger" /> : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  profileCard: { paddingVertical: 15 },
-  profileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  profileIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
-  profileIconText: { color: colors.primary, fontSize: 16 },
-  profileTitle: { color: colors.text, fontSize: 14, fontWeight: "900" },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  circleButton: { width: 34, height: 34, borderRadius: 999, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
-  circleText: { color: colors.muted, fontSize: 23, lineHeight: 26 },
-  accountCard: { gap: 9 },
-  accountTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  accountIcon: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  accountName: { color: colors.text, fontSize: 13, fontWeight: "800" },
-  accountBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  inlineActions: { flexDirection: "row", gap: 7 },
-  editButton: { paddingHorizontal: 9, paddingVertical: 5, backgroundColor: colors.surfaceRaised, borderRadius: 7, borderWidth: 1, borderColor: colors.border },
-  editText: { color: colors.muted, fontSize: 10, fontWeight: "800" },
-  deleteButton: { paddingHorizontal: 9, paddingVertical: 5, backgroundColor: colors.dangerSoft, borderRadius: 7, borderWidth: 1, borderColor: "rgba(239,68,68,.25)" },
-  deleteText: { color: colors.danger, fontSize: 10, fontWeight: "800" },
-  devCard: { gap: 12 },
-  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
-  devTitle: { color: colors.text, fontSize: 13, fontWeight: "800", marginBottom: 3 },
+  profileCard: { padding: 16 },
+  profileRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  profileIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfacePositive, alignItems: "center", justifyContent: "center" },
+  profileTitle: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: "700" },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  accountList: { gap: 10 },
+  accountCard: { paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14 },
+  accountTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  accountIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  accountName: { color: colors.text, fontSize: 15, fontWeight: "600", marginBottom: 2 },
+  accountRight: { alignItems: "flex-end", gap: 8 },
+  sectionBlock: { gap: 12 },
+  apiCard: { gap: 12 },
+  backendCard: { minHeight: 97, flexDirection: "row", alignItems: "center", gap: 12 },
+  backendIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  devTitle: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "700" },
+  securityCard: { minHeight: 100, flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: colors.surfaceWarning, borderColor: "rgba(245,168,0,.25)" },
+  securityTitle: { color: colors.warning, fontSize: 13, fontWeight: "700", marginBottom: 4 },
+  appearanceCard: { minHeight: 96, flexDirection: "row", alignItems: "center" },
+  profileSmallCard: { minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12 },
+  profileSmallAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  profileSmallText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
+  modalRoot: { flex: 1, backgroundColor: colors.background },
+  modalHeader: { minHeight: 108, paddingTop: 48, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  modalTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  modalContent: { padding: 16, gap: 16, paddingBottom: 40 },
 });

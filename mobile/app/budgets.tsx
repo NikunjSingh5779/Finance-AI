@@ -21,6 +21,7 @@ import {
 import { useFinance } from "../src/AppContext";
 import type { Budget, Summary } from "../src/types";
 import { colors } from "../src/theme";
+import { Icon } from "../src/icons";
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -102,6 +103,8 @@ export default function BudgetsScreen() {
   const totalBudget = budgets.reduce((sum, item) => sum + item.limit_amt, 0);
   const totalSpent = rows.reduce((sum, item) => sum + item.spent, 0);
   const utilization = totalBudget ? (totalSpent / totalBudget) * 100 : 0;
+  const exceededCount = rows.filter((row) => row.rawPercent >= 100).length;
+  const warningCount = rows.filter((row) => row.rawPercent >= 80 && row.rawPercent < 100).length;
 
   const createBudget = async () => {
     const amount = Number(limit);
@@ -164,7 +167,7 @@ export default function BudgetsScreen() {
 
       const parsed = lines.map(parseCSVLine);
       const header = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
-      const hasHeader = header.includes("category") || header.includes("limit") || header.includes("limitamt");
+      const hasHeader = header.includes("category") || header.includes("limit") || header.includes("limitamt") || header.includes("limit_amt");
       const data = hasHeader ? parsed.slice(1) : parsed;
       const map = hasHeader ? Object.fromEntries(header.map((name, index) => [name, index])) : null;
 
@@ -173,7 +176,8 @@ export default function BudgetsScreen() {
           const read = (key: string, fallback: number) =>
             map ? String(values[map[key] ?? -1] ?? "").trim() : String(values[fallback] ?? "").trim();
           const categoryValue = read("category", 0);
-          const limitValue = Number(read("limit", 1) || read("limitamt", 1).replace(/,/g, "").replace(/₹/g, ""));
+          const rawLimit = read("limit_amt", 1) || read("limitamt", 1) || read("limit", 1);
+          const limitValue = Number(rawLimit.replace(/,/g, "").replace(/₹/g, ""));
           if (!categoryValue || !Number.isFinite(limitValue) || limitValue <= 0) return null;
           return { category: categoryValue, limit_amt: limitValue };
         })
@@ -241,31 +245,60 @@ export default function BudgetsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-      <Header title="Budgets" action="plus" onAction={() => setShowForm((value) => !value)} />
+      <Header title="Budgets" action="notifications" />
       {error ? <ErrorBanner message={error} /> : null}
 
-      <Card style={styles.totalCard}>
-        <View style={styles.totalText}>
-          <SmallText>TOTAL BUDGET</SmallText>
-          <Text style={styles.totalValue}>{money(totalBudget)}<Text style={styles.perMonth}> / mo</Text></Text>
-          <SmallText>{money(totalSpent)} spent this month</SmallText>
+      <View style={styles.pageHeader}>
+        <View>
+          <SmallText>BUDGETS</SmallText>
+          <SectionTitle>Monthly Overview</SectionTitle>
         </View>
-        <View style={styles.ringWrap}>
-          <Svg width={64} height={64} viewBox="0 0 64 64">
-            <Circle cx="32" cy="32" r={ringRadius} stroke={colors.surfaceRaised} strokeWidth="5" fill="none" />
-            <Circle
-              cx="32"
-              cy="32"
-              r={ringRadius}
-              stroke={utilization >= 100 ? colors.danger : colors.primary}
-              strokeWidth="5"
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray={[dash, circumference]}
-              transform="rotate(-90 32 32)"
-            />
-          </Svg>
-          <Text style={styles.ringText}>{utilization.toFixed(0)}%</Text>
+        <Pressable style={styles.addBudgetButton} onPress={() => setShowForm((value) => !value)} accessibilityRole="button" accessibilityLabel="Add budget">
+          <Icon name="plus" size={18} color={colors.onAccent} />
+          <Text style={styles.addBudgetText}>Add budget</Text>
+        </Pressable>
+      </View>
+
+      <Card style={styles.totalCard}>
+        <View style={styles.summaryTitleRow}>
+          <View style={styles.totalText}>
+            <SmallText>MONTHLY OVERVIEW</SmallText>
+            <Text style={styles.summaryTitle}>{budgets.length} active budget{budgets.length === 1 ? "" : "s"}</Text>
+          </View>
+          <View style={styles.headerTools}>
+            <Pressable onPress={() => void importCSV()} style={styles.toolButton} accessibilityRole="button">
+              <Text style={styles.toolText}>Import CSV</Text>
+            </Pressable>
+            <Pressable onPress={() => void exportCSV()} style={styles.toolButton} accessibilityRole="button">
+              <Text style={styles.toolText}>Export CSV</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.metricsRow}>
+          <View style={styles.metricBlock}>
+            <SmallText>SPENT</SmallText>
+            <Text style={styles.spentValue}>{money(totalSpent)}</Text>
+            <SmallText>visible category total</SmallText>
+          </View>
+          <View style={styles.metricDivider} />
+          <View style={[styles.metricBlock, { paddingLeft: 16 }]}>
+            <SmallText>BUDGETED</SmallText>
+            <Text style={styles.totalValue}>{money(totalBudget)}</Text>
+            <SmallText>visible category total</SmallText>
+          </View>
+        </View>
+        <View style={styles.utilizationBlock}>
+          <View style={styles.rowBetween}>
+            <SmallText>Utilization</SmallText>
+            <Text style={styles.utilizationText}>{utilization.toFixed(1)}% used</Text>
+          </View>
+          <ProgressBar value={utilization} tone={utilization >= 100 ? "danger" : utilization >= 80 ? "warning" : "primary"} />
+        </View>
+        <View style={styles.statusRow}>
+          <Pill tone={exceededCount ? "danger" : "neutral"}>{exceededCount} at limit</Pill>
+          <Pill tone={warningCount ? "warning" : "neutral"}>{warningCount} warning</Pill>
+          <Pill tone="success">{Math.max(0, rows.length - exceededCount - warningCount)} healthy</Pill>
         </View>
       </Card>
 
@@ -288,10 +321,7 @@ export default function BudgetsScreen() {
           <SectionTitle>Categories</SectionTitle>
           <SmallText>This month</SmallText>
         </View>
-        <View style={styles.headerTools}>
-          <Pressable onPress={() => void importCSV()} style={styles.toolButton}><Text style={styles.toolText}>Import</Text></Pressable>
-          <Pressable onPress={() => void exportCSV()} style={styles.toolButton}><Text style={styles.toolText}>Export</Text></Pressable>
-        </View>
+
       </View>
 
       {showForm ? (
@@ -310,7 +340,7 @@ export default function BudgetsScreen() {
           <Card key={row.id} style={styles.categoryCard}>
             <View style={styles.categoryTop}>
               <View style={[styles.categoryIcon, { backgroundColor: ["#14243b", "#2b2414", "#28183b", "#18311f"][index % 4] }]}>
-                <Text style={{ color: [colors.info, colors.warning, "#a855f7", colors.primary][index % 4], fontSize: 14 }}>◈</Text>
+                <Icon name="budgets" size={17} color={[colors.info, colors.warning, colors.chartPurple, colors.primary][index % 4]} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.rowBetween}>
@@ -341,19 +371,33 @@ function money(value: number) {
 }
 
 const styles = StyleSheet.create({
-  totalCard: { minHeight: 112, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pageHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  addBudgetButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  addBudgetText: { color: colors.onAccent, fontSize: 12, fontWeight: "700" },
+  totalCard: { minHeight: 339, gap: 14 },
+  totalCardLegacy: { display: "none" as const },
+  summaryTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  summaryTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  summaryDivider: { height: 1, backgroundColor: colors.border },
+  metricsRow: { flexDirection: "row", alignItems: "flex-start" },
+  metricBlock: { flex: 1, gap: 4, minHeight: 56 },
+  metricDivider: { width: 1, height: 52, backgroundColor: colors.border },
+  spentValue: { color: colors.danger, fontSize: 18, fontWeight: "700" },
+  utilizationBlock: { gap: 6 },
+  utilizationText: { color: colors.warning, fontSize: 12, fontWeight: "600" },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   totalText: { flex: 1, gap: 4 },
   totalValue: { color: colors.text, fontSize: 27, fontWeight: "900" },
   perMonth: { color: colors.muted, fontSize: 11, fontWeight: "600" },
   ringWrap: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
   ringText: { position: "absolute", color: colors.text, fontSize: 10, fontWeight: "900" },
   warningCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.dangerSoft, borderColor: "rgba(239,68,68,.25)" },
-  warningIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(239,68,68,.14)", alignItems: "center", justifyContent: "center" },
+  warningIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.warningSoft, alignItems: "center", justifyContent: "center" },
   warningTitle: { color: colors.danger, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   headerTools: { flexDirection: "row", alignItems: "center", gap: 6 },
-  toolButton: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 },
-  toolText: { color: colors.muted, fontSize: 9, fontWeight: "700" },
+  toolButton: { minHeight: 44, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
+  toolText: { color: colors.text, fontSize: 12, fontWeight: "600" },
   plusButton: { width: 32, height: 32, borderRadius: 999, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
   plusText: { color: colors.text, fontSize: 22, lineHeight: 25 },
   formCard: { gap: 10 },
