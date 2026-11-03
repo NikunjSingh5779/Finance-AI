@@ -16,6 +16,8 @@ import {
 import { useFinance } from "../src/AppContext";
 import type { Summary, Transaction } from "../src/types";
 import { colors } from "../src/theme";
+import { Icon } from "../src/icons";
+import type { Budget } from "../src/types";
 
 const CATEGORY_COLORS = [
   "#3b82f6",
@@ -104,6 +106,7 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [summaryAll, setSummaryAll] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [hiddenBalance, setHiddenBalance] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -117,12 +120,14 @@ export default function HomeScreen() {
       api.summary("1m"),
       api.summary("all"),
       api.transactions(5000),
+      api.budgets(),
     ]);
 
-    const [monthResult, allResult, txnResult] = results;
+    const [monthResult, allResult, txnResult, budgetResult] = results;
     if (monthResult.status === "fulfilled") setSummary(monthResult.value);
     if (allResult.status === "fulfilled") setSummaryAll(allResult.value);
     if (txnResult.status === "fulfilled") setTransactions(txnResult.value);
+    if (budgetResult.status === "fulfilled") setBudgets(budgetResult.value);
 
     const failure = results.find((item) => item.status === "rejected");
     if (failure?.status === "rejected") {
@@ -174,6 +179,18 @@ export default function HomeScreen() {
   }, [transactions]);
 
   const maxCategory = Math.max(...categoryTotals.map(([, amount]) => amount), 1);
+  const budgetRows = useMemo(() => {
+    const spendByCategory: Record<string, number> = {};
+    transactions.forEach((txn) => {
+      if (txn.type !== "expense") return;
+      spendByCategory[txn.category] = (spendByCategory[txn.category] || 0) + Number(txn.amount || 0);
+    });
+    return budgets.map((budget) => ({
+      ...budget,
+      spent: spendByCategory[budget.category] || 0,
+      percent: budget.limit_amt > 0 ? (spendByCategory[budget.category] || 0) / budget.limit_amt * 100 : 0,
+    })).sort((a, b) => b.percent - a.percent).slice(0, 3);
+  }, [budgets, transactions]);
 
   if (loading && !summary) return <Screen><LoadingState /></Screen>;
 
@@ -186,12 +203,18 @@ export default function HomeScreen() {
       <Header title="Overview" action="notifications" />
       {error ? <ErrorBanner message={error} /> : null}
 
+      <Card style={styles.greetingCard}>
+        <Text style={styles.greetingKicker}>GOOD EVENING</Text>
+        <Text style={styles.greetingTitle}>Hello, Alex</Text>
+        <SmallText>Your personal finance snapshot is ready.</SmallText>
+      </Card>
+
       <Card style={styles.balanceCard}>
         <View style={styles.balanceHeader}>
           <View style={styles.balanceLabelRow}>
             <SmallText>Total Balance</SmallText>
             <Pressable onPress={() => setHiddenBalance((value) => !value)}>
-              <Text style={styles.eyeIcon}>{hiddenBalance ? "◉" : "◌"}</Text>
+              <Icon name="eye" size={16} color={colors.subtle} />
             </Pressable>
           </View>
           <Text style={styles.balanceValue}>
@@ -202,7 +225,7 @@ export default function HomeScreen() {
         <View style={styles.balanceStats}>
           <View style={styles.balanceStat}>
             <View style={[styles.balanceStatIcon, { backgroundColor: colors.primarySoft }]}>
-              <Text style={{ color: colors.primary, fontSize: 18 }}>↙</Text>
+              <Icon name="insights" size={17} color={colors.primary} />
             </View>
             <View>
               <SmallText>INCOME</SmallText>
@@ -212,7 +235,7 @@ export default function HomeScreen() {
 
           <View style={styles.balanceStat}>
             <View style={[styles.balanceStatIcon, { backgroundColor: colors.dangerSoft }]}>
-              <Text style={{ color: colors.danger, fontSize: 18 }}>↗</Text>
+              <Icon name="transactions" size={17} color={colors.danger} />
             </View>
             <View>
               <SmallText>EXPENSES</SmallText>
@@ -225,6 +248,20 @@ export default function HomeScreen() {
           <MiniLine values={lastSeven.map((item) => item.net)} color={colors.primary} />
         </View>
       </Card>
+
+      <View style={styles.quickActions}>
+        <Card style={styles.savingsCard}>
+          <SmallText>SAVINGS RATE</SmallText>
+          <Text style={styles.savingsValue}>{savingsRate.toFixed(1)}%</Text>
+          <Pill tone={savingsRate >= 40 ? "success" : "warning"}>
+            {savingsRate >= 40 ? "On track" : "Needs attention"}
+          </Pill>
+        </Card>
+        <Pressable onPress={() => router.push("/transactions")} style={styles.addTransactionCard}>
+          <Icon name="plus" size={22} color={colors.onAccent} />
+          <Text style={styles.addTransactionText}>Add transaction</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.sectionHeader}>
         <SectionTitle>Cash Flow</SectionTitle>
@@ -253,7 +290,7 @@ export default function HomeScreen() {
         {categoryTotals.length ? categoryTotals.slice(0, 4).map(([category, amount], index) => (
           <Pressable key={category} onPress={() => router.push("/transactions")} style={styles.categoryCard}>
             <View style={[styles.categoryIcon, { backgroundColor: colors.surfaceRaised }]}>
-              <Text style={{ color: CATEGORY_COLORS[index % CATEGORY_COLORS.length], fontSize: 15 }}>◈</Text>
+              <Icon name="budgets" size={17} color={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
             </View>
             <Text style={styles.categoryName} numberOfLines={1}>{category}</Text>
             <Text style={styles.categoryAmount}>{formatMoney(amount)}</Text>
@@ -278,7 +315,7 @@ export default function HomeScreen() {
           <Pressable key={txn.id} onPress={() => router.push("/transactions")} style={styles.activityRow}>
             <View style={[styles.activityIcon, { backgroundColor: txn.type === "income" ? colors.primarySoft : colors.surfaceRaised }]}>
               <Text style={{ color: txn.type === "income" ? colors.primary : colors.muted, fontSize: 14 }}>
-                {txn.type === "income" ? "↗" : "⌁"}
+{txn.type === "income" ? <Icon name="insights" size={16} color={colors.primary} /> : <Icon name="transactions" size={16} color={colors.muted} />}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
@@ -293,17 +330,25 @@ export default function HomeScreen() {
         {!transactions.length ? <EmptyActivity /> : null}
       </Card>
 
-      <Card style={styles.savingsCard}>
-        <View style={styles.rowBetween}>
-          <View>
-            <SmallText>Savings rate</SmallText>
-            <Text style={styles.savingsValue}>{savingsRate.toFixed(1)}%</Text>
-          </View>
-          <Pill tone={savingsRate >= 40 ? "success" : "warning"}>
-            {savingsRate >= 40 ? "On track" : "Needs attention"}
-          </Pill>
+      <Card style={styles.budgetsCard}>
+        <View style={styles.sectionHeader}>
+          <SectionTitle>Budgets</SectionTitle>
+          <Pressable onPress={() => router.push("/budgets")} accessibilityRole="button">
+            <Text style={styles.viewAll}>View all</Text>
+          </Pressable>
         </View>
-        <ProgressBar value={savingsRate} tone={savingsRate >= 40 ? "primary" : "warning"} />
+        {budgetRows.length ? budgetRows.map((row) => (
+          <View key={row.id} style={styles.budgetRow}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.budgetName}>{row.category}</Text>
+              <Text style={[styles.budgetPercent, { color: row.percent >= 100 ? colors.danger : row.percent >= 80 ? colors.warning : colors.muted }]}>
+                {row.percent.toFixed(0)}%
+              </Text>
+            </View>
+            <ProgressBar value={row.percent} tone={row.percent >= 100 ? "danger" : row.percent >= 80 ? "warning" : "primary"} />
+            <SmallText>{formatMoney(row.spent)} of {formatMoney(row.limit_amt)}</SmallText>
+          </View>
+        )) : <SmallText>No budgets configured yet.</SmallText>}
       </Card>
     </Screen>
   );
@@ -314,6 +359,16 @@ function EmptyActivity() {
 }
 
 const styles = StyleSheet.create({
+  greetingCard: { paddingVertical: 16, gap: 4 },
+  greetingKicker: { color: colors.muted, fontSize: 11, lineHeight: 16, fontWeight: "600", letterSpacing: 0.5 },
+  greetingTitle: { color: colors.text, fontSize: 22, lineHeight: 29, fontWeight: "700" },
+  quickActions: { flexDirection: "row", gap: 12 },
+  addTransactionCard: { flex: 1, minHeight: 102, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", gap: 8, padding: 16 },
+  addTransactionText: { color: colors.onAccent, fontSize: 14, lineHeight: 20, fontWeight: "700" },
+  budgetsCard: { gap: 12 },
+  budgetRow: { gap: 6 },
+  budgetName: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  budgetPercent: { fontSize: 12, fontWeight: "700" },
   balanceCard: {
     borderRadius: 16,
     padding: 17,
@@ -353,7 +408,7 @@ const styles = StyleSheet.create({
   activityAmount: { fontSize: 12, fontWeight: "800" },
   filterIcon: { color: colors.muted, fontSize: 15 },
   empty: { minHeight: 80, alignItems: "center", justifyContent: "center" },
-  savingsCard: { gap: 9 },
-  savingsValue: { color: colors.text, fontSize: 25, fontWeight: "900", marginTop: 2 },
+  savingsCard: { flex: 1, minHeight: 129, gap: 7 },
+  savingsValue: { color: colors.text, fontSize: 25, fontWeight: "700", marginTop: 2 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
 });
