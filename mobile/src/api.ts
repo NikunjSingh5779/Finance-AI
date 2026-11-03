@@ -137,8 +137,8 @@ export class FinanceApi {
     );
   }
 
-  async refreshSession() {
-    if (!this.refreshTokenValue) return false;
+  async refreshSession(): Promise<AuthSession | null> {
+    if (!this.refreshTokenValue) return null;
     const response = await fetch(this.url("/auth/refresh"), {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -146,11 +146,11 @@ export class FinanceApi {
     });
     if (!response.ok) {
       this.clearSession();
-      return false;
+      return null;
     }
     const session = (await response.json()) as AuthSession;
     this.setSession(session);
-    return Boolean(session.access_token);
+    return session.access_token ? session : null;
   }
 
   logout() {
