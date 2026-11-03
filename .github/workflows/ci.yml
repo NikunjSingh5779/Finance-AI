@@ -28,6 +28,9 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      - name: Check static frontend syntax
+        run: node --check app/static/app.js
+
   mobile-typecheck:
     runs-on: ubuntu-latest
     defaults:
