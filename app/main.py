@@ -102,7 +102,6 @@ async def authentication_middleware(request: Request, call_next):
         or path.startswith("/static/")
     )
 
-    token = None
     context_token = None
 
     try:
