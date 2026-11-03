@@ -4,7 +4,7 @@ export type IconName =
   | "home" | "transactions" | "budgets" | "planning" | "insights" | "assistant"
   | "bell" | "plus" | "eye" | "edit" | "globe" | "send" | "warning" | "settings"
   | "wallet" | "savings" | "credit-card" | "target" | "chevron-right" | "trash"
-  | "search" | "calendar" | "close";
+  | "search" | "calendar" | "close" | "refresh" | "back";
 
 export function Icon({
   name, size = 22, color = "#A1A1AA", strokeWidth = 1.9,
@@ -39,6 +39,8 @@ export function Icon({
       : name === "trash" ? <><Path {...common} d="M5 7h14M10 11v5M14 11v5M7 7l1 13h8l1-13M9 7l1-3h4l1 3" /></>
       : name === "search" ? <><Circle {...common} cx="11" cy="11" r="6.5" /><Line {...common} x1="16" y1="16" x2="20" y2="20" /></>
       : name === "calendar" ? <><Rect {...common} x="4" y="5" width="16" height="15" rx="2" /><Line {...common} x1="8" y1="3.5" x2="8" y2="7" /><Line {...common} x1="16" y1="3.5" x2="16" y2="7" /><Line {...common} x1="4" y1="9" x2="20" y2="9" /></>
+      : name === "refresh" ? <><Path {...common} d="M20 11a8 8 0 0 0-14.7-4.2L4 9" /><Path {...common} d="M4 5v4h4" /><Path {...common} d="M4 13a8 8 0 0 0 14.7 4.2L20 15" /><Path {...common} d="M20 19v-4h-4" /></>
+      : name === "back" ? <><Path {...common} d="M19 12H5" /><Path {...common} d="m11 6-6 6 6 6" /></>
       : <><Line {...common} x1="6" y1="6" x2="18" y2="18" /><Line {...common} x1="18" y1="6" x2="6" y2="18" /></>}
     </Svg>
   );
