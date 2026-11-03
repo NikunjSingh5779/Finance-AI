@@ -43,14 +43,10 @@ def _try_omniroute() -> AIProvider | None:
     combo_name = (
         os.getenv("OMNIROUTE_COMBO_NAME")
         or os.getenv("OMNIROUTE_MODEL")
-        or ""
+        or "auto"
     ).strip()
-    if not combo_name or combo_name.lower() == "auto":
-        logger.warning(
-            "OmniRoute is configured but no exact combo name is set; "
-            "set OMNIROUTE_COMBO_NAME to the combo created in OmniRoute."
-        )
-        return None
+    if not combo_name:
+        combo_name = "auto"
 
     return OmniRouteProvider(
         api_key.strip(),
@@ -76,7 +72,18 @@ def _try_openrouter() -> AIProvider | None:
 def get_provider_info() -> dict:
     """Report configuration and selected provider without exposing secrets."""
     info = {
-        "omniroute": {"configured": bool(os.getenv("OMNIROUTE_API_KEY"))},
+        "omniroute": {
+            "configured": bool(os.getenv("OMNIROUTE_API_KEY")),
+            "base_url": os.getenv(
+                "OMNIROUTE_BASE_URL",
+                "http://127.0.0.1:20128/v1",
+            ),
+            "model": (
+                os.getenv("OMNIROUTE_COMBO_NAME")
+                or os.getenv("OMNIROUTE_MODEL")
+                or "auto"
+            ),
+        },
         "opencode": {"configured": bool(os.getenv("OPENCODE_ZEN_API_KEY"))},
         "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY"))},
     }
