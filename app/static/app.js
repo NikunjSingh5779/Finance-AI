@@ -1507,7 +1507,10 @@
       errorWrap.className = "chat-msg ai";
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble ai";
-      bubble.textContent = "⚠️ AI is currently unavailable.";
+      const message = error?.message
+        ? "⚠️ AI request failed: " + error.message
+        : "⚠️ AI is currently unavailable.";
+      bubble.textContent = message;
       errorWrap.appendChild(bubble);
       chat.appendChild(errorWrap);
     }
