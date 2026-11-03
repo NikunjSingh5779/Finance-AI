@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from app.core.auth import get_current_user_id
+from app.core.auth import auth_required, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +222,12 @@ class SQLiteCompatConnection:
 
 def get_db() -> Any:
     """Open a database connection for the current authenticated request."""
+    if auth_required() and not using_postgres():
+        raise RuntimeError(
+            "AUTH_REQUIRED=true requires DATABASE_URL; "
+            "production multi-user mode cannot use SQLite."
+        )
+
     if using_postgres():
         return _connect_postgres()
 
