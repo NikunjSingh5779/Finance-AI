@@ -1,37 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFinance } from "../src/AppContext";
 import type { ChatMessage } from "../src/types";
 import { colors } from "../src/theme";
+import { Button, ChipRow, ErrorBanner, Header, Pill } from "../src/components";
+import { Icon } from "../src/icons";
 
-const START_MESSAGE =
-  "Hello Alex! I've analyzed your recent financial activity. Ask me anything about spending, budgets, savings or goals.";
+const START_MESSAGE = "Hello Alex! I've analyzed your recent financial activity. Ask me anything about spending, budgets, savings or goals.";
+
+const TOPICS: Array<[string, string]> = [
+  ["Health", "How is my financial health?"],
+  ["Spending", "What am I spending the most on?"],
+  ["Savings", "How are my savings goals doing?"],
+  ["Budget", "Am I on track with my budgets?"],
+  ["Transactions", "Show my recent transactions."],
+  ["News", "search latest finance news"],
+];
 
 function cleanInline(value: string) {
   return value.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").trim();
 }
+function sourceCount(content: string) {
+  return new Set((content.match(/https?:\/\/[^\s)]+/g) || []).map((url) => url.replace(/[.,]+$/, ""))).size;
+}
 
 function FormattedAIMessage({ content }: { content: string }) {
   const lines = content.replace(/\r/g, "").split("\n");
-
   return (
     <View style={styles.formattedMessage}>
       {lines.map((line, index) => {
-        const text = line.trim();
-        if (!text) return <View key={index} style={{ height: 4 }} />;
-
-        const heading = text.match(/^\*\*(Summary|Key points|Next step):\*\*\s*(.*)$/i);
+        const value = line.trim();
+        if (!value) return <View key={index} style={{ height: 4 }} />;
+        const heading = value.match(/^\*\*(Summary|Key points|Next step):\*\*\s*(.*)$/i);
         if (heading) {
           return (
             <View key={index} style={styles.headingBlock}>
@@ -40,8 +40,7 @@ function FormattedAIMessage({ content }: { content: string }) {
             </View>
           );
         }
-
-        const bullet = text.match(/^[-*]\s+(.*)$/);
+        const bullet = value.match(/^[-*]\s+(.*)$/);
         if (bullet) {
           return (
             <View key={index} style={styles.bulletRow}>
@@ -50,12 +49,7 @@ function FormattedAIMessage({ content }: { content: string }) {
             </View>
           );
         }
-
-        return (
-          <Text key={index} style={styles.aiBody}>
-            {cleanInline(text)}
-          </Text>
-        );
+        return <Text key={index} style={styles.aiBody}>{cleanInline(value)}</Text>;
       })}
     </View>
   );
@@ -64,10 +58,7 @@ function FormattedAIMessage({ content }: { content: string }) {
 export default function AIScreen() {
   const { api, ready } = useFinance();
   const scrollRef = useRef<ScrollView>(null);
-
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: START_MESSAGE },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: START_MESSAGE }]);
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
@@ -83,37 +74,24 @@ export default function AIScreen() {
     }
   }, [api, ready]);
 
-  useEffect(() => {
-    void checkProvider();
-  }, [checkProvider]);
-
+  useEffect(() => { void checkProvider(); }, [checkProvider]);
   useEffect(() => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages, sending]);
 
   const sendPrompt = async (preset?: string) => {
     const trimmed = (preset ?? question).trim();
-    if (trimmed.length < 3 || sending) return;
-
+    if (trimmed.length < 3 || sending || providerReady === false) return;
     setSending(true);
     setError("");
-
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     const nextMessages = messages.concat(userMessage);
     setMessages(nextMessages);
     setQuestion("");
 
     try {
-      const response = await api.chat(
-        trimmed,
-        nextMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-      );
-      setMessages((current) =>
-        current.concat({ role: "assistant", content: response.reply }),
-      );
+      const response = await api.chat(trimmed, nextMessages.map((message) => ({ role: message.role, content: message.content })));
+      setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI request failed.");
     } finally {
@@ -124,74 +102,59 @@ export default function AIScreen() {
   const clearChat = () => {
     Alert.alert("Clear chat", "Remove the current AI conversation?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Clear",
-        style: "destructive",
-        onPress: () => setMessages([{ role: "assistant", content: START_MESSAGE }]),
-      },
+      { text: "Clear", style: "destructive", onPress: () => setMessages([{ role: "assistant", content: START_MESSAGE }]) },
     ]);
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>PERSONAL AI</Text>
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>Assistant</Text>
-            <View
-              style={[
-                styles.statusDot,
-                providerReady === false && { backgroundColor: colors.warning },
-              ]}
-            />
-          </View>
-        </View>
+  const toggleResearch = () => {
+    const next = question.trimStart().startsWith("search ") ? question.trimStart().slice(7) : "search " + question.trim();
+    setQuestion(next === "search " ? "search " : next);
+  };
 
-        <View style={styles.headerActions}>
-          <Pressable onPress={clearChat} style={styles.headerButton}>
-            <Text style={styles.headerButtonText}>⌫</Text>
-          </Pressable>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>AC</Text>
-          </View>
+  return (
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Header title="Assistant" />
+
+      {providerReady === false ? (
+        <View style={styles.unavailableWrap}>
+          <View style={styles.unavailableIcon}><Icon name="assistant" size={24} color={colors.warning} /></View>
+          <Text style={styles.unavailableTitle}>AI currently unavailable</Text>
+          <Text style={styles.unavailableText}>Check the local AI provider or backend connection, then retry.</Text>
+          <Button title="Retry" onPress={() => void checkProvider()} kind="secondary" />
         </View>
-      </View>
+      ) : null}
 
       <ScrollView
         ref={scrollRef}
-        style={styles.messages}
-        contentContainerStyle={styles.messagesContent}
+        style={styles.conversation}
+        contentContainerStyle={styles.conversationContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {messages.map((message, index) => {
           const isUser = message.role === "user";
+          const sources = isUser ? 0 : sourceCount(message.content);
           return (
-            <View
-              key={message.role + "-" + index}
-              style={[styles.messageRow, isUser ? styles.userRow : styles.aiRow]}
-            >
+            <View key={message.role + "-" + index} style={[styles.messageRow, isUser ? styles.userRow : styles.aiRow]}>
               {!isUser ? (
-                <View style={styles.aiIcon}>
-                  <Text style={styles.aiIconText}>✦</Text>
+                <View style={styles.aiAvatar}>
+                  <Icon name="assistant" size={20} color={colors.primary} />
                 </View>
               ) : null}
-
-              <View
-                style={[
-                  styles.messageBubble,
-                  isUser ? styles.userBubble : styles.aiBubble,
-                ]}
-              >
-                {isUser ? (
-                  <Text style={styles.userText}>{message.content}</Text>
-                ) : (
-                  <FormattedAIMessage content={message.content} />
-                )}
+              <View style={[styles.messageColumn, isUser && styles.userColumn]}>
+                <View style={[styles.metaRow, isUser && styles.userMetaRow]}>
+                  {!isUser ? <Text style={styles.metaLabel}>FinanceAI</Text> : <Text style={styles.metaLabel}>You</Text>}
+                  <Text style={styles.metaTime}>{index === 0 && !isUser ? "" : "Now"}</Text>
+                  {!isUser && sources > 0 ? (
+                    <View style={styles.sourceBadge}>
+                      <Icon name="globe" size={10} color={colors.info} />
+                      <Text style={styles.sourceText}>{sources} source{sources === 1 ? "" : "s"}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.aiBubble]}>
+                  {isUser ? <Text style={styles.userText}>{message.content}</Text> : <FormattedAIMessage content={message.content} />}
+                </View>
               </View>
             </View>
           );
@@ -199,85 +162,73 @@ export default function AIScreen() {
 
         {sending ? (
           <View style={styles.messageRow}>
-            <View style={styles.aiIcon}>
-              <Text style={styles.aiIconText}>✦</Text>
-            </View>
-            <View style={styles.typingBubble}>
-              <View style={styles.typingDots}>
-                <View style={styles.typingDot} />
-                <View style={styles.typingDot} />
-                <View style={styles.typingDot} />
-              </View>
+            <View style={styles.aiAvatar}><ActivityIndicator color={colors.primary} /></View>
+            <View style={styles.messageColumn}>
+              <View style={styles.metaRow}><Text style={styles.metaLabel}>FinanceAI</Text><Text style={styles.metaTime}>Thinking…</Text></View>
+              <View style={styles.aiBubble}><View style={styles.typingDots}><View style={styles.typingDot} /><View style={styles.typingDot} /><View style={styles.typingDot} /></View></View>
             </View>
           </View>
         ) : null}
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? <ErrorBanner message={error} onRetry={() => void checkProvider()} /> : null}
       </ScrollView>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.quickRow}
-      >
-        {[
-          ["Analyze subscriptions", "Analyze my recurring expenses"],
-          ["Savings goal progress", "How are my savings goals doing?"],
-          ["Search latest finance news", "search latest finance news"],
-        ].map(([label, prompt]) => (
-          <Pressable
-            key={label}
-            disabled={sending}
-            onPress={() => void sendPrompt(prompt)}
-            style={styles.quickChip}
-          >
-            <Text style={styles.quickText}>{label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View style={styles.suggested}>
+        <Text style={styles.suggestedLabel}>Suggested topics</Text>
+        <View style={styles.topicGrid}>
+          {TOPICS.map(([label, prompt]) => (
+            <Pressable
+              key={label}
+              onPress={() => void sendPrompt(prompt)}
+              disabled={sending || providerReady === false}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              style={({ pressed }) => [styles.topicChip, pressed && { opacity: 0.75 }, (sending || providerReady === false) && { opacity: 0.45 }]}
+            >
+              <Text style={styles.topicText}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
-      <View style={styles.composerWrap}>
-        <View style={styles.composer}>
-          <Text style={styles.searchIcon}>⌕</Text>
+      <View style={styles.composerArea}>
+        <View style={[styles.composerInput, (providerReady === false || sending) && { opacity: 0.6 }]}>
+          <Icon name="edit" size={16} color={colors.muted} />
           <TextInput
             value={question}
             onChangeText={setQuestion}
             onSubmitEditing={() => void sendPrompt()}
-            placeholder="Ask about your finances..."
-            placeholderTextColor={colors.subtle}
+            placeholder="Ask about your finances…"
+            placeholderTextColor={colors.muted}
+            editable={!sending && providerReady !== false}
             style={styles.input}
             maxLength={1000}
             returnKeyType="send"
+            accessibilityLabel="Ask about your finances"
           />
+        </View>
+        <View style={styles.composerActions}>
+          <Pressable
+            onPress={toggleResearch}
+            disabled={sending || providerReady === false}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle web research"
+            accessibilityState={{ disabled: sending || providerReady === false }}
+            style={styles.webButton}
+          >
+            <Icon name="globe" size={22} color={colors.muted} />
+          </Pressable>
           <Pressable
             onPress={() => void sendPrompt()}
-            disabled={sending || question.trim().length < 3}
-            style={[
-              styles.sendButton,
-              (sending || question.trim().length < 3) && styles.sendDisabled,
-            ]}
+            disabled={sending || providerReady === false || question.trim().length < 3}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            accessibilityState={{ disabled: sending || providerReady === false || question.trim().length < 3, busy: sending }}
+            style={[styles.sendButton, (sending || providerReady === false || question.trim().length < 3) && styles.sendDisabled]}
           >
-            {sending ? (
-              <ActivityIndicator color={colors.background} size="small" />
-            ) : (
-              <Text style={styles.sendText}>↑</Text>
-            )}
+            {sending ? <ActivityIndicator color={colors.onAccent} /> : <Icon name="send" size={22} color={colors.onAccent} />}
           </Pressable>
         </View>
-      </View>
-
-      <View style={styles.footer}>
-        <View
-          style={[
-            styles.footerDot,
-            { backgroundColor: providerReady ? colors.primary : colors.warning },
-          ]}
-        />
-        <Text style={styles.footerText}>
-          {providerReady ? "AI connected" : "AI provider unavailable"}
-        </Text>
-        <Text style={styles.footerDivider}>•</Text>
-        <Text style={styles.footerText}>Financial decision support</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -285,89 +236,46 @@ export default function AIScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  header: {
-    minHeight: 72,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  kicker: { color: colors.subtle, fontSize: 8, fontWeight: "800", letterSpacing: 0.8 },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  title: { color: colors.text, fontSize: 19, fontWeight: "900" },
-  statusDot: { width: 6, height: 6, borderRadius: 99, backgroundColor: colors.primary },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerButton: {
-    width: 34, height: 34, borderRadius: 9, backgroundColor: colors.surfaceRaised,
-    borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center",
-  },
-  headerButtonText: { color: colors.muted, fontSize: 16 },
-  avatar: {
-    width: 30, height: 30, borderRadius: 99, backgroundColor: "rgba(34,197,94,.16)",
-    alignItems: "center", justifyContent: "center",
-  },
-  avatarText: { color: colors.primary, fontSize: 9, fontWeight: "900" },
-  messages: { flex: 1 },
-  messagesContent: { padding: 16, paddingBottom: 10, gap: 12 },
-  messageRow: { width: "100%", flexDirection: "row", alignItems: "flex-start", gap: 9 },
+  conversation: { flex: 1 },
+  conversationContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 10, gap: 12 },
+  messageRow: { width: "100%", flexDirection: "row", alignItems: "flex-start", gap: 8 },
   aiRow: { justifyContent: "flex-start" },
   userRow: { justifyContent: "flex-end" },
-  aiIcon: {
-    width: 30, height: 30, borderRadius: 8, backgroundColor: colors.primarySoft,
-    alignItems: "center", justifyContent: "center", marginTop: 2,
-  },
-  aiIconText: { color: colors.primary, fontSize: 14, fontWeight: "900" },
-  messageBubble: { borderWidth: 1, paddingHorizontal: 13, paddingVertical: 11 },
-  aiBubble: {
-    width: "82%", backgroundColor: colors.surface, borderColor: colors.border,
-    borderRadius: 14, borderTopLeftRadius: 5,
-  },
-  userBubble: {
-    maxWidth: "79%", backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong,
-    borderRadius: 14, borderTopRightRadius: 5,
-  },
+  aiAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  messageColumn: { flex: 1, minWidth: 0 },
+  userColumn: { flex: 0, maxWidth: "79%", alignItems: "flex-end" },
+  metaRow: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: 6 },
+  userMetaRow: { justifyContent: "flex-end" },
+  metaLabel: { color: colors.muted, fontSize: 11, lineHeight: 17, fontWeight: "600" },
+  metaTime: { color: colors.subtle, fontSize: 11, lineHeight: 17 },
+  sourceBadge: { minHeight: 23, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.surfaceInfo, borderRadius: 99, paddingHorizontal: 8 },
+  sourceText: { color: colors.info, fontSize: 11, fontWeight: "600" },
+  messageBubble: { borderWidth: 1, padding: 12, borderRadius: 14 },
+  aiBubble: { width: "100%", backgroundColor: colors.surface, borderColor: colors.border, borderTopLeftRadius: 6, minHeight: 73 },
+  userBubble: { minWidth: 100, backgroundColor: colors.surfaceRaised, borderColor: colors.borderStrong, borderTopRightRadius: 6 },
   userText: { color: colors.text, fontSize: 13, lineHeight: 19 },
   formattedMessage: { gap: 8 },
   headingBlock: { gap: 4 },
-  aiHeading: { color: colors.primary, fontSize: 11, fontWeight: "900" },
+  aiHeading: { color: colors.primary, fontSize: 11, fontWeight: "700" },
   aiBody: { color: colors.text, fontSize: 13, lineHeight: 19 },
   bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
   bulletDot: { color: colors.primary, fontSize: 14, lineHeight: 19 },
-  typingBubble: {
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 14, borderTopLeftRadius: 5, paddingHorizontal: 15, paddingVertical: 13,
-  },
-  typingDots: { flexDirection: "row", gap: 4 },
+  typingDots: { flexDirection: "row", gap: 4, paddingVertical: 3 },
   typingDot: { width: 5, height: 5, borderRadius: 99, backgroundColor: colors.subtle },
-  errorText: { color: colors.danger, fontSize: 10, paddingLeft: 39 },
-  quickRow: { gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
-  quickChip: {
-    minHeight: 34, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1,
-    borderColor: colors.border, backgroundColor: colors.surfaceRaised,
-    alignItems: "center", justifyContent: "center",
-  },
-  quickText: { color: colors.muted, fontSize: 10, fontWeight: "600" },
-  composerWrap: { paddingHorizontal: 16, paddingBottom: 6 },
-  composer: {
-    minHeight: 48, borderRadius: 15, backgroundColor: colors.surfaceRaised,
-    borderWidth: 1, borderColor: colors.borderStrong, flexDirection: "row",
-    alignItems: "center", paddingLeft: 10, paddingRight: 7,
-  },
-  searchIcon: { color: colors.subtle, fontSize: 15, width: 21 },
-  input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 12, paddingVertical: 10 },
-  sendButton: {
-    width: 32, height: 32, borderRadius: 10, backgroundColor: colors.primary,
-    alignItems: "center", justifyContent: "center",
-  },
-  sendDisabled: { opacity: 0.35 },
-  sendText: { color: colors.background, fontSize: 17, fontWeight: "900" },
-  footer: {
-    minHeight: 18, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 5, paddingBottom: 4,
-  },
-  footerDot: { width: 5, height: 5, borderRadius: 99 },
-  footerText: { color: colors.subtle, fontSize: 8 },
-  footerDivider: { color: colors.borderStrong, fontSize: 8 },
+  unavailableWrap: { marginHorizontal: 16, marginTop: 16, padding: 20, backgroundColor: colors.surfaceWarning, borderWidth: 1, borderColor: "rgba(245,168,0,.25)", borderRadius: 16, alignItems: "center", gap: 10 },
+  unavailableIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.warningSoft, alignItems: "center", justifyContent: "center" },
+  unavailableTitle: { color: colors.warning, fontSize: 16, fontWeight: "700" },
+  unavailableText: { color: colors.muted, fontSize: 12, lineHeight: 18, textAlign: "center" },
+  suggested: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  suggestedLabel: { color: colors.muted, fontSize: 12, lineHeight: 17, marginBottom: 8 },
+  topicGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  topicChip: { minHeight: 44, paddingHorizontal: 14, borderRadius: 999, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  topicText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  composerArea: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
+  composerInput: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 13, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 16 },
+  input: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 22, paddingVertical: 0 },
+  composerActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  webButton: { width: 44, height: 48, alignItems: "flex-start", justifyContent: "center" },
+  sendButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: colors.border, alignItems: "center", justifyContent: "center" },
+  sendDisabled: { opacity: 0.5 },
 });
