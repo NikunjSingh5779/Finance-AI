@@ -69,3 +69,29 @@ def test_market_evidence_includes_price_change(monkeypatch):
     assert "Previous close: 284.5" in evidence
     assert "Change: -4.47" in evidence
     assert "Change %: -1.57" in evidence
+
+
+def test_query_intent_routes_common_questions():
+    assert AIService._query_intent("what is the current google stock price and change") == "market_fact"
+    assert AIService._query_intent("why did google stock fall today") == "market_research"
+    assert AIService._query_intent("when is the Jio IPO") == "ipo_research"
+    assert AIService._query_intent("how much did I spend on food") == "personal_finance"
+
+
+def test_market_fact_response_is_deterministic():
+    reply = AIService._market_fact_response(
+        {
+            "symbol": "GOOGL",
+            "price": 280.03,
+            "previous_close": 284.50,
+            "change": -4.47,
+            "change_pct": -1.57,
+            "currency": "USD",
+            "date": "2026-11-04",
+            "source": "test",
+            "quote_kind": "latest_available_quote",
+        }
+    )
+    assert "GOOGL is 280.03 USD" in reply
+    assert "down 4.47 (1.57%)" in reply
+    assert "Change: -4.47 USD (-1.57%)." in reply
