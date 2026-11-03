@@ -97,9 +97,10 @@ export default function InsightsScreen() {
   const savingsRate = summary?.savings_rate ?? 0;
   const comparison = summary?.expense_change ?? 0;
 
+  const largestCategory = categories[0];
   const summaryText =
-    categories.length
-      ? `You've spent ${money(expense)} this month. ${categories[0][0]} is your largest expense category at ${money(categories[0][1])}.`
+    largestCategory
+      ? `You've spent ${money(expense)} this month. ${largestCategory[0]} is your largest expense category at ${money(largestCategory[1])}.`
       : "Add more transactions to unlock detailed spending insights.";
 
   if (loading) return <Screen><LoadingState /></Screen>;

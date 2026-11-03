@@ -57,8 +57,11 @@ export default function PlanningScreen() {
 
   const yearChange = useMemo(() => {
     if (history.length < 2) return null;
-    const first = history[0].net_worth;
-    const last = history[history.length - 1].net_worth;
+    const firstEntry = history[0];
+    const lastEntry = history[history.length - 1];
+    if (!firstEntry || !lastEntry) return null;
+    const first = firstEntry.net_worth;
+    const last = lastEntry.net_worth;
     return first === 0 ? null : ((last - first) / Math.abs(first)) * 100;
   }, [history]);
 

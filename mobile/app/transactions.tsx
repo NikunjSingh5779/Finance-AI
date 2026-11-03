@@ -64,7 +64,9 @@ function normalizeDate(value: string) {
 
   const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (match) {
-    let [, first, second, year] = match;
+    const first = match[1] ?? "";
+    const second = match[2] ?? "";
+    let year = match[3] ?? "";
     if (year.length === 2) year = (Number(year) > 50 ? "19" : "20") + year;
     return `${year}-${second.padStart(2, "0")}-${first.padStart(2, "0")}`;
   }
@@ -259,7 +261,7 @@ export default function TransactionsScreen() {
       }
 
       const parsed = lines.map(parseCSVLine);
-      const first = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+      const first = (parsed[0] ?? []).map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
       const hasHeader = first.includes("type") || first.includes("amount") || first.includes("description");
       const dataRows = hasHeader ? parsed.slice(1) : parsed;
       const headerMap = hasHeader ? Object.fromEntries(first.map((key, index) => [key, index])) : null;
@@ -563,22 +565,6 @@ const styles = StyleSheet.create({
   quickExpenseText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
 
   quickTitle: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: "700" },
-
-
-  quickPresetRow: { flexDirection: "row", gap: 10, marginTop: 6 },
-  quickIncome: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfacePositive, justifyContent: "center" },
-  quickIncomeText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
-  quickExpense: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfaceNegative, justifyContent: "center" },
-  quickExpenseText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
-
-
-
-
-
-
-
-
-
 
 
   transactionCard: { paddingVertical: 11 },

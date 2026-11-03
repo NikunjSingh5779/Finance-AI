@@ -45,7 +45,7 @@ function FormattedAIMessage({ content }: { content: string }) {
           return (
             <View key={index} style={styles.bulletRow}>
               <Text style={styles.bulletDot}>•</Text>
-              <Text style={styles.aiBody}>{cleanInline(bullet[1])}</Text>
+              <Text style={styles.aiBody}>{cleanInline(bullet[1] ?? "")}</Text>
             </View>
           );
         }

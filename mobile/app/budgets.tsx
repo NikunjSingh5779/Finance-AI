@@ -166,7 +166,7 @@ export default function BudgetsScreen() {
       }
 
       const parsed = lines.map(parseCSVLine);
-      const header = parsed[0].map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+      const header = (parsed[0] ?? []).map((value) => value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
       const hasHeader = header.includes("category") || header.includes("limit") || header.includes("limitamt") || header.includes("limit_amt");
       const data = hasHeader ? parsed.slice(1) : parsed;
       const map = hasHeader ? Object.fromEntries(header.map((name, index) => [name, index])) : null;

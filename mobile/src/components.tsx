@@ -127,7 +127,7 @@ export function SearchField({
 }
 
 export function Input({ label, ...props }: TextInputProps & { label: string }) {
-  return <View style={styles.inputGroup}><Text style={styles.inputLabel}>{label}</Text><TextInput {...props} accessible accessibilityRole="textbox" placeholderTextColor={colors.muted} selectionColor={colors.primary} style={[styles.input, props.style]} /></View>;
+  return <View style={styles.inputGroup}><Text style={styles.inputLabel}>{label}</Text><TextInput {...props} accessible accessibilityRole="text" placeholderTextColor={colors.muted} selectionColor={colors.primary} style={[styles.input, props.style]} /></View>;
 }
 export function ChipRow({ values, selected, onSelect }: { values: string[]; selected: string; onSelect: (value: string) => void }) {
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>{values.map((value) => {
