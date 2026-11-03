@@ -10,11 +10,33 @@ from .openrouter import OpenRouterProvider
 
 logger = logging.getLogger(__name__)
 
+_provider_cache: list[AIProvider] | None = None
+_provider_cache_key: tuple[str, ...] | None = None
 
-def get_ai_providers() -> list[AIProvider]:
-    """Return all configured and currently reachable providers in priority order."""
+
+def _config_key() -> tuple[str, ...]:
+    return (
+        os.getenv("OMNIROUTE_API_KEY", ""),
+        os.getenv("OMNIROUTE_BASE_URL", ""),
+        os.getenv("OMNIROUTE_COMBO_NAME", ""),
+        os.getenv("OMNIROUTE_MODEL", ""),
+        os.getenv("OPENCODE_ZEN_API_KEY", ""),
+        os.getenv("OPENCODE_BASE_URL", ""),
+        os.getenv("OPENCODE_MODEL", ""),
+        os.getenv("OPENROUTER_API_KEY", ""),
+        os.getenv("OPENROUTER_MODEL", ""),
+    )
+
+
+def get_ai_providers(force_refresh: bool = False) -> list[AIProvider]:
+    """Return configured providers, reusing instances to avoid per-request setup."""
+    global _provider_cache, _provider_cache_key
+
+    key = _config_key()
+    if not force_refresh and _provider_cache is not None and _provider_cache_key == key:
+        return _provider_cache
+
     providers: list[AIProvider] = []
-
     for factory in (_try_omniroute, _try_opencode, _try_openrouter):
         try:
             provider = factory()
@@ -27,7 +49,16 @@ def get_ai_providers() -> list[AIProvider]:
         except Exception as exc:
             logger.debug("AI provider discovery failed: %s", exc)
 
+    _provider_cache = providers
+    _provider_cache_key = key
     return providers
+
+
+def reset_provider_cache() -> None:
+    """Clear cached providers after changing environment/configuration."""
+    global _provider_cache, _provider_cache_key
+    _provider_cache = None
+    _provider_cache_key = None
 
 
 def get_ai_provider() -> AIProvider | None:
