@@ -81,7 +81,7 @@ async def login(request: SignInRequest, raw_request: Request) -> dict:
             "expires_in": session.get("expires_in"),
         }
     except AuthProviderError as exc:
-        raise ValueError(str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/refresh")
