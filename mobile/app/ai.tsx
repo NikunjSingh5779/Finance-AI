@@ -68,7 +68,7 @@ export default function AIScreen() {
     if (!ready) return;
     try {
       const info = await api.aiProviders();
-      setProviderReady(Object.keys(info).length > 0);
+      setProviderReady(Boolean(info.selected));
     } catch {
       setProviderReady(false);
     }
@@ -183,7 +183,7 @@ export default function AIScreen() {
               disabled={sending}
               accessibilityRole="button"
               accessibilityLabel={label}
-              style={({ pressed }) => [styles.topicChip, pressed && { opacity: 0.75 }, (sending || providerReady === false) && { opacity: 0.45 }]}
+              style={({ pressed }) => [styles.topicChip, pressed && { opacity: 0.75 }, sending && { opacity: 0.45 }]}
             >
               <Text style={styles.topicText}>{label}</Text>
             </Pressable>
@@ -192,7 +192,7 @@ export default function AIScreen() {
       </View>
 
       <View style={styles.composerArea}>
-        <View style={[styles.composerInput, (providerReady === false || sending) && { opacity: 0.6 }]}>
+        <View style={[styles.composerInput, sending && { opacity: 0.6 }]}>
           <Icon name="edit" size={16} color={colors.muted} />
           <TextInput
             value={question}
@@ -210,10 +210,10 @@ export default function AIScreen() {
         <View style={styles.composerActions}>
           <Pressable
             onPress={toggleResearch}
-            disabled={sending || providerReady === false}
+            disabled={sending}
             accessibilityRole="button"
             accessibilityLabel="Toggle web research"
-            accessibilityState={{ disabled: sending || providerReady === false }}
+            accessibilityState={{ disabled: sending }}
             style={styles.webButton}
           >
             <Icon name="globe" size={22} color={colors.muted} />
@@ -223,8 +223,8 @@ export default function AIScreen() {
             disabled={sending || question.trim().length < 3}
             accessibilityRole="button"
             accessibilityLabel="Send message"
-            accessibilityState={{ disabled: sending || providerReady === false || question.trim().length < 3, busy: sending }}
-            style={[styles.sendButton, (sending || providerReady === false || question.trim().length < 3) && styles.sendDisabled]}
+            accessibilityState={{ disabled: sending || question.trim().length < 3, busy: sending }}
+            style={[styles.sendButton, (sending || question.trim().length < 3) && styles.sendDisabled]}
           >
             {sending ? <ActivityIndicator color={colors.onAccent} /> : <Icon name="send" size={22} color={colors.onAccent} />}
           </Pressable>
