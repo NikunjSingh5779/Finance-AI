@@ -123,7 +123,7 @@ export default function PlanningScreen() {
   return (
     <>
       <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-        <Header title="Planning & Wealth" action="notifications" />
+        <Header title="Planning & Wealth" action="refresh" onAction={action === "refresh" ? () => undefined : undefined} />
         {error ? <ErrorBanner message={error} /> : null}
 
         <View style={styles.pageHeader}>
