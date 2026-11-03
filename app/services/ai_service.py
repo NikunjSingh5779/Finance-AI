@@ -234,15 +234,24 @@ class AIService:
             movement = "flat (0.00%)"
 
         lines = [
-            f"**Summary:** {symbol} is {price} {currency} as of {date_value or 'the latest available quote'}, {movement} versus the previous close.",
+            "**Summary:** "
+            f"{symbol} is {price} {currency} as of "
+            f"{date_value or 'the latest available quote'}, {movement} "
+            "versus the previous close.",
             "**Key points:**",
         ]
         if previous_close is not None:
             lines.append(f"- Previous close: {previous_close} {currency}.")
         if change is not None and change_pct is not None:
             lines.append(f"- Change: {change:+.2f} {currency} ({change_pct:+.2f}%).")
-        lines.append(f"- Source: {data.get('source', 'market data')}; quote type: {data.get('quote_kind', 'available quote')}.")
-        lines.append("**Next step:** Ask for the reason for the move or a historical comparison if you want deeper analysis.")
+        lines.append(
+            f"- Source: {data.get('source', 'market data')}; "
+            f"quote type: {data.get('quote_kind', 'available quote')}."
+        )
+        lines.append(
+            "**Next step:** Ask for the reason for the move or a historical "
+            "comparison if you want deeper analysis."
+        )
         return "\n".join(lines)
 
     async def _get_market_evidence(self, question: str) -> str:
