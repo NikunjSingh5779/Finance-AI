@@ -19,7 +19,7 @@ async function readStoredSession(): Promise<string | null> {
     const legacy = await AsyncStorage.getItem(SESSION_KEY);
     if (legacy) {
       await SecureStore.setItemAsync(SESSION_KEY, legacy);
-      await removeStoredSession();
+      await AsyncStorage.removeItem(SESSION_KEY);
     }
     return legacy;
   } catch {
@@ -138,7 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const refreshed = await api.refreshSession();
           if (!refreshed) {
             api.clearSession();
-            await AsyncStorage.removeItem(SESSION_KEY);
+            await removeStoredSession();
             setChecked(true);
             return;
           }
