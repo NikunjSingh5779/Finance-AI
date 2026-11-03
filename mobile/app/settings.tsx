@@ -117,7 +117,7 @@ export default function SettingsScreen() {
   return (
     <>
       <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={colors.primary} />}>
-        <Header title="Settings" action="none" />
+        <Header title="Settings" action="back" />
         {message ? <ErrorBanner message={message} /> : null}
 
         <Card style={styles.profileCard}>
