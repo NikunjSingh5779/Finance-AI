@@ -47,6 +47,7 @@ class TransactionRepository:
             INSERT INTO transactions
                 (type, amount, description, category, date, account_id)
             VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
             """,
             (
                 transaction.type,
@@ -57,8 +58,9 @@ class TransactionRepository:
                 transaction.account_id,
             ),
         )
+        transaction_id = cursor.fetchone()["id"]
         self.conn.commit()
-        created = self.get(cursor.lastrowid)
+        created = self.get(transaction_id)
         if created is None:
             raise RuntimeError("Failed to retrieve created transaction")
         return created
