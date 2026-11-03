@@ -343,7 +343,7 @@ export default function TransactionsScreen() {
         <ChipRow values={["All", "Income", "Expense"]} selected={filter} onSelect={(value) => setFilter(value as typeof filter)} />
 
         <View style={styles.sectionHeader}>
-          <SectionTitle>{filtered.length.toLocaleString("en-IN")} transactions</SectionTitle>
+          <SectionTitle>Transactions</SectionTitle>
           <Pressable style={styles.primaryAction} onPress={openNew} accessibilityRole="button">
             <Icon name="plus" size={18} color={colors.onAccent} />
             <Text style={styles.primaryActionText}>Add transaction</Text>
@@ -353,6 +353,49 @@ export default function TransactionsScreen() {
           <SectionTitle>{filtered.length.toLocaleString("en-IN")} shown</SectionTitle>
           <SmallText>{transactions.length.toLocaleString("en-IN")} total</SmallText>
         </View>
+
+        <Card style={styles.quickAddCard}>
+          <Text style={styles.quickTitle}>Quick Add</Text>
+          <SmallText>Add your most common transaction faster</SmallText>
+          <View style={styles.quickPresetRow}>
+            <Pressable
+              style={styles.quickIncome}
+              accessibilityRole="button"
+              accessibilityLabel="Quick add income of 1000 rupees"
+              onPress={() => {
+                setEditingId(null);
+                setType("income");
+                setAmount("1000");
+                setDescription("");
+                setCategory("Income");
+                setDate(new Date().toISOString().slice(0, 10));
+                setAccountId(accounts[0] ? String(accounts[0].id) : null);
+                setModalOpen(true);
+              }}
+            >
+              <Text style={styles.quickIncomeText}>+₹1,000</Text>
+            </Pressable>
+            <Pressable
+              style={styles.quickExpense}
+              accessibilityRole="button"
+              accessibilityLabel="Quick add expense of 500 rupees"
+              onPress={() => {
+                setEditingId(null);
+                setType("expense");
+                setAmount("500");
+                setDescription("");
+                setCategory("Other");
+                setDate(new Date().toISOString().slice(0, 10));
+                setAccountId(accounts[0] ? String(accounts[0].id) : null);
+                setModalOpen(true);
+              }}
+            >
+              <Text style={styles.quickExpenseText}>-₹500</Text>
+            </Pressable>
+          </View>
+        </Card>
+
+
 
         {filtered.length === 0 ? (
           <Card><EmptyState message="No transactions match your filters." /></Card>
@@ -513,25 +556,30 @@ const styles = StyleSheet.create({
   deleteAllText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   countRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   quickAddCard: { gap: 6, padding: 20, minHeight: 143 },
-  quickHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
-  quickTitle: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: "700" },
-  quickOpenButton: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 7, backgroundColor: colors.primary },
-  quickOpenText: { color: colors.background, fontSize: 9, fontWeight: "800" },
   quickPresetRow: { flexDirection: "row", gap: 10, marginTop: 6 },
   quickIncome: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfacePositive, justifyContent: "center" },
   quickIncomeText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
   quickExpense: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfaceNegative, justifyContent: "center" },
   quickExpenseText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
-  quickTypeRow: { flexDirection: "row", backgroundColor: colors.surfaceRaised, borderRadius: 9, padding: 3 },
-  quickType: { flex: 1, minHeight: 31, borderRadius: 7, alignItems: "center", justifyContent: "center" },
-  quickTypeActive: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderStrong },
-  quickTypeText: { color: colors.muted, fontSize: 10, fontWeight: "700" },
-  quickTypeTextActive: { color: colors.text },
-  quickRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
-  quickAccountLabel: { marginBottom: 4 },
-  inputLikeLabel: { color: colors.muted, fontSize: 9, fontWeight: "700" },
-  quickAddButton: { minHeight: 38, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  quickAddButtonText: { color: colors.background, fontSize: 11, fontWeight: "900" },
+
+  quickTitle: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: "700" },
+
+
+  quickPresetRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  quickIncome: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfacePositive, justifyContent: "center" },
+  quickIncomeText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
+  quickExpense: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfaceNegative, justifyContent: "center" },
+  quickExpenseText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
+
+
+
+
+
+
+
+
+
+
 
   transactionCard: { paddingVertical: 11 },
   transactionRow: { flexDirection: "row", alignItems: "center", gap: 10 },
