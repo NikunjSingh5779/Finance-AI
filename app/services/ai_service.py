@@ -141,10 +141,59 @@ class AIService:
                 return symbol
         return None
 
-    async def _get_market_evidence(self, question: str) -> str:
+    @staticmethod
+    def _query_intent(question: str) -> str:
+        lowered = question.lower()
+        ipo_terms = (
+            "ipo", "drhp", "prospectus", "sebi filing",
+            "listing date", "ipo date", "public issue",
+        )
+        if any(term in lowered for term in ipo_terms):
+            return "ipo_research"
+
+        market_type = AIService._market_type(question)
+        if market_type:
+            analytical_terms = (
+                "why", "reason", "analysis", "outlook", "forecast",
+                "target", "should i", "buy", "sell", "news", "fundamental",
+            )
+            if not any(term in lowered for term in analytical_terms):
+                fact_terms = (
+                    "price", "quote", "close", "open", "high", "low",
+                    "change", "down", "up", "gain", "drop", "fall",
+                    "today", "yesterday", "current", "now", "realtime",
+                )
+                if any(term in lowered for term in fact_terms):
+                    return "market_fact"
+            return "market_research"
+
+        if lowered.startswith((
+            "search ", "search the web", "web search", "look up ",
+            "find online ", "browse ", "fetch ",
+        )):
+            return "web_research"
+
+        fresh_terms = (
+            "latest", "today", "current", "now", "recent",
+            "breaking", "news", "what happened",
+        )
+        return "web_research" if any(term in lowered for term in fresh_terms) else "personal_finance"
+
+    @staticmethod
+    def _needs_personal_context(question: str) -> bool:
+        lowered = question.lower()
+        personal_terms = (
+            "my", "me", "i ", "i'm", "i am", "budget", "transaction",
+            "expense", "spending", "saving", "income", "salary", "account",
+            "net worth", "cash flow", "financial health", "goal", "debt",
+        )
+        return any(term in lowered for term in personal_terms)
+
+    async def _get_market_data(self, question: str) -> dict[str, Any] | None:
         market_type = self._market_type(question)
         if not market_type:
-            return ""
+            return None
+
         symbol = self._market_symbol(question, market_type)
         if not symbol:
             try:
@@ -153,17 +202,51 @@ class AIService:
                 symbol = matches[0].get("symbol") if matches else None
             except Exception:
                 symbol = None
+
         if not symbol:
-            return ""
+            return None
 
         provider = get_market_provider()
+        today = date.today().isoformat()
         target_date = self._extract_date(question)
-        data = None
-        if target_date:
-            data = await provider.get_price_on_date(symbol, target_date)
-        if data is None and target_date in (None, date.today().isoformat()):
-            data = await provider.get_current_price(symbol)
 
+        if target_date and target_date != today:
+            return await provider.get_price_on_date(symbol, target_date)
+        return await provider.get_current_price(symbol)
+
+    @staticmethod
+    def _market_fact_response(data: dict[str, Any]) -> str:
+        symbol = str(data.get("symbol") or "Market")
+        price = data.get("price", data.get("close"))
+        currency = str(data.get("currency") or "USD")
+        date_value = str(data.get("date") or data.get("timestamp") or "")[:10]
+        previous_close = data.get("previous_close")
+        change = data.get("change")
+        change_pct = data.get("change_pct")
+
+        if change is None or change_pct is None:
+            movement = "No prior-session comparison was available."
+        elif float(change) > 0:
+            movement = f"up {abs(float(change)):.2f} ({abs(float(change_pct)):.2f}%)"
+        elif float(change) < 0:
+            movement = f"down {abs(float(change)):.2f} ({abs(float(change_pct)):.2f}%)"
+        else:
+            movement = "flat (0.00%)"
+
+        lines = [
+            f"**Summary:** {symbol} is {price} {currency} as of {date_value or 'the latest available quote'}, {movement} versus the previous close.",
+            "**Key points:**",
+        ]
+        if previous_close is not None:
+            lines.append(f"- Previous close: {previous_close} {currency}.")
+        if change is not None and change_pct is not None:
+            lines.append(f"- Change: {change:+.2f} {currency} ({change_pct:+.2f}%).")
+        lines.append(f"- Source: {data.get('source', 'market data')}; quote type: {data.get('quote_kind', 'available quote')}.")
+        lines.append("**Next step:** Ask for the reason for the move or a historical comparison if you want deeper analysis.")
+        return "\n".join(lines)
+
+    async def _get_market_evidence(self, question: str) -> str:
+        data = await self._get_market_data(question)
         if not data:
             return ""
         return (
@@ -231,32 +314,58 @@ class AIService:
         financial_context: dict[str, Any],
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
+        intent = self._query_intent(question)
+        market_data = None
+        market_evidence = ""
+
+        if intent in {"market_fact", "market_research"}:
+            market_data = await self._get_market_data(question)
+            if intent == "market_fact" and market_data:
+                return self._market_fact_response(market_data)
+            if market_data:
+                market_evidence = (
+                    "STRUCTURED MARKET EVIDENCE\n"
+                    f"Symbol: {market_data.get('symbol')}\n"
+                    f"Date: {market_data.get('date') or market_data.get('timestamp')}\n"
+                    f"Open: {market_data.get('open')}\n"
+                    f"High: {market_data.get('high')}\n"
+                    f"Low: {market_data.get('low')}\n"
+                    f"Close/price: {market_data.get('close', market_data.get('price'))}\n"
+                    f"Previous close: {market_data.get('previous_close')}\n"
+                    f"Change: {market_data.get('change')}\n"
+                    f"Change %: {market_data.get('change_pct')}\n"
+                    f"Volume: {market_data.get('volume')}\n"
+                    f"Currency: {market_data.get('currency')}\n"
+                    f"Quote kind: {market_data.get('quote_kind')}\n"
+                    f"Source: {market_data.get('source')}\n"
+                )
+
+        web_results: list[Any] = []
+        web_pages: list[Any] = []
+        search_query = self._extract_web_search_query(question)
+        should_search = intent in {"ipo_research", "market_research", "web_research"}
+
+        if search_query and should_search:
+            try:
+                preferred_domains = self._preferred_domains(question)
+                researcher = get_web_researcher()
+                fetch_count = 2 if intent in {"ipo_research", "market_research"} else 2
+                web_results, web_pages = await researcher.search_and_fetch(
+                    search_query,
+                    max_results=5,
+                    fetch_count=fetch_count,
+                    timelimit="d" if self._is_fresh_query(question) else None,
+                    preferred_domains=preferred_domains,
+                )
+            except Exception:
+                web_results, web_pages = [], []
+
         providers = self._provider_candidates()
         if not providers:
             raise ProviderUnavailableError(
                 "ai",
                 "No configured provider is available",
             )
-
-        market_evidence = await self._get_market_evidence(question)
-
-        web_results: list[Any] = []
-        web_pages: list[Any] = []
-        search_query = self._extract_web_search_query(question)
-
-        if search_query:
-            try:
-                preferred_domains = self._preferred_domains(question)
-                researcher = get_web_researcher()
-                web_results, web_pages = await researcher.search_and_fetch(
-                    search_query,
-                    max_results=6,
-                    fetch_count=3,
-                    timelimit="d" if self._is_fresh_query(question) else None,
-                    preferred_domains=preferred_domains,
-                )
-            except Exception:
-                web_results, web_pages = [], []
 
         prompt = self._build_prompt(
             question,
@@ -265,6 +374,8 @@ class AIService:
             web_results=web_results,
             web_pages=web_pages,
             market_evidence=market_evidence,
+            intent=intent,
+            include_financial_context=self._needs_personal_context(question),
         )
 
         response = None
@@ -484,10 +595,12 @@ class AIService:
         web_results: list[Any] | None = None,
         web_pages: list[Any] | None = None,
         market_evidence: str = "",
+        intent: str = "personal_finance",
+        include_financial_context: bool = True,
     ) -> str:
         summary = context.get("summary", {})
-        recent = context.get("recent_transactions", [])[:10]
-        budgets = context.get("budgets", [])[:20]
+        recent = context.get("recent_transactions", [])[:8]
+        budgets = context.get("budgets", [])[:10]
 
         recent_text = "\n".join(
             f"- {item.get('date')}: {item.get('description')} | "
@@ -504,29 +617,18 @@ class AIService:
         history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
-            for message in (conversation or [])[-8:]
+            for message in (conversation or [])[-4:]
         ) or "- None"
 
         from app.services.web_research_service import WebResearchService
         web_text = WebResearchService.format_evidence(
             web_results or [],
             web_pages or [],
-            max_chars=9000,
+            max_chars=6000,
         ) or "- No web results"
 
-        return f"""You are FinanceAI, a practical personal-finance assistant for an Indian user.
-Use only the supplied financial facts. Clearly label estimates and do not promise investment returns.
-Do not invent transactions, account balances, prices, market facts, or personal information.
-Prefer actionable budgeting and cash-flow advice. Use INR (₹).
-Keep every answer compact: maximum 120 words unless a critical warning or calculation genuinely requires more.
-Use this format whenever practical:
-**Summary:** 1-2 sentences.
-**Key points:** up to 3 short bullets.
-**Next step:** 1 actionable sentence.
-Skip any section that is not useful. Include only crucial details;
-do not repeat the user's question or restate all available numbers.
-
-CURRENT PERIOD FINANCIAL SUMMARY
+        personal_section = (
+            f"""CURRENT PERIOD FINANCIAL SUMMARY
 Income: ₹{summary.get('income', 0):.2f}
 Expenses: ₹{summary.get('expense', 0):.2f}
 Net cash flow: ₹{summary.get('balance', 0):.2f}
@@ -538,31 +640,38 @@ RECENT TRANSACTIONS
 BUDGETS
 {budget_text}
 
-CONVERSATION HISTORY
+"""
+            if include_financial_context
+            else ""
+        )
+
+        return f"""You are FinanceAI.
+Today is {date.today().isoformat()}.
+Query intent: {intent}.
+
+Rules:
+- Use supplied evidence as the source of truth.
+- Never invent current prices, dates, IPO status, transactions, balances, or news.
+- For market facts, prefer structured market evidence over web snippets.
+- For IPO/listing questions, prefer official SEBI, exchange, and company filings over commentary.
+- For current-information questions with no usable web evidence, say that verification failed.
+- Keep the answer under 120 words unless the user explicitly asks for detail.
+- Use **Summary:**, **Key points:**, and **Next step:** when useful.
+- Do not repeat the user's question.
+
+{personal_section}CONVERSATION HISTORY
 {history_text}
 
 STRUCTURED MARKET EVIDENCE
-Use structured market evidence first when the instrument and metric match the question exactly.
-A commodity quote may represent a futures contract rather than spot pricing. If generic web evidence is more directly
-matched to the requested instrument, say so and prefer the better-matched source.
-{market_evidence or "- No structured market evidence"}
+{market_evidence or "- None"}
 
 WEB SEARCH / PAGE EVIDENCE
-These sources were gathered because the question explicitly requested web information or clearly requires current
-information.
-Use the fetched page content when available. Ignore irrelevant pages and do not invent facts.
-For price-movement questions, use the structured market change and change-percent fields for the calculation.
-For IPO/listing questions, prefer official SEBI, exchange, and company filings over commentary or market chatter.
-When web evidence is absent, explicitly say the current information could not be verified online rather than presenting
-memory as a current fact.
 {web_text}
 
 USER QUESTION
 {question}
-
-Keep the response concise and decision-useful. Follow the compact format above. When the question is investment-related,
-include the key risk in the summary or key points and avoid guarantees.
 """
+
 
     @staticmethod
     def _current_period() -> tuple[str, str]:
