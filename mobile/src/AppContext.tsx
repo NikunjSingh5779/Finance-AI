@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform, ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AuthScreen } from "./AuthScreen";
 import { FinanceApi, type AuthSession } from "./api";
@@ -19,7 +19,6 @@ function firstValid(values: Array<string | undefined | null>): string | null {
 function detectApiUrl(): string {
   const envValue =
     typeof process !== "undefined" ? process.env.EXPO_PUBLIC_API_URL : undefined;
-
   const configured = Constants.expoConfig?.extra?.apiUrl as string | undefined;
   const explicit = firstValid([envValue, configured]);
   if (explicit) return explicit;
@@ -71,8 +70,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const config = await api.authConfig();
         if (!mounted) return;
-        setAuthRequired(config.required);
 
+        setAuthRequired(config.required);
         if (!config.required) {
           setChecked(true);
           return;
@@ -87,15 +86,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const saved = JSON.parse(stored) as AuthSession;
         api.setSession(saved);
 
+        let activeSession = saved;
         try {
-          const me = await api.me();
-          if (!mounted) return;
-          setSession(saved);
-          setUser({
-            id: me.id,
-            email: saved.user?.email,
-            name: saved.user?.user_metadata?.name,
-          });
+          await api.me();
         } catch {
           const refreshed = await api.refreshSession();
           if (!refreshed) {
@@ -104,19 +97,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setChecked(true);
             return;
           }
-
+          activeSession = refreshed;
           await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
-          const me = await api.me();
-          if (mounted) {
-            setSession(refreshed);
-            setUser({
-              id: me.id,
-              email: refreshed.user?.email,
-              name: refreshed.user?.user_metadata?.name,
-            });
-          }
+        }
+
+        const me = await api.me();
+        if (!mounted) return;
+
+        setSession(activeSession);
+        setUser({
+          id: me.id,
+          email: activeSession.user?.email,
+          name: activeSession.user?.user_metadata?.name,
+        });
       } catch {
-        if (mounted) setAuthRequired(false);
+        if (mounted) {
+          api.clearSession();
+          setSession(null);
+          setUser(null);
+          setAuthRequired(false);
+        }
       } finally {
         if (mounted) setChecked(true);
       }
@@ -162,7 +162,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.logout();
     } catch {
-      // Local logout must succeed even if the backend is unavailable.
+      // Local logout must succeed even when the backend is unavailable.
     }
     api.clearSession();
     await AsyncStorage.removeItem(SESSION_KEY);
