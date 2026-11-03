@@ -105,25 +105,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          const refreshedSession: AuthSession = {
-            access_token: "",
-            refresh_token: "",
-          };
-          // refreshSession updates the API's internal token state; reload the
-          // persisted session through login/refresh only is intentionally kept
-          // simple by asking the backend for the authenticated identity.
+          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
           const me = await api.me();
-          refreshedSession.access_token = saved.access_token;
-          refreshedSession.refresh_token = saved.refresh_token;
           if (mounted) {
-            setSession(saved);
+            setSession(refreshed);
             setUser({
               id: me.id,
-              email: saved.user?.email,
-              name: saved.user?.user_metadata?.name,
+              email: refreshed.user?.email,
+              name: refreshed.user?.user_metadata?.name,
             });
           }
-        }
       } catch {
         if (mounted) setAuthRequired(false);
       } finally {
