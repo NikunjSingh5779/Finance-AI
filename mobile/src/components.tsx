@@ -90,6 +90,33 @@ export function Button({ title, onPress, kind = "primary", loading = false, disa
     {loading ? <ActivityIndicator color={kind === "primary" ? colors.onAccent : colors.text} /> : <Text style={[styles.buttonText, kind !== "primary" && { color: kind === "danger" ? colors.danger : colors.text }]}>{title}</Text>}
   </Pressable>;
 }
+export function SearchField({
+  value,
+  onChangeText,
+  placeholder = "Search",
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <View style={styles.searchField}>
+      <Icon name="search" size={18} color={colors.muted} />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        accessible
+        accessibilityRole="search"
+        accessibilityLabel={placeholder}
+        selectionColor={colors.primary}
+        style={styles.searchInput}
+      />
+    </View>
+  );
+}
+
 export function Input({ label, ...props }: TextInputProps & { label: string }) {
   return <View style={styles.inputGroup}><Text style={styles.inputLabel}>{label}</Text><TextInput {...props} accessible accessibilityRole="textbox" placeholderTextColor={colors.muted} selectionColor={colors.primary} style={[styles.input, props.style]} /></View>;
 }
@@ -137,6 +164,8 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.onAccent, fontWeight: "700", fontSize: 14, lineHeight: 20 },
   inputGroup: { gap: 6 },
   inputLabel: { color: colors.muted, fontSize: 12, lineHeight: 17, fontWeight: "600" },
+  searchField: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12 },
+  searchInput: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 22, paddingVertical: 10 },
   input: { minHeight: 48, color: colors.text, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, fontSize: 15, lineHeight: 22 },
   chipRow: { gap: 8, paddingVertical: 1 },
   chip: { minHeight: 44, minWidth: 44, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14, borderRadius: 999, alignItems: "center", justifyContent: "center" },
