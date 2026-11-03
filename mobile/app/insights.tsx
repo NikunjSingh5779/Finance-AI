@@ -111,7 +111,7 @@ export default function InsightsScreen() {
 
       <Card style={styles.aiSummary}>
         <View style={styles.aiTitleRow}>
-          <Text style={styles.aiSpark}>✦</Text>
+          <Icon name="assistant" size={17} color={colors.primary} />
           <Text style={styles.aiTitle}>AI SUMMARY</Text>
         </View>
         <Text style={styles.summaryText}>{summaryText}</Text>
