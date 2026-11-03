@@ -46,7 +46,7 @@ function BottomNavigation() {
 export default function RootLayout() {
   return (
     <AppProvider>
-      <StatusBar style="light" backgroundColor={colors.background} />
+      <StatusBar style="light" />
       <View style={styles.root}>
         <View style={styles.content}>
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "fade" }}>
