@@ -530,7 +530,7 @@ function ScrollForm(props: {
       </View>
 
       <View style={styles.receiptRow}>
-        <Text style={styles.receiptIcon}>⌕</Text>
+        <Icon name="transactions" size={17} color={colors.muted} />
         <Text style={styles.receiptText}>Attach receipt or image</Text>
       </View>
 
