@@ -8,6 +8,51 @@ import { colors } from "./theme";
 
 const SESSION_KEY = "financeai.auth.session";
 
+async function readStoredSession(): Promise<string | null> {
+  if (Platform.OS === "web") return AsyncStorage.getItem(SESSION_KEY);
+  try {
+    const SecureStore = await import("expo-secure-store");
+    const secureValue = await SecureStore.getItemAsync(SESSION_KEY);
+    if (secureValue) return secureValue;
+
+    // Migrate sessions stored by older builds.
+    const legacy = await AsyncStorage.getItem(SESSION_KEY);
+    if (legacy) {
+      await SecureStore.setItemAsync(SESSION_KEY, legacy);
+      await removeStoredSession();
+    }
+    return legacy;
+  } catch {
+    return AsyncStorage.getItem(SESSION_KEY);
+  }
+}
+
+async function writeStoredSession(value: string): Promise<void> {
+  if (Platform.OS === "web") {
+    await AsyncStorage.setItem(SESSION_KEY, value);
+    return;
+  }
+  try {
+    const SecureStore = await import("expo-secure-store");
+    await SecureStore.setItemAsync(SESSION_KEY, value);
+  } catch {
+    await AsyncStorage.setItem(SESSION_KEY, value);
+  }
+}
+
+async function removeStoredSession(): Promise<void> {
+  if (Platform.OS === "web") {
+    await AsyncStorage.removeItem(SESSION_KEY);
+    return;
+  }
+  try {
+    const SecureStore = await import("expo-secure-store");
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+  } finally {
+    await AsyncStorage.removeItem(SESSION_KEY).catch(() => undefined);
+  }
+}
+
 function firstValid(values: Array<string | undefined | null>): string | null {
   for (const value of values) {
     const normalized = value?.trim().replace(/\/+$/, "");
@@ -77,7 +122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const stored = await AsyncStorage.getItem(SESSION_KEY);
+        const stored = await readStoredSession();
         if (!stored) {
           setChecked(true);
           return;
@@ -98,7 +143,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           activeSession = refreshed;
-          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
+          await writeStoredSession(JSON.stringify(refreshed));
         }
 
         const me = await api.me();
@@ -130,7 +175,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const persistSession = async (next: AuthSession) => {
     api.setSession(next);
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    await writeStoredSession(JSON.stringify(next));
     setSession(next);
     setUser({
       id: next.user?.id || "",
