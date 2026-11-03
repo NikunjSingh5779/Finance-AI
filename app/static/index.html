@@ -9,8 +9,36 @@
 <link rel="stylesheet" href="/static/insights.css">
 </head>
 <body>
+<div id="auth-screen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <div class="auth-brand"><div class="logo-icon">💰</div><div><div class="logo-text">FinanceAI</div><div class="logo-sub">Personal Finance</div></div></div>
+    <div class="auth-copy">
+      <div class="auth-title" id="auth-title">Welcome back</div>
+      <div class="auth-subtitle" id="auth-subtitle">Sign in to your private finance workspace.</div>
+    </div>
+    <form id="auth-form">
+      <div class="fg auth-name-field" id="auth-name-wrap" hidden>
+        <label for="auth-name">Name</label>
+        <input id="auth-name" type="text" autocomplete="name" placeholder="Your name">
+      </div>
+      <div class="fg">
+        <label for="auth-email">Email</label>
+        <input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+      </div>
+      <div class="fg">
+        <label for="auth-password">Password</label>
+        <input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 8 characters" required>
+      </div>
+      <div id="auth-error" class="auth-message error" hidden></div>
+      <div id="auth-success" class="auth-message success" hidden></div>
+      <button id="auth-submit" class="btn-submit auth-submit" type="submit">Sign in</button>
+    </form>
+    <button id="auth-toggle" class="auth-toggle" type="button">New to FinanceAI? Create an account</button>
+    <div class="auth-note">Your transactions, accounts, budgets, goals and AI context are isolated to your account.</div>
+  </div>
+</div>
 
-<div class="layout">
+<div class="layout" id="app-shell" hidden>
   <!-- SIDEBAR -->
   <div class="sidebar">
     <div class="sidebar-logo">
