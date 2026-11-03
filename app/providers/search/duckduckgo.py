@@ -10,6 +10,7 @@ xai_finance_agent's DuckDuckGoTools integration.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -132,18 +133,22 @@ class DuckDuckGoSearcher:
             return []
 
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
 
-            results: list[SearchResult] = []
-            with DDGS() as ddgs:
-                for i, r in enumerate(
-                    ddgs.text(
+            def run_search() -> list[dict[str, Any]]:
+                searcher = DDGS()
+                return list(
+                    searcher.text(
                         query,
                         region=region,
                         timelimit=timelimit,
                         max_results=max_results,
                     )
-                ):
+                )
+
+            raw_results = await asyncio.to_thread(run_search)
+            results: list[SearchResult] = []
+            for i, r in enumerate(raw_results):
                     if i >= max_results:
                         break
                     results.append(
@@ -159,12 +164,11 @@ class DuckDuckGoSearcher:
 
         except ImportError:
             self._use_library = False
-            logger.debug("duckduckgo_search library not installed, using httpx fallback")
+            logger.debug("ddgs library not installed, using httpx fallback")
             return []
 
         except Exception as e:
-            self._use_library = False
-            logger.warning(f"DuckDuckGo library search failed: {e}, using httpx fallback")
+            logger.warning(f"DDGS search failed: {e}, using httpx fallback")
             return []
 
     async def _search_httpx(
