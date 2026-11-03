@@ -11,7 +11,7 @@ from app.services.web_research_service import get_web_researcher
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
-from app.providers.ai.discovery import get_ai_provider, get_ai_providers
+from app.providers.ai.discovery import get_ai_providers
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
@@ -47,8 +47,14 @@ class AIService:
         text = question.strip().lower()
         patterns = (
             r"(?P<d>\d{1,2})[-/](?P<m>\d{1,2})[-/](?P<y>20\d{2})",
-            r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
-            r"(?P<d>\d{1,2})\s*(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
+            r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s*"
+            r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
+            r"(?P<d>\d{1,2})\s*"
+            r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
+            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
             r"(?P<d>\d{1,2})\s*(?P<mon>jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)(?P<y>20\d{2})",
         )
         months = {
@@ -125,7 +131,7 @@ class AIService:
                 symbol = None
         if not symbol:
             return ""
-        
+
         provider = get_market_provider()
         target_date = self._extract_date(question)
         data = None
@@ -364,7 +370,10 @@ class AIService:
 
         query = query or text
         query = re.sub(
-            r"(?i)\b(\d{1,2})\s*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(20\d{2})\b",
+            r"(?i)\b(\d{1,2})\s*"
+            r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)\s*(20\d{2})\b",
             lambda match: f"{match.group(1)} {match.group(2)} {match.group(3)}",
             query,
         )
@@ -457,7 +466,8 @@ Use this format whenever practical:
 **Summary:** 1-2 sentences.
 **Key points:** up to 3 short bullets.
 **Next step:** 1 actionable sentence.
-Skip any section that is not useful. Include only crucial details; do not repeat the user's question or restate all available numbers.
+Skip any section that is not useful. Include only crucial details;
+do not repeat the user's question or restate all available numbers.
 
 CURRENT PERIOD FINANCIAL SUMMARY
 Income: ₹{summary.get('income', 0):.2f}
@@ -475,18 +485,22 @@ CONVERSATION HISTORY
 {history_text}
 
 STRUCTURED MARKET EVIDENCE
-Use structured market evidence first when the instrument and metric match the question exactly. A commodity quote may represent a futures contract rather than spot pricing. If generic web evidence is more directly matched to the requested instrument, say so and prefer the better-matched source.
+Use structured market evidence first when the instrument and metric match the question exactly.
+A commodity quote may represent a futures contract rather than spot pricing. If generic web evidence is more directly
+matched to the requested instrument, say so and prefer the better-matched source.
 {market_evidence or "- No structured market evidence"}
 
 WEB SEARCH / PAGE EVIDENCE
-These sources were gathered because the question explicitly requested web information or clearly requires current information.
+These sources were gathered because the question explicitly requested web information or clearly requires current
+information.
 Use the fetched page content when available. Ignore irrelevant pages and do not invent facts.
 {web_text}
 
 USER QUESTION
 {question}
 
-Keep the response concise and decision-useful. Follow the compact format above. When the question is investment-related, include the key risk in the summary or key points and avoid guarantees.
+Keep the response concise and decision-useful. Follow the compact format above. When the question is investment-related,
+include the key risk in the summary or key points and avoid guarantees.
 """
 
     @staticmethod
