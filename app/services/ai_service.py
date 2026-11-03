@@ -30,7 +30,7 @@ class AIService:
         if self.provider is not None:
             return [self.provider]
         return get_ai_providers()
-    
+
     @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
