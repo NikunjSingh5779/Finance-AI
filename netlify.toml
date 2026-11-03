@@ -5,6 +5,7 @@
 [build.environment]
   NODE_VERSION = "22"
   PYTHON_VERSION = "3.12"
+  FINANCEAI_API_URL = "https://finance-ai-u9bo.onrender.com"
 
 [[headers]]
   for = "/*"
