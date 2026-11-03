@@ -283,7 +283,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS budgets (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id   TEXT    NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
-                category  TEXT    NOT NULL,
+                category  TEXT    NOT NULL UNIQUE,
                 limit_amt REAL    NOT NULL CHECK(limit_amt > 0)
             );
 
