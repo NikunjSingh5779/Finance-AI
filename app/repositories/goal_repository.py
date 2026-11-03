@@ -45,6 +45,7 @@ class GoalRepository:
             """
             INSERT INTO goals (name, target_amount, current_amount, target_date, category)
             VALUES (?, ?, ?, ?, ?)
+            RETURNING id
             """,
             (
                 goal.name,
@@ -54,8 +55,9 @@ class GoalRepository:
                 goal.category,
             ),
         )
+        goal_id = cursor.fetchone()["id"]
         self.conn.commit()
-        created = self.get(cursor.lastrowid)
+        created = self.get(goal_id)
         if created is None:
             raise RuntimeError("Failed to retrieve created goal")
         return created
