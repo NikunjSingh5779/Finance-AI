@@ -31,28 +31,69 @@ async function parseError(response: Response): Promise<string> {
   }
 }
 
+export interface AuthSession {
+  access_token: string;
+  refresh_token: string;
+  expires_in?: number;
+  user?: { id?: string; email?: string; user_metadata?: { name?: string } };
+}
+
 export class FinanceApi {
+  private accessToken: string | null = null;
+  private refreshTokenValue: string | null = null;
+
   constructor(private readonly baseUrl: string) {}
+
+  setSession(session: AuthSession | null) {
+    this.accessToken = session?.access_token ?? null;
+    this.refreshTokenValue = session?.refresh_token ?? null;
+  }
+
+  clearSession() {
+    this.accessToken = null;
+    this.refreshTokenValue = null;
+  }
 
   private url(path: string): string {
     return this.baseUrl.replace(/\/+$/, "") + path;
   }
 
-  async request<T>(path: string, init?: RequestInit): Promise<T> {
+  private async rawRequest(path: string, init?: RequestInit): Promise<Response> {
+    return fetch(this.url(path), {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+        ...(this.accessToken
+          ? { Authorization: "Bearer " + this.accessToken }
+          : {}),
+      },
+    });
+  }
+
+  async request<T>(
+    path: string,
+    init?: RequestInit,
+    retryOnUnauthorized = true,
+  ): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(this.url(path), {
-        ...init,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...(init?.headers || {}),
-        },
-      });
+      response = await this.rawRequest(path, init);
     } catch {
       throw new ApiError(
         "Cannot reach FinanceAI. Check that the backend is running and the API URL is correct.",
       );
+    }
+
+    if (
+      response.status === 401 &&
+      retryOnUnauthorized &&
+      this.refreshTokenValue &&
+      !path.startsWith("/auth/")
+    ) {
+      const refreshed = await this.refreshSession().catch(() => false);
+      if (refreshed) return this.request<T>(path, init, false);
     }
 
     if (!response.ok) {
@@ -64,6 +105,68 @@ export class FinanceApi {
     }
 
     return (await response.json()) as T;
+  }
+
+  authConfig() {
+    return this.request<{ required: boolean; configured: boolean }>(
+      "/auth/config",
+      undefined,
+      false,
+    );
+  }
+
+  login(email: string, password: string) {
+    return this.request<AuthSession>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+      false,
+    );
+  }
+
+  signup(email: string, password: string, name?: string) {
+    return this.request<AuthSession & { requires_email_confirmation?: boolean }>(
+      "/auth/signup",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+      },
+      false,
+    );
+  }
+
+  async refreshSession() {
+    if (!this.refreshTokenValue) return false;
+    const response = await fetch(this.url("/auth/refresh"), {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: this.refreshTokenValue }),
+    });
+    if (!response.ok) {
+      this.clearSession();
+      return false;
+    }
+    const session = (await response.json()) as AuthSession;
+    this.setSession(session);
+    return Boolean(session.access_token);
+  }
+
+  logout() {
+    return this.request<{ success: boolean }>(
+      "/auth/logout",
+      { method: "POST" },
+      false,
+    );
+  }
+
+  me() {
+    return this.request<{ id: string }>("/auth/me");
+  }
+
+  health() {
+    return this.request<{ status: string; service?: string }>("/health");
   }
 
   health() {
