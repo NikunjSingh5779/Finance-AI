@@ -31,11 +31,13 @@ export function Screen({ children, refreshControl }: { children: React.ReactNode
 }
 
 export function Header({ title, subtitle, action = "notifications", onAction }: {
-  title: string; subtitle?: string; action?: "none" | "notifications" | "plus"; onAction?: () => void;
+  title: string; subtitle?: string; action?: "none" | "notifications" | "plus" | "refresh" | "back"; onAction?: () => void;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const actionName = action === "plus" ? "plus" : "bell";
+  const showAction = action !== "none";
+  const actionName = action === "plus" ? "plus" : action === "refresh" ? "refresh" : action === "back" ? "back" : "bell";
+  const handleAction = onAction ?? (action === "back" ? () => router.back() : undefined);
   return (
     <View style={[styles.header, { paddingTop: insets.top, paddingBottom: 8 }]}>
       <View style={styles.headerRow}>
@@ -44,9 +46,16 @@ export function Header({ title, subtitle, action = "notifications", onAction }: 
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
-        <Pressable style={styles.headerIconButton} accessibilityRole="button" accessibilityLabel={action === "plus" ? "Add" : "Notifications"} onPress={onAction}>
-          <Icon name={actionName} size={22} color={colors.muted} />
-        </Pressable>
+        {showAction ? (
+          <Pressable
+            style={styles.headerIconButton}
+            accessibilityRole="button"
+            accessibilityLabel={action === "plus" ? "Add" : action === "refresh" ? "Refresh" : action === "back" ? "Go back" : "Notifications"}
+            onPress={handleAction}
+          >
+            <Icon name={actionName} size={22} color={colors.muted} />
+          </Pressable>
+        ) : null}
         <Pressable style={styles.headerAvatar} accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => router.push("/settings")}>
           <Text style={styles.headerAvatarText}>AC</Text>
         </Pressable>
