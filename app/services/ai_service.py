@@ -47,11 +47,7 @@ class AIService:
         text = question.strip().lower()
         patterns = (
             r"(?P<d>\d{1,2})[-/](?P<m>\d{1,2})[-/](?P<y>20\d{2})",
-            r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s*"
-            r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
-            r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
-            r"nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
-            r"(?P<d>\d{1,2})\s*"
+            r"(?P<d>\d{1,2})\s*(?:st|nd|rd|th)?\s+"
             r"(?P<mon>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|"
             r"jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
             r"nov(?:ember)?|dec(?:ember)?)\s*(?P<y>20\d{2})",
