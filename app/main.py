@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -106,7 +106,13 @@ async def authentication_middleware(request: Request, call_next):
 
     try:
         if auth_required() and not is_public:
-            user_id = user_id_from_request(request)
+            try:
+                user_id = user_id_from_request(request)
+            except HTTPException as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
             context_token = set_user_id(user_id)
         elif not auth_required():
             from app.core.auth import _dev_user_id
