@@ -65,33 +65,43 @@ class MarketDataProvider:
                 return None
 
             latest = data.iloc[-1]
-            prev_close = data.iloc[-2]["Close"] if len(data) > 1 else latest["Close"]
+            previous_close = float(data.iloc[-2]["Close"]) if len(data) > 1 else None
 
-            # Prefer yfinance fast_info for the latest available quote when
-            # present; fall back to the latest daily close.
+            # Prefer yfinance's latest available quote when present; otherwise
+            # fall back to the latest daily close. This is not a guaranteed
+            # exchange-grade real-time/tick feed.
             price = float(latest["Close"])
+            quote_kind = "latest_daily_close"
             try:
                 fast_info = ticker.fast_info
                 fast_price = fast_info.get("last_price")
                 if fast_price is not None:
                     price = float(fast_price)
+                    quote_kind = "latest_available_quote"
             except Exception:
                 pass
+
+            change = price - previous_close if previous_close is not None else 0.0
+            change_pct = (
+                change / previous_close * 100
+                if previous_close not in (None, 0)
+                else 0.0
+            )
 
             return {
                 "symbol": symbol.upper(),
                 "price": round(price, 2),
                 "last_daily_close": round(float(latest["Close"]), 2),
+                "previous_close": round(previous_close, 2) if previous_close is not None else None,
                 "open": round(float(latest["Open"]), 2),
                 "high": round(float(latest["High"]), 2),
                 "low": round(float(latest["Low"]), 2),
                 "volume": int(latest["Volume"]),
-                "change": round(float(price - prev_close), 2),
-                "change_pct": round(
-                    float((price - prev_close) / prev_close * 100)
-                ) if prev_close else 0.0,
+                "change": round(float(change), 2),
+                "change_pct": round(float(change_pct), 2),
                 "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
                 "source": "yfinance",
+                "quote_kind": quote_kind,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -112,9 +122,10 @@ class MarketDataProvider:
             import yfinance as yf
 
             target = date.fromisoformat(target_date)
+            start = target - timedelta(days=7)
             end = target + timedelta(days=2)
             data = yf.Ticker(symbol).history(
-                start=target.isoformat(),
+                start=start.isoformat(),
                 end=end.isoformat(),
                 interval="1d",
             )
@@ -123,12 +134,16 @@ class MarketDataProvider:
                 return None
 
             wanted = None
+            previous_close = None
             for idx, row in data.iterrows():
                 row_date = (
                     idx.date().isoformat()
                     if hasattr(idx, "date")
                     else str(idx)[:10]
                 )
+                if row_date < target.isoformat():
+                    previous_close = float(row["Close"])
+                    continue
                 if row_date == target.isoformat():
                     wanted = row
                     break
@@ -136,16 +151,28 @@ class MarketDataProvider:
             if wanted is None:
                 return None
 
+            close = float(wanted["Close"])
+            change = close - previous_close if previous_close is not None else None
+            change_pct = (
+                change / previous_close * 100
+                if change is not None and previous_close
+                else None
+            )
+
             return {
                 "symbol": symbol.upper(),
                 "date": target.isoformat(),
                 "open": round(float(wanted["Open"]), 2),
                 "high": round(float(wanted["High"]), 2),
                 "low": round(float(wanted["Low"]), 2),
-                "close": round(float(wanted["Close"]), 2),
+                "close": round(close, 2),
+                "previous_close": round(previous_close, 2) if previous_close is not None else None,
+                "change": round(change, 2) if change is not None else None,
+                "change_pct": round(change_pct, 2) if change_pct is not None else None,
                 "volume": int(wanted["Volume"]),
                 "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
                 "source": "yfinance",
+                "quote_kind": "historical_daily_close",
             }
         except Exception as exc:
             logger.error("Failed to fetch %s price for %s: %s", symbol, target_date, exc)
