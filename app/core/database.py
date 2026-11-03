@@ -242,7 +242,10 @@ def init_db() -> None:
     if using_postgres():
         conn = _connect_postgres()
         try:
-            conn.execute(POSTGRES_SCHEMA)
+            for statement in POSTGRES_SCHEMA.split(";"):
+                sql = statement.strip()
+                if sql:
+                    conn.execute(sql)
             conn.commit()
         except Exception:
             conn.rollback()
