@@ -681,7 +681,6 @@ USER QUESTION
 {question}
 """
 
-
     @staticmethod
     def _current_period() -> tuple[str, str]:
         now = datetime.now()
