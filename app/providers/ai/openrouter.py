@@ -25,7 +25,7 @@ class OpenRouterProvider(AIProvider):
                 "X-Title": "FinanceAI",
             }
         )
-        self.available_models = self._discover_models()
+        self.available_models: list[str] | None = None
 
     def _discover_models(self) -> list[str]:
         try:
@@ -74,6 +74,9 @@ class OpenRouterProvider(AIProvider):
         if configured_model != "openrouter/free":
             models.append("openrouter/free")
 
+        if self.available_models is None:
+            self.available_models = self._discover_models()
+
         for model in self.available_models:
             if model not in models:
                 models.append(model)
@@ -115,13 +118,6 @@ class OpenRouterProvider(AIProvider):
         )
 
     def is_available(self) -> bool:
-        if not self.api_key:
-            return False
-        try:
-            response = self.session.get(
-                f"{self.base_url}/models",
-                timeout=5,
-            )
-            return response.ok
-        except Exception:
-            return False
+        # Configuration checks are intentionally local. Remote model discovery
+        # happens lazily only when OpenRouter is actually needed.
+        return bool(self.api_key.strip())
