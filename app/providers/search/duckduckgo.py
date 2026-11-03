@@ -101,7 +101,7 @@ class DuckDuckGoSearcher:
         Returns:
             List of SearchResult objects.
         """
-        # Try library first (duckduckgo-search package)
+        # Try the maintained DDGS client first.
         results = await self._search_library(
             query,
             max_results,
@@ -128,7 +128,7 @@ class DuckDuckGoSearcher:
         region: str = "wt-wt",
         timelimit: str | None = None,
     ) -> list[SearchResult]:
-        """Search using the duckduckgo_search library."""
+        """Search using the maintained ddgs library."""
         if self._use_library is False:
             return []
 
@@ -149,16 +149,16 @@ class DuckDuckGoSearcher:
             raw_results = await asyncio.to_thread(run_search)
             results: list[SearchResult] = []
             for i, r in enumerate(raw_results):
-                    if i >= max_results:
-                        break
-                    results.append(
-                        SearchResult(
-                            title=r.get("title", ""),
-                            url=r.get("href", r.get("link", "")),
-                            snippet=r.get("body", r.get("snippet", "")),
-                            source="duckduckgo",
-                        )
+                if i >= max_results:
+                    break
+                results.append(
+                    SearchResult(
+                        title=r.get("title", ""),
+                        url=r.get("href", r.get("link", "")),
+                        snippet=r.get("body", r.get("snippet", "")),
+                        source="duckduckgo",
                     )
+                )
             self._use_library = True
             return results
 
