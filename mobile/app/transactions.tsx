@@ -25,10 +25,12 @@ import {
   Screen,
   SectionTitle,
   SmallText,
+  SearchField,
 } from "../src/components";
 import { formatDate, useFinance } from "../src/AppContext";
 import type { Account, Transaction } from "../src/types";
 import { colors } from "../src/theme";
+import { Icon } from "../src/icons";
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -337,66 +339,16 @@ export default function TransactionsScreen() {
         <Header title="Transactions" />
         {error ? <ErrorBanner message={error} /> : null}
 
-        <View style={styles.actionRow}>
-          <Pressable style={styles.primaryAction} onPress={openNew}><Text style={styles.primaryActionText}>+ Add transaction</Text></Pressable>
-          <Pressable style={styles.secondaryAction} onPress={() => void importCSV()}><Text style={styles.actionText}>▣ Import CSV</Text></Pressable>
-          <Pressable style={styles.secondaryAction} onPress={() => void exportCSV()}><Text style={styles.actionText}>↓ Export CSV</Text></Pressable>
-          <Pressable style={styles.deleteAll} onPress={deleteAll}><Text style={styles.deleteAllText}>▣ Delete all</Text></Pressable>
-        </View>
-
-        <Input label="Search" value={search} onChangeText={setSearch} placeholder="Merchant or category..." />
+        <SearchField value={search} onChangeText={setSearch} placeholder="Search transactions" />
         <ChipRow values={["All", "Income", "Expense"]} selected={filter} onSelect={(value) => setFilter(value as typeof filter)} />
 
-        <Card style={styles.quickAddCard}>
-          <View style={styles.quickHeader}>
-            <View>
-              <Text style={styles.quickTitle}>Quick Add</Text>
-              <SmallText>Record a transaction without opening a new screen.</SmallText>
-            </View>
-            <Pressable onPress={openNew} style={styles.quickOpenButton}>
-              <Text style={styles.quickOpenText}>Open form</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.quickTypeRow}>
-            <Pressable onPress={() => setType("expense")} style={[styles.quickType, type === "expense" && styles.quickTypeActive]}>
-              <Text style={[styles.quickTypeText, type === "expense" && styles.quickTypeTextActive]}>Expense</Text>
-            </Pressable>
-            <Pressable onPress={() => setType("income")} style={[styles.quickType, type === "income" && styles.quickTypeActive]}>
-              <Text style={[styles.quickTypeText, type === "income" && styles.quickTypeTextActive]}>Income</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.quickRow}>
-            <View style={{ flex: 1 }}>
-              <Input label="Amount (₹)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="2500" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Input label="Category" value={category} onChangeText={setCategory} placeholder="Food" />
-            </View>
-          </View>
-
-          <Input label="Description (e.g. Grocery shopping)" value={description} onChangeText={setDescription} placeholder="What was this for?" />
-
-          <View style={styles.quickRow}>
-            <View style={{ flex: 1 }}>
-              <Input label="Date" value={date} onChangeText={setDate} placeholder="Today" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.quickAccountLabel}><Text style={styles.inputLikeLabel}>Account</Text></View>
-              <ChipRow
-                values={["None", ...accounts.map((account) => String(account.id) + ": " + account.name)]}
-                selected={accountId ? String(accountId) + ": " + (accounts.find((a) => a.id === Number(accountId))?.name ?? "") : "None"}
-                onSelect={(value) => setAccountId(value === "None" ? null : value.split(":")[0] ?? null)}
-              />
-            </View>
-          </View>
-
-          <Pressable onPress={() => void quickAdd()} style={styles.quickAddButton}>
-            <Text style={styles.quickAddButtonText}>Add transaction</Text>
+        <View style={styles.sectionHeader}>
+          <SectionTitle>{filtered.length.toLocaleString("en-IN")} transactions</SectionTitle>
+          <Pressable style={styles.primaryAction} onPress={openNew} accessibilityRole="button">
+            <Icon name="plus" size={18} color={colors.onAccent} />
+            <Text style={styles.primaryActionText}>Add transaction</Text>
           </Pressable>
-        </Card>
-
+        </View>
         <View style={styles.countRow}>
           <SectionTitle>{filtered.length.toLocaleString("en-IN")} shown</SectionTitle>
           <SmallText>{transactions.length.toLocaleString("en-IN")} total</SmallText>
@@ -409,7 +361,7 @@ export default function TransactionsScreen() {
             <Card key={txn.id} style={styles.transactionCard}>
               <View style={styles.transactionRow}>
                 <View style={[styles.txnIcon, { backgroundColor: txn.type === "income" ? colors.primarySoft : colors.surfaceRaised }]}>
-                  <Text style={{ color: txn.type === "income" ? colors.primary : colors.muted, fontSize: 15 }}>{txn.type === "income" ? "↗" : "⌁"}</Text>
+                  {txn.type === "income" ? <Icon name="insights" size={17} color={colors.primary} /> : <Icon name="transactions" size={17} color={colors.muted} />}
                 </View>
                 <View style={styles.txnInfo}>
                   <Text style={styles.txnTitle} numberOfLines={1}>{txn.description || txn.category}</Text>
@@ -420,14 +372,26 @@ export default function TransactionsScreen() {
                     {txn.type === "income" ? "+" : "-"}{formatMoney(txn.amount)}
                   </Text>
                   <View style={styles.rowButtons}>
-                    <Pressable onPress={() => openEdit(txn)}><Text style={styles.editText}>Edit</Text></Pressable>
-                    <Pressable onPress={() => remove(txn)}><Text style={styles.deleteText}>Delete</Text></Pressable>
+                    <Pressable onPress={() => openEdit(txn)} accessibilityLabel="Edit transaction" style={styles.rowIconButton}><Icon name="edit" size={17} color={colors.muted} /></Pressable>
+                    <Pressable onPress={() => remove(txn)} accessibilityLabel="Delete transaction" style={styles.rowIconButton}><Icon name="trash" size={17} color={colors.danger} /></Pressable>
                   </View>
                 </View>
               </View>
             </Card>
           ))
         )}
+        <View style={styles.csvRow}>
+          <Pressable style={styles.secondaryAction} onPress={() => void importCSV()} accessibilityRole="button">
+            <Text style={styles.actionText}>Import CSV</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryAction} onPress={() => void exportCSV()} accessibilityRole="button">
+            <Text style={styles.actionText}>Export CSV</Text>
+          </Pressable>
+        </View>
+        <Pressable style={styles.deleteAll} onPress={deleteAll} accessibilityRole="button">
+          <Icon name="trash" size={17} color={colors.danger} />
+          <Text style={styles.deleteAllText}>Delete all transactions</Text>
+        </Pressable>
       </Screen>
 
       <Modal visible={modalOpen} animationType="slide" transparent={false} onRequestClose={closeModal}>
@@ -538,19 +502,26 @@ function formatMoney(value: number) {
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  primaryAction: { minHeight: 38, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  primaryActionText: { color: colors.background, fontSize: 11, fontWeight: "800" },
-  secondaryAction: { minHeight: 38, paddingHorizontal: 11, borderRadius: 8, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
-  actionText: { color: colors.text, fontSize: 11, fontWeight: "700" },
-  deleteAll: { minHeight: 38, paddingHorizontal: 11, borderRadius: 8, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center" },
-  deleteAllText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  primaryAction: { minHeight: 44, minWidth: 44, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
+  primaryActionText: { color: colors.onAccent, fontSize: 12, fontWeight: "700" },
+  secondaryAction: { flex: 1, minHeight: 44, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  actionText: { color: colors.text, fontSize: 12, fontWeight: "700" },
+  csvRow: { flexDirection: "row", gap: 8 },
+  deleteAll: { minHeight: 48, borderRadius: 14, backgroundColor: colors.surfaceNegative, borderWidth: 1, borderColor: "rgba(240,68,68,.35)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  deleteAllText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   countRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  quickAddCard: { gap: 10, padding: 13 },
+  quickAddCard: { gap: 6, padding: 20, minHeight: 143 },
   quickHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
-  quickTitle: { color: colors.text, fontSize: 13, fontWeight: "900" },
+  quickTitle: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: "700" },
   quickOpenButton: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 7, backgroundColor: colors.primary },
   quickOpenText: { color: colors.background, fontSize: 9, fontWeight: "800" },
+  quickPresetRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  quickIncome: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfacePositive, justifyContent: "center" },
+  quickIncomeText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
+  quickExpense: { minHeight: 44, paddingHorizontal: 18, borderRadius: 999, backgroundColor: colors.surfaceNegative, justifyContent: "center" },
+  quickExpenseText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
   quickTypeRow: { flexDirection: "row", backgroundColor: colors.surfaceRaised, borderRadius: 9, padding: 3 },
   quickType: { flex: 1, minHeight: 31, borderRadius: 7, alignItems: "center", justifyContent: "center" },
   quickTypeActive: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.borderStrong },
@@ -569,7 +540,8 @@ const styles = StyleSheet.create({
   txnTitle: { color: colors.text, fontSize: 12, fontWeight: "800" },
   txnRight: { alignItems: "flex-end", gap: 5 },
   txnAmount: { fontSize: 12, fontWeight: "900" },
-  rowButtons: { flexDirection: "row", gap: 8 },
+  rowButtons: { flexDirection: "row", gap: 6 },
+  rowIconButton: { minWidth: 32, minHeight: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: colors.surfaceRaised },
   editText: { color: colors.muted, fontSize: 10, fontWeight: "700" },
   deleteText: { color: colors.danger, fontSize: 10, fontWeight: "700" },
   modalRoot: { flex: 1, backgroundColor: colors.background },
