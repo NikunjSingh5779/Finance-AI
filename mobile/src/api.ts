@@ -92,7 +92,7 @@ export class FinanceApi {
       this.refreshTokenValue &&
       !path.startsWith("/auth/")
     ) {
-      const refreshed = await this.refreshSession().catch(() => false);
+      const refreshed = await this.refreshSession().catch(() => null);
       if (refreshed) return this.request<T>(path, init, false);
     }
 
@@ -163,10 +163,6 @@ export class FinanceApi {
 
   me() {
     return this.request<{ id: string }>("/auth/me");
-  }
-
-  health() {
-    return this.request<{ status: string; service?: string }>("/health");
   }
 
   health() {
