@@ -111,7 +111,7 @@ export default function SettingsScreen() {
 
   const openDocs = async () => {
     const { Linking } = await import("react-native");
-    await Linking.openURL(apiBaseUrl.replace(//+$/, "") + "/docs");
+    await Linking.openURL(apiBaseUrl.replace(/\/+$/, "") + "/docs");
   };
 
   return (
