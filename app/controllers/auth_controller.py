@@ -1,6 +1,8 @@
 """Authentication endpoints backed by Supabase Auth."""
 
-from fastapi import APIRouter, Request
+import os
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.auth import (
@@ -38,10 +40,10 @@ def auth_config() -> dict:
     return {
         "required": auth_required(),
         "configured": bool(
-            __import__("os").getenv("SUPABASE_URL")
+            os.getenv("SUPABASE_URL")
             and (
-                __import__("os").getenv("SUPABASE_PUBLISHABLE_KEY")
-                or __import__("os").getenv("SUPABASE_ANON_KEY")
+                os.getenv("SUPABASE_PUBLISHABLE_KEY")
+                or os.getenv("SUPABASE_ANON_KEY")
             )
         ),
     }
@@ -62,7 +64,7 @@ async def signup(request: SignUpRequest, raw_request: Request) -> dict:
             "requires_email_confirmation": not bool(session.get("access_token")),
         }
     except AuthProviderError as exc:
-        raise ValueError(str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/login")
