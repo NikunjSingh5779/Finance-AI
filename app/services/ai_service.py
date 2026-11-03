@@ -34,12 +34,41 @@ class AIService:
     @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
-        if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
-            return "stock"
-        if any(term in lowered for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")):
-            return "crypto"
-        if any(term in lowered for term in ("gold", "silver", "crude oil", "oil price", "commodity")):
+        if any(
+            term in lowered
+            for term in ("gold", "silver", "crude oil", "oil price", "commodity")
+        ):
             return "commodity"
+        if any(
+            term in lowered
+            for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")
+        ):
+            return "crypto"
+        if any(
+            term in lowered
+            for term in (
+                "stock",
+                "share",
+                "equity",
+                "ticker",
+                "closing price",
+                "share price",
+                "stock price",
+                "price",
+                "up",
+                "down",
+                "increase",
+                "decrease",
+                "change",
+                "gain",
+                "drop",
+                "fall",
+                "fell",
+                "moved",
+                "return",
+            )
+        ):
+            return "stock"
         return None
 
     @staticmethod
@@ -145,8 +174,12 @@ class AIService:
             f"High: {data.get('high')}\n"
             f"Low: {data.get('low')}\n"
             f"Close/price: {data.get('close', data.get('price'))}\n"
+            f"Previous close: {data.get('previous_close')}\n"
+            f"Change: {data.get('change')}\n"
+            f"Change %: {data.get('change_pct')}\n"
             f"Volume: {data.get('volume')}\n"
             f"Currency: {data.get('currency')}\n"
+            f"Quote kind: {data.get('quote_kind')}\n"
             f"Source: {data.get('source')}\n"
         )
 
@@ -276,6 +309,18 @@ class AIService:
     @staticmethod
     def _preferred_domains(question: str) -> tuple[str, ...]:
         lowered = question.lower()
+        if any(
+            term in lowered
+            for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date", "ipo date")
+        ):
+            return (
+                "sebi.gov.in",
+                "nseindia.com",
+                "bseindia.com",
+                "relianceindustries.com",
+                "jio.com",
+                "reuters.com",
+            )
         if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
             return (
                 "finance.yahoo.com",
@@ -358,12 +403,29 @@ class AIService:
             "who won",
             "price today",
             "as of today",
+            "ipo",
+            "drhp",
+            "prospectus",
+            "sebi filing",
+            "listing date",
+            "ipo date",
         )
 
         if query is None and not any(signal in lowered for signal in web_signals):
             return None
 
         query = query or text
+
+        if any(
+            term in query.lower()
+            for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date", "ipo date")
+        ):
+            lowered_query = query.lower()
+            if "sebi" not in lowered_query:
+                query = f"{query} DRHP SEBI"
+            if str(datetime.now().year) not in query:
+                query = f"{query} {datetime.now().year}"
+
         query = re.sub(
             r"(?i)\b(\d{1,2})\s*"
             r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
@@ -489,6 +551,10 @@ WEB SEARCH / PAGE EVIDENCE
 These sources were gathered because the question explicitly requested web information or clearly requires current
 information.
 Use the fetched page content when available. Ignore irrelevant pages and do not invent facts.
+For price-movement questions, use the structured market change and change-percent fields for the calculation.
+For IPO/listing questions, prefer official SEBI, exchange, and company filings over commentary or market chatter.
+When web evidence is absent, explicitly say the current information could not be verified online rather than presenting
+memory as a current fact.
 {web_text}
 
 USER QUESTION
