@@ -81,7 +81,7 @@ export default function AIScreen() {
 
   const sendPrompt = async (preset?: string) => {
     const trimmed = (preset ?? question).trim();
-    if (trimmed.length < 3 || sending || providerReady === false) return;
+    if (trimmed.length < 3 || sending) return;
     setSending(true);
     setError("");
     const userMessage: ChatMessage = { role: "user", content: trimmed };
@@ -118,8 +118,8 @@ export default function AIScreen() {
       {providerReady === false ? (
         <View style={styles.unavailableWrap}>
           <View style={styles.unavailableIcon}><Icon name="assistant" size={24} color={colors.warning} /></View>
-          <Text style={styles.unavailableTitle}>AI currently unavailable</Text>
-          <Text style={styles.unavailableText}>Check the local AI provider or backend connection, then retry.</Text>
+          <Text style={styles.unavailableTitle}>AI model currently unavailable</Text>
+          <Text style={styles.unavailableText}>AI model-backed answers need a configured provider. Live market facts can still be answered directly; check the backend provider configuration for research and advice.</Text>
           <Button title="Retry" onPress={() => void checkProvider()} kind="secondary" />
         </View>
       ) : null}
@@ -180,7 +180,7 @@ export default function AIScreen() {
             <Pressable
               key={label}
               onPress={() => void sendPrompt(prompt)}
-              disabled={sending || providerReady === false}
+              disabled={sending}
               accessibilityRole="button"
               accessibilityLabel={label}
               style={({ pressed }) => [styles.topicChip, pressed && { opacity: 0.75 }, (sending || providerReady === false) && { opacity: 0.45 }]}
@@ -200,7 +200,7 @@ export default function AIScreen() {
             onSubmitEditing={() => void sendPrompt()}
             placeholder="Ask about your finances…"
             placeholderTextColor={colors.muted}
-            editable={!sending && providerReady !== false}
+            editable={!sending}
             style={styles.input}
             maxLength={1000}
             returnKeyType="send"
@@ -220,7 +220,7 @@ export default function AIScreen() {
           </Pressable>
           <Pressable
             onPress={() => void sendPrompt()}
-            disabled={sending || providerReady === false || question.trim().length < 3}
+            disabled={sending || question.trim().length < 3}
             accessibilityRole="button"
             accessibilityLabel="Send message"
             accessibilityState={{ disabled: sending || providerReady === false || question.trim().length < 3, busy: sending }}
