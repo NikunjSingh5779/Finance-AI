@@ -40,7 +40,6 @@ def main() -> int:
     pg = psycopg.connect(database_url)
 
     try:
-        pg.execute("SET session_replication_role = replica")
         for table in TABLES:
             rows = sqlite_conn.execute(f"SELECT * FROM {table}").fetchall()
             if not rows:
@@ -142,7 +141,6 @@ def main() -> int:
                 f"COALESCE((SELECT MAX(id) FROM public.{table}), 1), true)"
             )
 
-        pg.execute("SET session_replication_role = DEFAULT")
         pg.commit()
 
         for table in TABLES:
