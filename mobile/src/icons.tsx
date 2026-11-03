@@ -16,7 +16,7 @@ export function Icon({
     strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none",
   };
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden={true} />
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden={true}>
       {name === "home" ? <><Path {...common} d="M3 10.8 12 3l9 7.8" /><Path {...common} d="M5.5 9.8V21h13V9.8" /><Path {...common} d="M9.5 21v-6h5v6" /></>
       : name === "transactions" ? <><Line {...common} x1="5" y1="7" x2="19" y2="7" /><Line {...common} x1="5" y1="12" x2="19" y2="12" /><Line {...common} x1="5" y1="17" x2="15" y2="17" /></>
       : name === "budgets" ? <><Rect {...common} x="4" y="4" width="16" height="16" rx="3" /><Path {...common} d="M8 16v-4M12 16V8M16 16v-6" /></>
