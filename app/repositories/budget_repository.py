@@ -23,14 +23,24 @@ class BudgetRepository:
         return BudgetOut(**dict(row)) if row else None
 
     def create(self, budget: BudgetCreate) -> BudgetOut:
-        self.conn.execute(
+        existing = self.get(budget.category)
+        if existing is not None:
+            self.conn.execute(
+                "UPDATE budgets SET limit_amt = ? WHERE category = ?",
+                (budget.limit_amt, budget.category),
+            )
+            self.conn.commit()
+            return self.get(budget.category)
+
+        cursor = self.conn.execute(
             """
             INSERT INTO budgets (category, limit_amt)
             VALUES (?, ?)
-            ON CONFLICT(category) DO UPDATE SET limit_amt = excluded.limit_amt
+            RETURNING id
             """,
             (budget.category, budget.limit_amt),
         )
+        cursor.fetchone()
         self.conn.commit()
         return self.get(budget.category)
 

@@ -4,12 +4,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.controllers.account_controller import router as account_router
+from app.controllers.auth_controller import router as auth_router
 from app.controllers.ai_controller import router as ai_router
 from app.controllers.analysis_controller import router as analysis_router
 from app.controllers.budget_controller import router as budget_router
@@ -20,6 +21,7 @@ from app.controllers.market_controller import router as market_router
 from app.controllers.net_worth_controller import router as net_worth_router
 from app.controllers.report_controller import router as report_router
 from app.controllers.transaction_controller import router as transaction_router
+from app.core.auth import auth_required, reset_user_id, set_user_id, user_id_from_request
 from app.core.database import init_db
 from app.core.exceptions import (
     AccountDeletionError,
@@ -73,6 +75,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+AUTH_PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/auth/config",
+    "/auth/signup",
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/logout",
+}
+
+
+@app.middleware("http")
+async def authentication_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    path = request.url.path
+    is_public = (
+        path in AUTH_PUBLIC_PATHS
+        or path.startswith("/static/")
+    )
+
+    context_token = None
+
+    try:
+        if auth_required() and not is_public:
+            try:
+                user_id = user_id_from_request(request)
+            except HTTPException as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content={"detail": exc.detail},
+                )
+            context_token = set_user_id(user_id)
+        elif not auth_required():
+            from app.core.auth import _dev_user_id
+
+            context_token = set_user_id(_dev_user_id())
+
+        return await call_next(request)
+    finally:
+        if context_token is not None:
+            reset_user_id(context_token)
 
 
 @app.exception_handler(NotFoundError)
@@ -135,6 +185,7 @@ async def finance_error_handler(request: Request, exc: FinanceAIError):
     )
 
 
+app.include_router(auth_router)
 app.include_router(transaction_router)
 app.include_router(account_router)
 app.include_router(budget_router)

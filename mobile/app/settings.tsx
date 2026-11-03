@@ -17,7 +17,7 @@ function accountIcon(type: AccountType) {
 }
 
 export default function SettingsScreen() {
-  const { api, apiBaseUrl } = useFinance();
+  const { api, apiBaseUrl, user, logout } = useFinance();
   const [message, setMessage] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -129,7 +129,7 @@ export default function SettingsScreen() {
               <Text style={styles.profileTitle}>FinanceAI</Text>
               <SmallText>Connection, accounts and developer settings.</SmallText>
             </View>
-            <Pill tone="success">Local</Pill>
+            <Pill tone="success">{user ? "Signed in" : "Local"}</Pill>
           </View>
         </Card>
 
@@ -201,7 +201,7 @@ export default function SettingsScreen() {
             <Icon name="warning" size={18} color={colors.warning} />
             <View style={{ flex: 1 }}>
               <Text style={styles.securityTitle}>Security warning</Text>
-              <SmallText>Before public release, add authentication, authorization, per-user data isolation, HTTPS, secure secret handling and production monitoring.</SmallText>
+              <SmallText>Your workspace is tied to your authenticated account. Production data is stored in PostgreSQL with row-level isolation.</SmallText>
             </View>
           </Card>
         </View>
@@ -218,12 +218,23 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.sectionBlock}>
+          <SmallText>ACCOUNT</SmallText>
+          <Card style={styles.profileSmallCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.devTitle}>Signed-in workspace</Text>
+              <SmallText>Your finance data is isolated to this account.</SmallText>
+            </View>
+            <Button title="Sign out" onPress={() => void logout()} kind="secondary" />
+          </Card>
+        </View>
+
+        <View style={styles.sectionBlock}>
           <SmallText>PROFILE</SmallText>
           <Card style={styles.profileSmallCard}>
             <View style={styles.profileSmallAvatar}><Text style={styles.profileSmallText}>AC</Text></View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.devTitle}>Alex Carter</Text>
-              <SmallText>Personal FinanceAI workspace</SmallText>
+              <Text style={styles.devTitle}>{user?.name || user?.email || "FinanceAI user"}</Text>
+              <SmallText>{user?.email || "Personal FinanceAI workspace"}</SmallText>
             </View>
           </Card>
         </View>

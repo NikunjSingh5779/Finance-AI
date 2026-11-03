@@ -19,6 +19,8 @@
   const sparkCharts = {};
 
   const API = window.FINANCEAI_API_URL || "";
+  let authSession = null;
+  let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
     "#a855f7", "#f97316", "#06b6d4", "#84cc16"
@@ -41,8 +43,148 @@
     });
   }
 
-  async function apiFetch(path, options = {}) {
-    const response = await fetch(API + path, options);
+  function setAuthSession(session) {
+    authSession = session;
+    if (session) {
+      localStorage.setItem("financeai.auth.session", JSON.stringify(session));
+    } else {
+      localStorage.removeItem("financeai.auth.session");
+    }
+    updateUserUI();
+  }
+
+  function clearAuthSession() {
+    setAuthSession(null);
+  }
+
+  function updateUserUI() {
+    const user = authSession?.user || {};
+    const metadata = user.user_metadata || {};
+    const name = metadata.name || user.email || "Finance User";
+    const email = user.email || "Private workspace";
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "FA";
+    const nameEl = $("user-name");
+    const emailEl = $("user-email");
+    const avatarEl = $("user-avatar");
+    if (nameEl) nameEl.textContent = name;
+    if (emailEl) emailEl.textContent = email;
+    if (avatarEl) avatarEl.textContent = initials;
+  }
+
+  function showAuthError(message) {
+    const error = $("auth-error");
+    const success = $("auth-success");
+    if (error) {
+      error.hidden = !message;
+      error.textContent = message || "";
+    }
+    if (success) success.hidden = true;
+  }
+
+  function showAuthSuccess(message) {
+    const error = $("auth-error");
+    const success = $("auth-success");
+    if (error) error.hidden = true;
+    if (success) {
+      success.hidden = !message;
+      success.textContent = message || "";
+    }
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    const signup = mode === "signup";
+    const title = $("auth-title");
+    const subtitle = $("auth-subtitle");
+    const nameWrap = $("auth-name-wrap");
+    const nameInput = $("auth-name");
+    const passwordInput = $("auth-password");
+    const submit = $("auth-submit");
+    const toggle = $("auth-toggle");
+
+    if (title) title.textContent = signup ? "Create your account" : "Welcome back";
+    if (subtitle) {
+      subtitle.textContent = signup
+        ? "Create your private FinanceAI workspace."
+        : "Sign in to your private FinanceAI workspace.";
+    }
+    if (nameWrap) nameWrap.hidden = !signup;
+    if (nameInput) nameInput.required = signup;
+    if (passwordInput) passwordInput.autocomplete = signup ? "new-password" : "current-password";
+    if (submit) submit.textContent = signup ? "Create account" : "Sign in";
+    if (toggle) {
+      toggle.textContent = signup
+        ? "Already have an account? Sign in"
+        : "New to FinanceAI? Create an account";
+    }
+    showAuthError("");
+    showAuthSuccess("");
+  }
+
+  function showAuthScreen(message = "") {
+    $("app-shell")?.setAttribute("hidden", "");
+    $("auth-screen")?.removeAttribute("hidden");
+    if (message) showAuthError(message);
+    setAuthMode(authMode);
+  }
+
+  function showAppShell() {
+    $("auth-screen")?.setAttribute("hidden", "");
+    $("app-shell")?.removeAttribute("hidden");
+    updateUserUI();
+  }
+
+  async function authRequest(path, payload) {
+    const response = await fetch(API + path, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let message = response.statusText || "Authentication failed";
+      try {
+        const data = await response.json();
+        message = data.detail || message;
+      } catch (_) {}
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  async function refreshAuthSession() {
+    if (!authSession?.refresh_token) return false;
+    try {
+      const next = await authRequest("/auth/refresh", {
+        refresh_token: authSession.refresh_token,
+      });
+      if (!next.access_token || !next.refresh_token) {
+        clearAuthSession();
+        return false;
+      }
+      setAuthSession(next);
+      return true;
+    } catch (_) {
+      clearAuthSession();
+      return false;
+    }
+  }
+
+  async function apiFetch(path, options = {}, retryOnUnauthorized = true) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.headers || {}),
+    };
+    if (authSession?.access_token) {
+      headers.Authorization = "Bearer " + authSession.access_token;
+    }
+    const response = await fetch(API + path, { ...options, headers });
+    if (response.status === 401 && retryOnUnauthorized && !path.startsWith("/auth/")) {
+      if (await refreshAuthSession()) {
+        return apiFetch(path, options, false);
+      }
+      showAuthScreen("Your session expired. Please sign in again.");
+      throw new Error("Authentication required");
+    }
     if (!response.ok) {
       let message = response.statusText || "Request failed";
       try {
@@ -52,12 +194,101 @@
         } else {
           message = payload.detail || payload.message || message;
         }
-      } catch (_) {
-        // Keep HTTP status text.
-      }
+      } catch (_) {}
       throw new Error(message);
     }
+    if (response.status === 204) return undefined;
     return response.json();
+  }
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    const email = $("auth-email")?.value.trim().toLowerCase() || "";
+    const password = $("auth-password")?.value || "";
+    const name = $("auth-name")?.value.trim() || "";
+
+    if (!email || !password || (authMode === "signup" && name.length < 2)) {
+      showAuthError(authMode === "signup" ? "Enter your name, email and password." : "Enter your email and password.");
+      return;
+    }
+
+    const button = $("auth-submit");
+    if (button) {
+      button.disabled = true;
+      button.textContent = authMode === "signup" ? "Creating account…" : "Signing in…";
+    }
+
+    try {
+      showAuthError("");
+      showAuthSuccess("");
+      const result = await authRequest(
+        authMode === "signup" ? "/auth/signup" : "/auth/login",
+        authMode === "signup" ? { email, password, name } : { email, password },
+      );
+
+      if (!result.access_token || !result.refresh_token) {
+        setAuthMode("login");
+        showAuthSuccess("Account created. Check your email to confirm it, then sign in.");
+        $("auth-password").value = "";
+        return;
+      }
+
+      setAuthSession(result);
+      showAppShell();
+      init();
+    } catch (error) {
+      showAuthError(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = authMode === "signup" ? "Create account" : "Sign in";
+      }
+    }
+  }
+
+  async function logout() {
+    try {
+      if (authSession?.access_token) {
+        await fetch(API + "/auth/logout", {
+          method: "POST",
+          headers: { Accept: "application/json", Authorization: "Bearer " + authSession.access_token },
+        });
+      }
+    } catch (_) {}
+    clearAuthSession();
+    window.location.reload();
+  }
+
+  async function initAuth() {
+    try {
+      const response = await fetch(API + "/auth/config");
+      if (!response.ok) throw new Error("Cannot load authentication configuration.");
+      const config = await response.json();
+
+      if (!config.required) {
+        showAppShell();
+        init();
+        return;
+      }
+
+      try {
+        const stored = localStorage.getItem("financeai.auth.session");
+        if (stored) {
+          authSession = JSON.parse(stored);
+          await apiFetch("/auth/me");
+          updateUserUI();
+          showAppShell();
+          init();
+          return;
+        }
+      } catch (_) {
+        clearAuthSession();
+      }
+
+      showAuthScreen();
+    } catch (error) {
+      showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+    }
   }
 
   function showToast(message, type = "success") {
@@ -2090,8 +2321,14 @@
     refreshCurrentPage,
     setTransactionTypeFilter,
     importBudgetsCSV,
-    exportBudgetsCSV
+    exportBudgetsCSV,
+    logout
   });
 
-  window.addEventListener("DOMContentLoaded", init);
+  $("auth-form")?.addEventListener("submit", submitAuth);
+  $("auth-toggle")?.addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  $("logout-btn")?.addEventListener("click", logout);
+  setAuthMode("login");
+
+  window.addEventListener("DOMContentLoaded", initAuth);
 })();
