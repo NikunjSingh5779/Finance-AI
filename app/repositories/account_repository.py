@@ -27,11 +27,13 @@ class AccountRepository:
             """
             INSERT INTO accounts (name, balance, type)
             VALUES (?, ?, ?)
+            RETURNING id
             """,
             (account.name, account.balance, account.type),
         )
+        account_id = cursor.fetchone()["id"]
         self.conn.commit()
-        return self.get(cursor.lastrowid)
+        return self.get(account_id)
 
     def update(self, account_id: int, account: AccountUpdate) -> Optional[AccountOut]:
         if self.get(account_id) is None:
