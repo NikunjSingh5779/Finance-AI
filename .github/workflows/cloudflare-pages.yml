@@ -52,7 +52,7 @@ jobs:
           test -s netlify-dist/offline.html
           test -s netlify-dist/icons/icon-192.png
           test -s netlify-dist/icons/icon-512.png
-          test -s netlify-dist/icons/icon-maskable.png
+          grep -q '"purpose": "any maskable"' netlify-dist/manifest.webmanifest
           test -s netlify-dist/icons/apple-touch-icon.png
           node --check netlify-dist/pwa.js
           node --check netlify-dist/sw.js

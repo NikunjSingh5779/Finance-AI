@@ -41,7 +41,7 @@ jobs:
           node -e "JSON.parse(require('node:fs').readFileSync('netlify-dist/manifest.webmanifest', 'utf8'))"
           test -s netlify-dist/icons/icon-192.png
           test -s netlify-dist/icons/icon-512.png
-          test -s netlify-dist/icons/icon-maskable.png
+          grep -q '"purpose": "any maskable"' netlify-dist/manifest.webmanifest
           test -s netlify-dist/icons/apple-touch-icon.png
           test -s netlify-dist/offline.html
           ! grep -q '"/static/' netlify-dist/sw.js
