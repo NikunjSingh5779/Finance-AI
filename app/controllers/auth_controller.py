@@ -1,6 +1,7 @@
 """Authentication endpoints backed by Supabase Auth."""
 
 import os
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -12,6 +13,8 @@ from app.core.auth import (
     sign_out,
     sign_up,
     refresh_session,
+    start_google_oauth,
+    exchange_google_oauth_code,
     user_id_from_request,
 )
 from app.core.rate_limiter import check_rate_limit
@@ -35,6 +38,23 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=20, max_length=4096)
 
 
+class GoogleOAuthStartRequest(BaseModel):
+    code_challenge: str = Field(
+        min_length=43,
+        max_length=43,
+        pattern=r"^[A-Za-z0-9_-]{43}$",
+    )
+
+
+class GoogleOAuthExchangeRequest(BaseModel):
+    auth_code: str = Field(min_length=8, max_length=2048)
+    code_verifier: str = Field(
+        min_length=43,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._~-]+$",
+    )
+
+
 @router.get("/config")
 def auth_config() -> dict:
     return {
@@ -47,6 +67,68 @@ def auth_config() -> dict:
             )
         ),
     }
+
+
+@router.post("/google/start")
+async def google_oauth_start(
+    request: GoogleOAuthStartRequest,
+    raw_request: Request,
+) -> dict:
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+
+    origin = raw_request.headers.get("origin", "").strip().rstrip("/")
+    allowed_origins = {
+        value.strip().rstrip("/")
+        for value in os.getenv("CORS_ORIGINS", "").split(",")
+        if value.strip()
+    }
+    parsed_origin = urlsplit(origin)
+    valid_origin_shape = (
+        parsed_origin.scheme in {"https", "http"}
+        and bool(parsed_origin.netloc)
+        and not parsed_origin.path
+        and not parsed_origin.query
+        and not parsed_origin.fragment
+        and parsed_origin.username is None
+        and parsed_origin.password is None
+    )
+    is_local_origin = (
+        parsed_origin.scheme == "http"
+        and parsed_origin.hostname in {"localhost", "127.0.0.1"}
+    )
+    if not valid_origin_shape or (origin not in allowed_origins and not is_local_origin):
+        raise HTTPException(status_code=400, detail="This app origin is not allowed for Google sign-in.")
+
+    redirect_to = origin + "/"
+    try:
+        url = await start_google_oauth(redirect_to, request.code_challenge)
+        return {"url": url}
+    except AuthProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/google/exchange")
+async def google_oauth_exchange(
+    request: GoogleOAuthExchangeRequest,
+    raw_request: Request,
+) -> dict:
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+    try:
+        result = await exchange_google_oauth_code(
+            request.auth_code,
+            request.code_verifier,
+        )
+        session = result.get("session") or result
+        return {
+            "user": result.get("user"),
+            "access_token": session.get("access_token"),
+            "refresh_token": session.get("refresh_token"),
+            "expires_in": session.get("expires_in"),
+        }
+    except AuthProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/signup")
