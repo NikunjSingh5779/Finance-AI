@@ -174,10 +174,27 @@ def test_market_fact_response_uses_a_full_conversational_answer():
         }
     )
     assert "GOOGL is quoted at 280.03 USD" in reply
-    assert "down 4.47 (1.57%)" in reply
+    assert "It is down 4.47 (1.57%) from the previous close." in reply
     assert "The previous close was 284.5 USD." in reply
     assert "change of -4.47 USD (-1.57%)" in reply
     assert "**Summary:**" not in reply
+
+    jio_reply = AIService._market_fact_response(
+        {
+            "symbol": "JPL.NS",
+            "price": 1418.0,
+            "previous_close": 1437.0,
+            "change": -19.0,
+            "change_pct": -1.32,
+            "currency": "INR",
+            "date": "2026-11-04",
+            "source": "test",
+            "quote_kind": "latest_available_quote",
+        }
+    )
+    assert "Jio Platforms Limited" in jio_reply
+    assert "NSE: JPL; BSE: 545004" in jio_reply
+    assert "1418.0 INR" in jio_reply
 
 
 def test_market_explainer_reaches_the_model_without_search(monkeypatch):
@@ -247,3 +264,42 @@ def test_duckduckgo_search_uses_google_news_rss_when_ddg_is_unavailable(monkeypa
     assert len(results) == 1
     assert results[0].source == "google_news"
     assert calls == [("Jio Platforms IPO listing", 5)]
+
+
+def test_google_news_rss_parser_extracts_publisher_and_date():
+    from app.providers.search.duckduckgo import DuckDuckGoSearcher
+
+    payload = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <rss><channel><item>
+      <title>Jio Platforms IPO listing date announced</title>
+      <link>https://example.com/jio-listing</link>
+      <description>&lt;b&gt;Jio Platforms&lt;/b&gt; will list on October 28.</description>
+      <source url="https://example.com">Example Finance</source>
+      <pubDate>Wed, 28 Oct 2026 10:00:00 GMT</pubDate>
+    </item></channel></rss>"""
+
+    class FakeResponse:
+        content = payload
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        async def get(self, url, *, params, timeout):
+            assert url == "https://news.google.com/rss/search"
+            assert params["gl"] == "IN"
+            assert timeout == 8.0
+            return FakeResponse()
+
+    searcher = DuckDuckGoSearcher()
+    searcher._client = FakeClient()
+    results = asyncio.run(
+        searcher._search_google_news_rss("Jio Platforms IPO", max_results=3)
+    )
+
+    assert len(results) == 1
+    assert results[0].title == "Jio Platforms IPO listing date announced"
+    assert "Example Finance" in results[0].snippet
+    assert "October 28" in results[0].snippet
+    assert "Wed, 28 Oct 2026" in results[0].snippet
+    assert results[0].source == "google_news"
