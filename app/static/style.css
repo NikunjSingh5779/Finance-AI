@@ -1179,3 +1179,501 @@ body { overflow-x:hidden; }
   .csv-import-footer button { width:100%; }
 }
 
+/* Mobile/tablet-only refinements. Desktop rules above remain unchanged. */
+@media (max-width: 900px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "menu breadcrumb"
+      "actions actions";
+    align-content: center;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: auto;
+    min-height: 96px;
+    padding: 8px 12px;
+  }
+
+  .topbar .hamburger {
+    grid-area: menu;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+  }
+
+  .topbar .breadcrumb {
+    grid-area: breadcrumb;
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+
+  .topbar .breadcrumb > span,
+  .topbar .breadcrumb .current {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar .topbar-search {
+    display: none;
+  }
+
+  .topbar .topbar-actions {
+    grid-area: actions;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(60px, .55fr) 40px minmax(92px, 1fr);
+    align-items: stretch;
+    gap: 7px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .topbar-actions > * {
+    min-width: 0;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .topbar-actions .month-btn,
+  .topbar-actions .icon-btn,
+  .topbar-actions .add-btn {
+    height: 38px;
+    min-height: 38px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .topbar-actions .add-btn {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .content {
+    width: 100%;
+    min-width: 0;
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .page,
+  .page.active,
+  .full-card,
+  .chart-card,
+  .cat-card,
+  .planning-panel,
+  .insight-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .hero-title {
+    font-size: 22px;
+    line-height: 1.25;
+  }
+
+  .transaction-header-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+  }
+
+  .transaction-header-actions > .full-title {
+    min-width: 0;
+  }
+
+  .transaction-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .transaction-actions .compact-action,
+  .budget-actions .compact-action {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    height: auto;
+    padding: 8px 6px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .transaction-filter-row {
+    padding: 10px 14px 0;
+    overflow-x: auto;
+  }
+
+  .add-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .add-form-grid .fg:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .add-form-grid .btn-add {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .fg {
+    min-width: 0;
+  }
+
+  .fg input,
+  .fg select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .budget-header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    width: 100%;
+  }
+
+  .budget-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  #page-budgets .add-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 14px;
+  }
+
+  #page-budgets .add-form-grid .btn-add {
+    grid-column: 1 / -1;
+  }
+
+  .budget-page-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-hero,
+  .insights-hero {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .planning-title,
+  .insights-title {
+    font-size: 21px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .planning-refresh,
+  .insights-refresh {
+    min-height: 40px;
+  }
+
+  .wealth-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .wealth-metric {
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .wealth-metric-value {
+    font-size: 18px;
+    overflow-wrap: anywhere;
+  }
+
+  .planning-columns,
+  .health-grid,
+  .insights-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .goal-form input:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .goal-form button {
+    min-height: 40px;
+  }
+
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #page-ai-page.active {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #page-ai-page .ai-container {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #page-ai-page .chat-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 10px;
+  }
+
+  #page-ai-page .chat-msg {
+    width: fit-content;
+    max-width: min(94%, 680px);
+    min-width: 0;
+  }
+
+  #page-ai-page .chat-bubble {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  #page-ai-page .quick-row {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 9px 10px;
+    gap: 7px;
+  }
+
+  #page-ai-page .quick-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 7px 11px;
+  }
+
+  #page-ai-page .chat-input-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  #page-ai-page .chat-input-bar input {
+    flex: 1 1 auto;
+    width: 0;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  #page-ai-page .chat-input-bar .send-btn {
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .csv-import-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .full-txn-item {
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar .topbar-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(54px, .55fr) 38px;
+  }
+
+  .topbar-actions .add-btn {
+    display: none;
+  }
+
+  .topbar-actions .icon-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
+  .content {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .summary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .sum-card {
+    padding: 12px;
+  }
+
+  .sum-label,
+  .sum-sub {
+    font-size: 10px;
+  }
+
+  .sum-value {
+    font-size: 17px;
+  }
+
+  .transaction-actions,
+  .budget-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .transaction-actions .compact-action,
+  .budget-actions .compact-action {
+    font-size: 10px;
+    min-height: 40px;
+  }
+
+  .transaction-filter-row {
+    padding: 9px 12px 0;
+  }
+
+  .add-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .add-form-grid .fg:nth-child(3),
+  .add-form-grid .btn-add {
+    grid-column: auto;
+  }
+
+  #page-budgets .add-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 12px;
+  }
+
+  #page-budgets .add-form-grid .btn-add {
+    grid-column: auto;
+  }
+
+  .wealth-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wealth-card,
+  .planning-panel,
+  .health-details,
+  .insight-panel {
+    padding: 14px;
+  }
+
+  .planning-hero,
+  .insights-hero {
+    padding: 15px;
+  }
+
+  .planning-title,
+  .insights-title {
+    font-size: 19px;
+  }
+
+  .goal-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-form input:first-child {
+    grid-column: auto;
+  }
+
+  .report-month {
+    max-width: 100%;
+  }
+
+  .full-txn-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: 11px 12px;
+  }
+
+  .full-txn-item .cat-badge {
+    display: none;
+  }
+
+  .full-txn-item .del-btn,
+  .full-txn-item .edit-btn {
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+
+  #page-ai-page .chat-msg {
+    max-width: 96%;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .topbar .breadcrumb {
+    font-size: 12px;
+  }
+
+  .topbar-actions .month-btn {
+    font-size: 10px;
+    padding: 0 4px;
+  }
+
+  .summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wealth-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-actions,
+  .budget-actions {
+    gap: 6px;
+  }
+}
+
