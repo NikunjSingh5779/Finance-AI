@@ -159,7 +159,7 @@ def test_ipo_research_retries_a_broader_company_query(monkeypatch):
     assert "Sources" in reply
 
 
-def test_market_fact_response_uses_a_full_conversational_answer():
+def test_market_fact_response_uses_a_clean_quote_layout():
     reply = AIService._market_fact_response(
         {
             "symbol": "GOOGL",
@@ -168,16 +168,17 @@ def test_market_fact_response_uses_a_full_conversational_answer():
             "change": -4.47,
             "change_pct": -1.57,
             "currency": "USD",
-            "date": "2026-11-04",
-            "source": "test",
-            "quote_kind": "latest_available_quote",
+            "source": "Yahoo Finance",
+            "quote_kind": "latest_intraday_bar",
+            "market_timestamp": "2026-11-04T09:00:00+00:00",
         }
     )
-    assert "GOOGL is quoted at 280.03 USD" in reply
-    assert "It is down 4.47 (1.57%) from the previous close." in reply
-    assert "The previous close was 284.5 USD." in reply
-    assert "change of -4.47 USD (-1.57%)" in reply
-    assert "**Summary:**" not in reply
+    assert "**GOOGL: $280.03**" in reply
+    assert "Down $4.47 (1.57%) versus the previous close of $284.50." in reply
+    assert "04 Nov 2026, 02:30 PM IST" in reply
+    assert reply.count("$4.47") == 1
+    assert "That is a change" not in reply
+    assert "Previous close was" not in reply
 
     jio_reply = AIService._market_fact_response(
         {
@@ -187,14 +188,73 @@ def test_market_fact_response_uses_a_full_conversational_answer():
             "change": -19.0,
             "change_pct": -1.32,
             "currency": "INR",
-            "date": "2026-11-04",
-            "source": "test",
-            "quote_kind": "latest_available_quote",
+            "source": "Yahoo Finance",
+            "quote_kind": "latest_intraday_bar",
+            "market_timestamp": "2026-11-04T09:00:00+00:00",
         }
     )
-    assert "Jio Platforms Limited" in jio_reply
-    assert "NSE: JPL; BSE: 545004" in jio_reply
-    assert "1418.0 INR" in jio_reply
+    assert "Jio Platforms Limited (NSE: JPL; BSE: 545004)" in jio_reply
+    assert "**Jio Platforms Limited (NSE: JPL; BSE: 545004): ₹1,418.00**" in jio_reply
+
+
+def test_gold_spot_response_is_india_friendly_and_not_repetitive():
+    reply = AIService._market_fact_response(
+        {
+            "symbol": "XAU",
+            "price": 200000.0,
+            "price_per_10g": 64301.54,
+            "currency": "INR",
+            "source": "Gold API",
+            "quote_kind": "spot",
+            "market_timestamp": "2026-11-04T17:30:00+00:00",
+        }
+    )
+
+    assert "**Gold spot (24K equivalent): ₹64,301.54 per 10 g**" in reply
+    assert "₹200,000.00 per troy ounce" in reply
+    assert "04 Nov 2026, 11:00 PM IST" in reply
+    assert "not a local jeweller's retail rate" in reply
+    assert "previous close" not in reply.lower()
+    assert "GC=F" not in reply
+
+
+def test_gold_currency_defaults_to_inr_but_respects_explicit_usd():
+    assert AIService._market_currency("gold price") == "INR"
+    assert AIService._market_currency("gold price in India") == "INR"
+    assert AIService._market_currency("gold price in USD") == "USD"
+    assert AIService._market_currency("gold price in dollars") == "USD"
+
+
+def test_gold_questions_use_spot_feed_and_futures_questions_use_yahoo(monkeypatch):
+    class FakeMarketProvider:
+        def __init__(self):
+            self.spot_calls = []
+            self.quote_calls = []
+
+        async def get_spot_price(self, symbol, currency="INR"):
+            self.spot_calls.append((symbol, currency))
+            return {"symbol": symbol, "currency": currency, "quote_kind": "spot"}
+
+        async def get_current_price(self, symbol):
+            self.quote_calls.append(symbol)
+            return {"symbol": symbol, "quote_kind": "latest_intraday_bar"}
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    provider = FakeMarketProvider()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: provider,
+    )
+
+    gold = asyncio.run(AIService()._get_market_data("what is the gold price"))
+    futures = asyncio.run(AIService()._get_market_data("what is gold futures price"))
+
+    assert gold["quote_kind"] == "spot"
+    assert provider.spot_calls == [("XAU", "INR")]
+    assert futures["symbol"] == "GC=F"
+    assert provider.quote_calls == ["GC=F"]
 
 
 def test_market_explainer_reaches_the_model_without_search(monkeypatch):
@@ -319,3 +379,151 @@ def test_google_news_rss_parser_extracts_publisher_and_date():
     assert "October 28" in results[0].snippet
     assert "Wed, 28 Oct 2026" in results[0].snippet
     assert results[0].source == "google_news"
+
+
+def test_failed_gold_spot_quote_returns_clear_unavailable_message(monkeypatch):
+    class FakeMarketProvider:
+        async def get_spot_price(self, symbol, currency="INR"):
+            assert symbol == "XAU"
+            assert currency == "INR"
+            return None
+
+        async def get_current_price(self, symbol):
+            raise AssertionError("Gold spot must not fall back to a futures ticker.")
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    class UnexpectedAIProvider:
+        def generate_response(self, prompt):
+            raise AssertionError("A missing gold quote should not be guessed by the LLM.")
+
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: FakeMarketProvider(),
+    )
+
+    reply = asyncio.run(
+        AIService(provider=UnexpectedAIProvider()).get_financial_advice(
+            "What is the gold price?",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "couldn't retrieve a fresh international gold spot quote" in reply
+    assert "won't substitute a COMEX futures contract" in reply
+
+
+def test_finance_scope_accepts_broad_financial_topics():
+    questions = (
+        "Explain compound interest with an example",
+        "What is a Roth IRA and how does a 401(k) work?",
+        "How do I calculate NPV and IRR?",
+        "What is the difference between GST and income tax?",
+        "Explain how UPI payment settlement works",
+        "How does a hedge fund manage risk?",
+        "What is the current RBI repo rate?",
+        "How do I save money for retirement?",
+        "Explain financial statement analysis and EBITDA",
+        "What is the S&P 500?",
+    )
+    assert all(AIService._is_finance_related(question) for question in questions)
+    assert AIService._is_finance_related("What is a call option?")
+    assert AIService._is_finance_related("How does currency exchange work?")
+    assert AIService._is_finance_related("What is a 401(k)?")
+    assert AIService._is_finance_related("What finance topics can you help me with?")
+
+
+def test_finance_scope_rejects_unrelated_questions():
+    questions = (
+        "Write a poem about the ocean",
+        "How do I install Python?",
+        "Suggest a gaming laptop",
+        "What is the capital of Japan?",
+    )
+    assert all(not AIService._is_finance_related(question) for question in questions)
+
+
+def test_short_followups_remain_in_a_finance_conversation():
+    history = [
+        {"role": "user", "content": "Explain compound interest with an example"},
+        {"role": "assistant", "content": "Compound interest earns interest on prior interest."},
+    ]
+    assert AIService._is_finance_related("Why?", history)
+    assert AIService._is_finance_related("Is it worth it?", history)
+    assert AIService._is_finance_related("Give me a calculation", history)
+    assert not AIService._is_finance_related(
+        "Write a poem about the ocean",
+        history,
+    )
+
+
+def test_short_followups_do_not_inherit_an_unrelated_conversation():
+    history = [
+        {"role": "user", "content": "How do I install Python?"},
+        {"role": "assistant", "content": "Use the official installer."},
+    ]
+    assert not AIService._is_finance_related("Why?", history)
+
+
+def test_market_symbol_detection_avoids_partial_word_matches():
+    assert AIService._market_type("How do I use the console?") is None
+    assert AIService._market_type("What is Bitcoin?") == "crypto"
+    assert AIService._market_type("What is gold?") == "commodity"
+
+
+def test_regulated_finance_questions_trigger_current_research():
+    question = "What is the GST rate on restaurant bills?"
+    assert AIService._query_intent(question) == "web_research"
+    assert AIService._extract_web_search_query(question) is not None
+
+
+def test_generic_finance_education_does_not_attach_private_account_context():
+    assert not AIService._needs_personal_context("Explain compound interest")
+    assert AIService._needs_personal_context("How should I invest my savings?")
+    assert not AIService._needs_personal_context("How do I invest in index funds?")
+    assert AIService._needs_personal_context("How much did I spend on food this month?")
+
+
+def test_unrelated_question_is_declined_without_calling_the_ai_provider():
+    class UnexpectedProvider:
+        def generate_response(self, prompt):
+            raise AssertionError("An unrelated request must not reach the AI provider.")
+
+    reply = asyncio.run(
+        AIService(provider=UnexpectedProvider()).get_financial_advice(
+            "Write a poem about the ocean",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "finance-related questions only" in reply.lower()
+
+
+def test_general_finance_question_uses_finance_education_prompt_without_private_data():
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "Compound interest is interest earned on both principal and accumulated interest."
+
+    provider = CapturingProvider()
+    reply = asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "Explain compound interest with an example",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
+                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
+                "budgets": [{"category": "Private", "limit_amt": 5000}],
+            },
+            conversation=[],
+        )
+    )
+
+    assert "Compound interest" in reply
+    assert "Query intent: finance_education" in provider.prompt
+    assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
+    assert "Private purchase" not in provider.prompt

@@ -88,7 +88,7 @@ async def test_ai():
     try:
         service, context = _build_service_context(conn)
         reply = await service.get_financial_advice(
-            "Say hello and confirm FinanceAI is working.",
+            "What finance topics can you help me with?",
             context,
         )
         return {"response": reply, "success": True}

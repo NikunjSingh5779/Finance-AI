@@ -2,9 +2,10 @@
 
 import asyncio
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
@@ -33,42 +34,198 @@ class AIService:
     @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
-        if any(
-            term in lowered
-            for term in ("gold", "silver", "crude oil", "oil price", "commodity")
-        ):
+        if re.search(r"\b(gold|silver|crude oil|oil price|commodity|commodities)\b", lowered):
             return "commodity"
-        if any(
-            term in lowered
-            for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")
-        ):
+        if re.search(r"\b(bitcoin|btc|ethereum|eth|crypto|cryptocurrency|solana|sol)\b", lowered):
             return "crypto"
-        if any(
-            term in lowered
-            for term in (
-                "stock",
-                "share",
-                "equity",
-                "ticker",
-                "closing price",
-                "share price",
-                "stock price",
-                "price",
-                "up",
-                "down",
-                "increase",
-                "decrease",
-                "change",
-                "gain",
-                "drop",
-                "fall",
-                "fell",
-                "moved",
-                "return",
-            )
-        ):
+        stock_context = (
+            "stock", "shares", "share price", "equity", "equities", "ticker",
+            "closing price", "stock price", "stock market", "market cap",
+            "market capitalization", "dividend", "earnings per share", "pe ratio",
+            "p/e ratio", "nse", "bse", "nasdaq", "nyse", "nifty", "sensex",
+        )
+        if any(term in lowered for term in stock_context):
+            return "stock"
+        if AIService._market_symbol(question, "stock"):
             return "stock"
         return None
+
+    @staticmethod
+    def _contains_financial_topic(text: str) -> bool:
+        """Recognize a broad range of personal, business, and market-finance topics."""
+        lowered = " ".join(text.lower().split())
+        finance_term_groups = (
+            (
+                "finance", "financial", "money", "monetary", "cash flow", "cashflow",
+                "budget", "budgeting", "expense", "expenses", "spending", "income",
+                "earnings", "salary", "wages", "paycheck", "savings", "saving",
+                "saving money", "save money",
+            ),
+            (
+                "invest", "investing", "investment", "investments", "portfolio",
+                "asset allocation", "wealth management", "net worth", "retirement",
+                "pension", "mutual fund", "mutual funds", "fund", "funds", "hedge fund",
+                "hedge funds", "index fund", "sip", "dividend", "brokerage",
+                "financial planning", "wealth planning", "financial advisor",
+                "financial adviser", "estate planning", "inheritance planning",
+                "trust fund", "annuity", "annuities",
+            ),
+            (
+                "stock", "stocks", "share", "shares", "equity", "equities", "bond",
+                "bonds", "etf", "ticker", "ipo", "initial public offering", "sebi",
+                "rbi", "nse", "bse", "nasdaq", "nyse", "nifty", "sensex",
+                "capital market", "financial market", "stock market", "money market",
+                "market cap", "market capitalization", "market index", "stock index",
+                "s&p 500", "dow jones", "ftse", "dax", "hang seng", "securities",
+                "derivative", "derivatives", "futures", "options", "option trading",
+                "hedging", "arbitrage", "option", "call option", "put option",
+                "forward contract", "swap contract", "interest rate swap",
+                "credit default swap", "derivative contract", "settlement", "clearing",
+                "margin trading",
+                "leverage", "short selling", "short position", "long position",
+                "liquidity", "market maker", "order book", "yield", "treasury",
+            ),
+            (
+                "crypto", "cryptocurrency", "bitcoin", "ethereum", "forex",
+                "foreign exchange", "currency exchange", "exchange rate", "currency",
+                "commodity", "commodities", "gold", "silver", "oil price",
+            ),
+            (
+                "bank", "banking", "bank account", "savings account", "current account",
+                "checking account", "fixed deposit", "recurring deposit", "term deposit",
+                "fd", "rd", "upi", "payment", "payments", "payment gateway",
+                "payment processor", "transaction", "transactions", "credit card",
+                "debit card", "credit score", "credit history", "overdraft",
+                "money market account", "open banking", "fintech", "remittance",
+                "remittances",
+            ),
+            (
+                "loan", "loans", "student loan", "student loans", "mortgage", "emi",
+                "interest", "compound interest", "apr", "apy", "principal",
+                "repayment", "lending", "borrowing", "debt", "liability", "liabilities",
+                "buy now pay later", "bnpl",
+            ),
+            (
+                "tax", "taxes", "taxation", "income tax", "capital gains", "gst", "vat",
+                "tds", "deduction", "deductions", "tax slab", "tax return", "itr",
+                "tax filing", "estate tax", "inheritance tax",
+            ),
+            (
+                "insurance", "premium", "premiums", "policyholder", "claim", "claims",
+                "coverage", "life cover", "health cover", "irdai",
+            ),
+            (
+                "accounting", "bookkeeping", "balance sheet", "income statement",
+                "profit and loss", "p&l", "revenue", "profit", "profitability", "margin",
+                "cash flow statement", "financial statement", "financial statements",
+                "financial ratio", "valuation", "ebitda", "working capital",
+                "depreciation", "amortization", "audit", "reconciliation",
+                "accounts payable", "accounts receivable", "working paper",
+            ),
+            (
+                "pe ratio", "p/e ratio", "price to earnings", "price to book",
+                "book value", "capm", "wacc", "dcf", "npv", "irr", "roi", "roe",
+                "roa", "cagr", "eps", "fcf", "gaap", "ifrs", "discounted cash flow",
+                "net present value", "internal rate of return", "return on investment",
+                "return on equity", "return on assets",
+                "weighted average cost of capital", "free cash flow",
+            ),
+            (
+                "risk management", "financial risk", "risk adjusted", "venture capital",
+                "private equity", "merger", "acquisition", "m&a", "corporate finance",
+                "business finance", "financial model", "financial modelling",
+                "financial modeling", "microfinance", "actuarial", "actuary",
+                "startup funding",
+            ),
+            (
+                "ira", "401k", "401(k)", "403b", "403(b)", "529 plan", "529", "hsa",
+                "fsa", "retirement account", "certificate of deposit",
+                "treasury bill", "t bill", "commercial paper", "cds",
+            ),
+            (
+                "aml", "kyc", "anti money laundering", "money laundering",
+                "financial crime", "fraud prevention",
+            ),
+            (
+                "inflation", "deflation", "recession", "gdp", "monetary policy",
+                "fiscal policy", "macroeconomics", "economic growth", "economy",
+                "economics", "central bank", "repo rate", "policy rate",
+            ),
+        )
+        return any(
+            re.search(
+                r"(?<![a-z0-9])(?:"
+                + "|".join(re.escape(term) for term in group)
+                + r")(?![a-z0-9])",
+                lowered,
+            )
+            for group in finance_term_groups
+        )
+
+    @staticmethod
+    def _is_greeting_or_finance_help(question: str) -> bool:
+        lowered = re.sub(r"[^a-z ]", " ", question.lower())
+        lowered = " ".join(lowered.split())
+        greetings = {
+            "hi", "hello", "hey", "good morning", "good afternoon",
+            "good evening", "thanks", "thank you",
+        }
+        help_requests = {
+            "help", "help me", "what can you do", "what can financeai do",
+            "what can you help me with", "what topics can you answer",
+            "what finance topics can you help me with",
+        }
+        return lowered in greetings or lowered in help_requests
+
+    @staticmethod
+    def _is_contextual_finance_follow_up(
+        question: str,
+        conversation: list[dict[str, str]] | None,
+    ) -> bool:
+        """Keep brief follow-ups in scope only when the prior user topic was financial."""
+        if not conversation:
+            return False
+
+        previous_user = next(
+            (
+                str(message.get("content", "")).strip()
+                for message in reversed(conversation)
+                if message.get("role") == "user" and message.get("content")
+            ),
+            "",
+        )
+        if not AIService._contains_financial_topic(previous_user):
+            return False
+
+        lowered = " ".join(question.lower().split())
+        if not lowered or len(lowered.split()) > 12:
+            return False
+
+        follow_up_patterns = (
+            r"^(why|how|what|when|where|which|who)\??$",
+            r"^(and then|and what|and how|but why|but how|what next)\??$",
+            r"^(what about|how about)\b",
+            r"^(tell me more|elaborate|clarify|explain more|explain it|explain that)\b",
+            r"^(can you|could you|please)\s+(explain|elaborate|compare|calculate|clarify|expand)\b",
+            r"^(is|are|was|were|will|would|should|can|could|does|do)\s+(it|that|this|they|those|these|one|the two)\b",
+            r"^(give me|show me)\s+(an?\s+)?(example|calculation|breakdown|comparison)\b",
+            r"^(explain|compare|calculate|expand on)\s+(it|that|this)\b",
+            r"^(why is that|how so|what do you mean|in simple terms|pros and cons)\b",
+            r"^(is it worth it|is that good|is this safe|what are the risks)\??$",
+        )
+        return any(re.search(pattern, lowered) for pattern in follow_up_patterns)
+
+    @staticmethod
+    def _is_finance_related(
+        question: str,
+        conversation: list[dict[str, str]] | None = None,
+    ) -> bool:
+        """Keep FinanceAI in scope while supporting natural conversational follow-ups."""
+        return (
+            AIService._contains_financial_topic(question)
+            or AIService._is_greeting_or_finance_help(question)
+            or AIService._is_contextual_finance_follow_up(question, conversation)
+        )
 
     @staticmethod
     def _extract_date(question: str) -> str | None:
@@ -139,7 +296,8 @@ class AIService:
             "oil": "CL=F",
         }
         for alias, symbol in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
-            if alias in lowered:
+            pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+            if re.search(pattern, lowered):
                 return symbol
         return None
 
@@ -176,8 +334,8 @@ class AIService:
             )
             if not any(term in lowered for term in analytical_terms):
                 fact_terms = (
-                    "price", "quote", "close", "open", "high", "low",
-                    "change", "down", "up", "gain", "drop", "fall",
+                    "price", "quote", "rate", "close", "open", "high", "low",
+                    "per gram", "per 10g", "change", "down", "up", "gain", "drop", "fall",
                     "today", "yesterday", "current", "now", "realtime",
                 )
                 if any(term in lowered for term in fact_terms):
@@ -194,22 +352,92 @@ class AIService:
             "latest", "today", "current", "now", "recent",
             "breaking", "news", "what happened",
         )
-        return "web_research" if any(term in lowered for term in fresh_terms) else "personal_finance"
+        if any(term in lowered for term in fresh_terms):
+            return "web_research"
+
+        # Tax rules, regulator guidance, and official policy/rate schedules
+        # change over time, so retrieve current evidence rather than relying
+        # on a model's training cutoff.
+        regulated_finance_terms = (
+            "gst", "income tax", "capital gains tax", "tax slab", "tax rate",
+            "tax deadline", "tax filing", "itr", "tds", "vat", "sebi", "rbi",
+            "repo rate", "policy rate", "fd rate", "interest rate", "insurance rule",
+            "insurance regulation", "contribution limit", "withdrawal limit",
+        )
+        if any(term in lowered for term in regulated_finance_terms):
+            return "web_research"
+
+        if AIService._needs_personal_context(question):
+            return "personal_finance"
+        return "finance_education"
 
     @staticmethod
     def _needs_personal_context(question: str) -> bool:
+        """Attach account data only for clear personal-finance or transaction questions."""
         lowered = question.lower()
-        personal_terms = (
-            "my", "me", "i ", "i'm", "i am", "budget", "transaction",
-            "expense", "spending", "saving", "income", "salary", "account",
-            "net worth", "cash flow", "financial health", "goal", "debt",
+        owned_financial_data = (
+            "finance", "finances", "money", "cash", "budget", "expense",
+            "expenses", "spending", "income", "salary", "savings", "balance",
+            "account", "accounts", "transaction", "transactions", "net worth",
+            "cash flow", "financial health", "goal", "goals", "debt", "loan",
+            "credit card", "insurance policy", "tax return", "portfolio",
+            "investment account",
         )
-        return any(term in lowered for term in personal_terms)
+        ownership_reference = re.search(
+            r"\b(my|mine|our|ours)\b",
+            lowered,
+        )
+        owned_data_reference = ownership_reference and re.search(
+            r"\b(?:"
+            + "|".join(re.escape(term) for term in owned_financial_data)
+            + r")\b",
+            lowered[ownership_reference.start():],
+        )
+        personal_money_movement = re.search(
+            r"\b(i|we)\b.{0,45}\b(spent|spend|spending|paid|received|earned|"
+            r"deposited|withdrew|transferred)\b",
+            lowered,
+        )
+        direct_question = any(
+            phrase in lowered
+            for phrase in ("for my own finances", "based on my finances", "based on our finances")
+        )
+        return bool(owned_data_reference or personal_money_movement or direct_question)
+
+    @staticmethod
+    def _market_currency(question: str) -> str:
+        """Use INR for the India-first experience unless another currency is explicit."""
+        lowered = question.lower()
+        if any(term in lowered for term in ("usd", "us dollar", "dollar", "dollars", "$")):
+            return "USD"
+        return "INR"
 
     async def _get_market_data(self, question: str) -> dict[str, Any] | None:
         market_type = self._market_type(question)
         if not market_type:
             return None
+
+        provider = get_market_provider()
+        today = date.today().isoformat()
+        target_date = self._extract_date(question)
+
+        # Ordinary gold-price questions mean international spot gold, not a
+        # COMEX futures contract. Never silently substitute futures or an old
+        # daily close when the dedicated spot feed is unavailable.
+        if market_type == "commodity":
+            lowered = question.lower()
+            futures_request = any(
+                term in lowered
+                for term in ("future", "futures", "comex", "contract")
+            )
+            if re.search(r"\bgold\b", lowered) and not futures_request:
+                if target_date not in (None, today):
+                    # Historical spot data is not supplied by the current quote feed.
+                    return None
+                return await provider.get_spot_price(
+                    "XAU",
+                    currency=self._market_currency(question),
+                )
 
         symbol = self._market_symbol(question, market_type)
         if not symbol:
@@ -223,64 +451,155 @@ class AIService:
         if not symbol:
             return None
 
-        provider = get_market_provider()
-        today = date.today().isoformat()
-        target_date = self._extract_date(question)
-
         if target_date and target_date != today:
             return await provider.get_price_on_date(symbol, target_date)
         return await provider.get_current_price(symbol)
 
     @staticmethod
+    def _format_market_money(value: Any, currency: str) -> str:
+        symbols = {
+            "INR": "₹",
+            "USD": "$",
+            "EUR": "€",
+            "GBP": "£",
+            "JPY": "¥",
+            "AED": "د.إ ",
+        }
+        amount = float(value)
+        return f"{symbols.get(currency.upper(), currency.upper() + ' ')}{amount:,.2f}"
+
+    @staticmethod
+    def _format_market_timestamp(value: Any) -> str | None:
+        if not value:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            try:
+                local_time = timestamp.astimezone(ZoneInfo("Asia/Kolkata"))
+                return local_time.strftime("%d %b %Y, %I:%M %p IST")
+            except Exception:
+                utc_time = timestamp.astimezone(timezone.utc)
+                return utc_time.strftime("%d %b %Y, %I:%M %p UTC")
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _market_fact_response(data: dict[str, Any]) -> str:
         symbol = str(data.get("symbol") or "Market")
+        currency = str(data.get("currency") or "USD").upper()
+        source = str(data.get("source") or "Market data provider")
+        quote_kind = str(data.get("quote_kind") or "unknown")
+        clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
         price = data.get("price", data.get("close"))
-        currency = str(data.get("currency") or "USD")
-        date_value = str(data.get("date") or data.get("timestamp") or "")[:10]
+
+        if price is None:
+            return "I couldn't find a valid price in the market-data response."
+
+        # Gold spot has a clear India-friendly unit. Show the equivalent
+        # 24K spot value per 10 g, while keeping the international ounce quote.
+        if clean_symbol == "XAU" and quote_kind == "spot":
+            updated = AIService._format_market_timestamp(
+                data.get("market_timestamp") or data.get("updated_at")
+            )
+            if currency == "INR" and data.get("price_per_10g") is not None:
+                headline = (
+                    "**Gold spot (24K equivalent): "
+                    f"{AIService._format_market_money(data['price_per_10g'], currency)} "
+                    "per 10 g**"
+                )
+                international = (
+                    "International spot quote: "
+                    f"{AIService._format_market_money(price, currency)} per troy ounce."
+                )
+            else:
+                headline = (
+                    "**Gold spot: "
+                    f"{AIService._format_market_money(price, currency)} "
+                    "per troy ounce**"
+                )
+                international = ""
+
+            freshness = (
+                f"Updated {updated} · [Gold API](https://gold-api.com)."
+                if updated
+                else f"Source: {source}; source timestamp unavailable."
+            )
+            return "\n\n".join(
+                part
+                for part in (
+                    headline,
+                    international,
+                    freshness,
+                    (
+                        "This is an international spot reference, not a local "
+                        "jeweller's retail rate. City premiums, purity, applicable "
+                        "taxes and making charges can change the price you pay."
+                    ),
+                )
+                if part
+            )
+
+        company = (
+            "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
+            if clean_symbol == "JPL"
+            else symbol
+        )
+        headline = (
+            f"**{company}: {AIService._format_market_money(price, currency)}**"
+        )
+
         previous_close = data.get("previous_close")
         change = data.get("change")
         change_pct = data.get("change_pct")
+        movement = ""
+        if (
+            previous_close is not None
+            and change is not None
+            and change_pct is not None
+        ):
+            direction = "Up" if float(change) > 0 else "Down"
+            if float(change) == 0:
+                movement = "Unchanged from the previous close."
+            else:
+                movement = (
+                    f"{direction} "
+                    f"{AIService._format_market_money(abs(float(change)), currency)} "
+                    f"({abs(float(change_pct)):.2f}%) versus the previous close of "
+                    f"{AIService._format_market_money(previous_close, currency)}."
+                )
 
-        if change is None or change_pct is None:
-            movement = "A previous-close comparison is not included in this quote."
-        elif float(change) > 0:
-            movement = (
-                f"It is up {abs(float(change)):.2f} "
-                f"({abs(float(change_pct)):.2f}%) from the previous close."
+        if quote_kind == "latest_daily_close":
+            session_date = str(data.get("date") or data.get("market_timestamp") or "")[:10]
+            timestamp_line = (
+                f"Latest daily close: {session_date}. This is not a live quote."
+                if session_date
+                else "Latest daily close; this is not a live quote."
             )
-        elif float(change) < 0:
-            movement = (
-                f"It is down {abs(float(change)):.2f} "
-                f"({abs(float(change_pct)):.2f}%) from the previous close."
-            )
+        elif quote_kind == "historical_daily_close":
+            session_date = str(data.get("date") or "")[:10]
+            timestamp_line = f"Historical daily close for {session_date}."
         else:
-            movement = "It is unchanged from the previous close (0.00%)."
+            updated = AIService._format_market_timestamp(
+                data.get("market_timestamp") or data.get("timestamp")
+            )
+            timestamp_line = (
+                f"Latest intraday bar: {updated}."
+                if updated
+                else "The market-data timestamp was not supplied."
+            )
 
-        clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
-        if clean_symbol == "JPL":
-            company = "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
-        else:
-            company = symbol
-        source = str(data.get("source") or "the available market-data provider")
-        quote_kind = str(data.get("quote_kind") or "latest available quote")
-        quote_date = date_value or "the latest available session"
-        response = (
-            f"According to {source}, {company} is quoted at {price} {currency} "
-            f"as of {quote_date}. {movement}"
-        )
-        details = []
-        if previous_close is not None:
-            details.append(f"The previous close was {previous_close} {currency}.")
-        if change is not None and change_pct is not None:
-            details.append(
-                f"That is a change of {change:+.2f} {currency} "
-                f"({change_pct:+.2f}%)."
+        source_line = f"Source: {source}."
+        if quote_kind == "latest_intraday_bar":
+            source_line += (
+                " Some instruments may be delayed by the data provider; "
+                "check the exchange quote before trading."
             )
-        details.append(
-            f"This is the provider's {quote_kind.replace('_', ' ')}; it may be "
-            "delayed and should be checked against the exchange quote before a trade."
+
+        return "\n\n".join(
+            part for part in (headline, movement, timestamp_line, source_line) if part
         )
-        return response + " " + " ".join(details)
 
     async def _get_market_evidence(self, question: str) -> str:
         data = await self._get_market_data(question)
@@ -351,6 +670,15 @@ class AIService:
         financial_context: dict[str, Any],
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
+        question = question.strip()
+        if not self._is_finance_related(question, conversation):
+            return (
+                "I'm FinanceAI, so I can help with finance-related questions only — "
+                "including personal finance, banking, credit and loans, insurance, "
+                "taxes, accounting, investing, financial markets, business finance, "
+                "and financial economics. Please ask me something in one of those areas."
+            )
+
         intent = self._query_intent(question)
         market_data = None
         market_evidence = ""
@@ -359,6 +687,26 @@ class AIService:
             market_data = await self._get_market_data(question)
             if intent == "market_fact" and market_data:
                 return self._market_fact_response(market_data)
+            if intent == "market_fact" and market_data is None:
+                lowered = question.lower()
+                futures_request = any(
+                    term in lowered
+                    for term in ("future", "futures", "comex", "contract")
+                )
+                if re.search(r"\bgold\b", lowered) and not futures_request:
+                    target_date = self._extract_date(question)
+                    if target_date and target_date != date.today().isoformat():
+                        return (
+                            "I couldn't verify a historical international gold spot price "
+                            "for that date. I won't substitute a COMEX futures price because "
+                            "it is a different instrument."
+                        )
+                    return (
+                        "I couldn't retrieve a fresh international gold spot quote just now. "
+                        "I won't substitute a COMEX futures contract or an older closing price. "
+                        "Please try again shortly. Local 22K/24K retail rates can also differ "
+                        "by city, taxes and making charges."
+                    )
             if market_data:
                 market_evidence = (
                     "STRUCTURED MARKET EVIDENCE\n"
@@ -502,6 +850,46 @@ class AIService:
     @staticmethod
     def _preferred_domains(question: str) -> tuple[str, ...]:
         lowered = question.lower()
+        if any(term in lowered for term in ("gst", "tds", "itr", "income tax india", "indian tax")):
+            return (
+                "incometax.gov.in",
+                "incometaxindia.gov.in",
+                "gst.gov.in",
+                "cbic.gov.in",
+                "rbi.org.in",
+                "sebi.gov.in",
+            )
+        if any(term in lowered for term in ("irs", "us tax", "u.s. tax", "federal reserve")):
+            return (
+                "irs.gov",
+                "treasury.gov",
+                "federalreserve.gov",
+                "sec.gov",
+                "finra.org",
+            )
+        if any(term in lowered for term in ("sebi", "nse", "bse", "rbi", "repo rate", "indian bank")):
+            return (
+                "sebi.gov.in",
+                "rbi.org.in",
+                "nseindia.com",
+                "bseindia.com",
+                "financialservices.gov.in",
+                "reuters.com",
+            )
+        if any(term in lowered for term in ("insurance", "irdai", "policy premium")):
+            return (
+                "irdai.gov.in",
+                "rbi.org.in",
+                "reuters.com",
+            )
+        if any(term in lowered for term in ("tax", "capital gains", "deduction")):
+            return (
+                "incometax.gov.in",
+                "irs.gov",
+                "gov.uk",
+                "oecd.org",
+                "reuters.com",
+            )
         if any(term in lowered for term in ("jio", "jpl")):
             return (
                 "nseindia.com",
@@ -656,6 +1044,13 @@ class AIService:
             "listing date",
             "ipo date",
         )
+        current_finance_topics = (
+            "gst", "income tax", "capital gains tax", "tax slab", "tax rate",
+            "tax deadline", "tax filing", "itr", "tds", "vat", "sebi", "rbi",
+            "repo rate", "policy rate", "fd rate", "interest rate",
+            "insurance regulation", "insurance rule", "contribution limit",
+            "withdrawal limit", "exchange rate",
+        )
 
         market_price_question = (
             AIService._market_type(text) is not None
@@ -668,6 +1063,7 @@ class AIService:
         if (
             query is None
             and not any(signal in lowered for signal in web_signals)
+            and not any(term in lowered for term in current_finance_topics)
             and not market_price_question
             and not market_explainer_question
         ):
@@ -820,6 +1216,27 @@ Today is {date.today().isoformat()}.
 Query intent: {intent}.
 
 Rules:
+- You are a finance-domain assistant, not a general-purpose chatbot.
+  Stay within personal finance, banking, lending, credit, insurance, tax,
+  accounting, investing, securities, markets, fintech/payments, corporate
+  finance, financial planning, and finance-related economics.
+- For an unrelated request, politely say you can help with finance topics only;
+  do not perform the unrelated task.
+- Answer the full range of finance questions, not only questions about this
+  app's budgets or transactions. Support definitions, explanations, examples,
+  comparisons, calculations, statement interpretation, risk analysis, planning,
+  and evidence-based research.
+- Do not assume every finance question is about the user's own accounts.
+  Use private financial context only when the question explicitly asks about
+  the user's or their household's finances.
+- For calculations, show the formula, assumptions, units, and result.
+  Re-check arithmetic and distinguish estimates from exact figures.
+- For recommendations, explain trade-offs, material risks, and uncertainty.
+  Never promise returns or present speculative outcomes as guaranteed.
+- For tax, legal, regulatory, banking-rate, insurance-rule, and other
+  jurisdiction-dependent questions, identify the relevant country/region
+  when known and use current authoritative sources. Ask for the jurisdiction
+  when it materially changes the answer.
 - Use supplied evidence as the source of truth.
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
