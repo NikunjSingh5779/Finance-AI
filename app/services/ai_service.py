@@ -2,9 +2,10 @@
 
 import asyncio
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
@@ -206,10 +207,38 @@ class AIService:
         )
         return any(term in lowered for term in personal_terms)
 
+    @staticmethod
+    def _market_currency(question: str) -> str:
+        """Use INR for the India-first experience unless another currency is explicit."""
+        lowered = question.lower()
+        if any(term in lowered for term in ("usd", "us dollar", "dollar", "dollars", "$")):
+            return "USD"
+        return "INR"
+
     async def _get_market_data(self, question: str) -> dict[str, Any] | None:
         market_type = self._market_type(question)
         if not market_type:
             return None
+
+        provider = get_market_provider()
+        today = date.today().isoformat()
+        target_date = self._extract_date(question)
+
+        # Ordinary gold-price questions mean international spot gold, not a
+        # COMEX futures contract. Keep futures requests on their explicit ticker.
+        if market_type == "commodity" and target_date in (None, today):
+            lowered = question.lower()
+            futures_request = any(
+                term in lowered
+                for term in ("future", "futures", "comex", "contract")
+            )
+            if "gold" in lowered and not futures_request:
+                spot = await provider.get_spot_price(
+                    "XAU",
+                    currency=self._market_currency(question),
+                )
+                if spot:
+                    return spot
 
         symbol = self._market_symbol(question, market_type)
         if not symbol:
@@ -223,64 +252,151 @@ class AIService:
         if not symbol:
             return None
 
-        provider = get_market_provider()
-        today = date.today().isoformat()
-        target_date = self._extract_date(question)
-
         if target_date and target_date != today:
             return await provider.get_price_on_date(symbol, target_date)
         return await provider.get_current_price(symbol)
 
     @staticmethod
+    def _format_market_money(value: Any, currency: str) -> str:
+        symbols = {
+            "INR": "₹",
+            "USD": "$",
+            "EUR": "€",
+            "GBP": "£",
+            "JPY": "¥",
+            "AED": "د.إ ",
+        }
+        amount = float(value)
+        return f"{symbols.get(currency.upper(), currency.upper() + ' ')}{amount:,.2f}"
+
+    @staticmethod
+    def _format_market_timestamp(value: Any) -> str | None:
+        if not value:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            local_time = timestamp.astimezone(ZoneInfo("Asia/Kolkata"))
+            return local_time.strftime("%d %b %Y, %I:%M %p IST")
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _market_fact_response(data: dict[str, Any]) -> str:
         symbol = str(data.get("symbol") or "Market")
+        currency = str(data.get("currency") or "USD").upper()
+        source = str(data.get("source") or "Market data provider")
+        quote_kind = str(data.get("quote_kind") or "unknown")
+        clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
         price = data.get("price", data.get("close"))
-        currency = str(data.get("currency") or "USD")
-        date_value = str(data.get("date") or data.get("timestamp") or "")[:10]
+
+        if price is None:
+            return "I couldn't find a valid price in the market-data response."
+
+        # Gold spot has a clear India-friendly unit. Show the equivalent
+        # 24K spot value per 10 g, while keeping the international ounce quote.
+        if clean_symbol == "XAU" and quote_kind == "spot":
+            updated = AIService._format_market_timestamp(
+                data.get("market_timestamp") or data.get("updated_at")
+            )
+            if currency == "INR" and data.get("price_per_10g") is not None:
+                headline = (
+                    "**Gold spot (24K equivalent): "
+                    f"{AIService._format_market_money(data['price_per_10g'], currency)} "
+                    "per 10 g**"
+                )
+                international = (
+                    "International spot quote: "
+                    f"{AIService._format_market_money(price, currency)} per troy ounce."
+                )
+            else:
+                headline = (
+                    "**Gold spot: "
+                    f"{AIService._format_market_money(price, currency)} "
+                    "per troy ounce**"
+                )
+                international = ""
+
+            freshness = (
+                f"Updated {updated} · {source}."
+                if updated
+                else f"Source: {source}; source timestamp unavailable."
+            )
+            return "\n\n".join(
+                part
+                for part in (
+                    headline,
+                    international,
+                    freshness,
+                    (
+                        "This is an international spot reference, not a local "
+                        "jeweller's retail rate. City premiums, purity, applicable "
+                        "taxes and making charges can change the price you pay."
+                    ),
+                )
+                if part
+            )
+
+        company = (
+            "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
+            if clean_symbol == "JPL"
+            else symbol
+        )
+        headline = (
+            f"**{company}: {AIService._format_market_money(price, currency)}**"
+        )
+
         previous_close = data.get("previous_close")
         change = data.get("change")
         change_pct = data.get("change_pct")
+        movement = ""
+        if (
+            previous_close is not None
+            and change is not None
+            and change_pct is not None
+        ):
+            direction = "Up" if float(change) > 0 else "Down"
+            if float(change) == 0:
+                movement = "Unchanged from the previous close."
+            else:
+                movement = (
+                    f"{direction} "
+                    f"{AIService._format_market_money(abs(float(change)), currency)} "
+                    f"({abs(float(change_pct)):.2f}%) versus the previous close of "
+                    f"{AIService._format_market_money(previous_close, currency)}."
+                )
 
-        if change is None or change_pct is None:
-            movement = "A previous-close comparison is not included in this quote."
-        elif float(change) > 0:
-            movement = (
-                f"It is up {abs(float(change)):.2f} "
-                f"({abs(float(change_pct)):.2f}%) from the previous close."
+        if quote_kind == "latest_daily_close":
+            session_date = str(data.get("date") or data.get("market_timestamp") or "")[:10]
+            timestamp_line = (
+                f"Latest daily close: {session_date}. This is not a live quote."
+                if session_date
+                else "Latest daily close; this is not a live quote."
             )
-        elif float(change) < 0:
-            movement = (
-                f"It is down {abs(float(change)):.2f} "
-                f"({abs(float(change_pct)):.2f}%) from the previous close."
-            )
+        elif quote_kind == "historical_daily_close":
+            session_date = str(data.get("date") or "")[:10]
+            timestamp_line = f"Historical daily close for {session_date}."
         else:
-            movement = "It is unchanged from the previous close (0.00%)."
+            updated = AIService._format_market_timestamp(
+                data.get("market_timestamp") or data.get("timestamp")
+            )
+            timestamp_line = (
+                f"Latest intraday bar: {updated}."
+                if updated
+                else "The market-data timestamp was not supplied."
+            )
 
-        clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
-        if clean_symbol == "JPL":
-            company = "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
-        else:
-            company = symbol
-        source = str(data.get("source") or "the available market-data provider")
-        quote_kind = str(data.get("quote_kind") or "latest available quote")
-        quote_date = date_value or "the latest available session"
-        response = (
-            f"According to {source}, {company} is quoted at {price} {currency} "
-            f"as of {quote_date}. {movement}"
-        )
-        details = []
-        if previous_close is not None:
-            details.append(f"The previous close was {previous_close} {currency}.")
-        if change is not None and change_pct is not None:
-            details.append(
-                f"That is a change of {change:+.2f} {currency} "
-                f"({change_pct:+.2f}%)."
+        source_line = f"Source: {source}."
+        if quote_kind == "latest_intraday_bar":
+            source_line += (
+                " Some instruments may be delayed by the data provider; "
+                "check the exchange quote before trading."
             )
-        details.append(
-            f"This is the provider's {quote_kind.replace('_', ' ')}; it may be "
-            "delayed and should be checked against the exchange quote before a trade."
+
+        return "\n\n".join(
+            part for part in (headline, movement, timestamp_line, source_line) if part
         )
-        return response + " " + " ".join(details)
 
     async def _get_market_evidence(self, question: str) -> str:
         data = await self._get_market_data(question)
