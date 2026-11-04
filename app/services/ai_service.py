@@ -78,13 +78,16 @@ class AIService:
                 "market cap", "market capitalization", "market index", "stock index",
                 "s&p 500", "dow jones", "ftse", "dax", "hang seng", "securities",
                 "derivative", "derivatives", "futures", "options", "option trading",
-                "hedging", "arbitrage", "settlement", "clearing", "margin trading",
+                "hedging", "arbitrage", "option", "call option", "put option",
+                "forward contract", "swap contract", "interest rate swap",
+                "credit default swap", "derivative contract", "settlement", "clearing",
+                "margin trading",
                 "leverage", "short selling", "short position", "long position",
                 "liquidity", "market maker", "order book", "yield", "treasury",
             ),
             (
                 "crypto", "cryptocurrency", "bitcoin", "ethereum", "forex",
-                "foreign exchange", "currency exchange", "exchange rate",
+                "foreign exchange", "currency exchange", "exchange rate", "currency",
                 "commodity", "commodities", "gold", "silver", "oil price",
             ),
             (
@@ -170,6 +173,7 @@ class AIService:
         help_requests = {
             "help", "help me", "what can you do", "what can financeai do",
             "what can you help me with", "what topics can you answer",
+            "what finance topics can you help me with",
         }
         return lowered in greetings or lowered in help_requests
 
