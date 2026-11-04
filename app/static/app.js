@@ -1885,7 +1885,9 @@
       const payload = pendingCSVImport.rows.map(({payload: row, sourceAccount}) => ({
         ...row,
         account_id: sourceAccount
-          ? (mappings[sourceAccount] ?? row.account_id ?? null)
+          ? (Object.prototype.hasOwnProperty.call(mappings, sourceAccount)
+            ? mappings[sourceAccount]
+            : (row.account_id ?? null))
           : row.account_id,
       }));
 
