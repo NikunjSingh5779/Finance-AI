@@ -355,7 +355,7 @@ class AIService:
         market_data = None
         market_evidence = ""
 
-        if intent in {"market_fact", "market_research", "market_explainer"}:
+        if intent in {"market_fact", "market_research"}:
             market_data = await self._get_market_data(question)
             if intent == "market_fact" and market_data:
                 return self._market_fact_response(market_data)
@@ -380,9 +380,9 @@ class AIService:
         web_results: list[Any] = []
         web_pages: list[Any] = []
         search_query = self._extract_web_search_query(question)
-        should_search = intent in {"ipo_research", "market_research", "web_research"} or (
-            intent == "market_fact" and market_data is None
-        )
+        should_search = intent in {
+            "ipo_research", "market_research", "market_explainer", "web_research"
+        } or (intent == "market_fact" and market_data is None)
 
         if search_query and should_search:
             preferred_domains = self._preferred_domains(question)
@@ -411,6 +411,7 @@ class AIService:
         # produced no evidence that passed entity/topic relevance checks.
         if (
             should_search
+            and intent != "market_explainer"
             and not web_results
             and not web_pages
             and not market_evidence
@@ -501,6 +502,15 @@ class AIService:
     @staticmethod
     def _preferred_domains(question: str) -> tuple[str, ...]:
         lowered = question.lower()
+        if any(term in lowered for term in ("jio", "jpl")):
+            return (
+                "nseindia.com",
+                "bseindia.com",
+                "sebi.gov.in",
+                "jio.com",
+                "ril.com",
+                "reuters.com",
+            )
         if any(
             term in lowered
             for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date", "ipo date")
@@ -652,10 +662,14 @@ class AIService:
             and any(term in lowered for term in ("price", "quote"))
             and any(term in lowered for term in ("stock", "share", "equity"))
         )
+        market_explainer_question = (
+            AIService._query_intent(text) == "market_explainer"
+        )
         if (
             query is None
             and not any(signal in lowered for signal in web_signals)
             and not market_price_question
+            and not market_explainer_question
         ):
             return None
 
@@ -698,6 +712,7 @@ class AIService:
         symbol = AIService._market_symbol(query, market_type or "")
         if (
             not is_explanatory_move
+            and not market_explainer_question
             and market_type == "stock"
             and symbol
             and any(
@@ -729,8 +744,14 @@ class AIService:
             suffix = f" {target_date}" if target_date else " today"
             return f"{symbol} price{suffix}"
 
-        if any(term in query.lower() for term in (
-            "latest", "today", "current", "now", "right now", "realtime", "real time", "recent"
+        if market_explainer_question:
+            query = (
+                f"{query} company overview stock listing status "
+                f"{datetime.now().strftime('%B %Y')}"
+            )
+        elif any(term in query.lower() for term in (
+            "latest", "today", "current", "now", "right now",
+            "realtime", "real time", "recent"
         )):
             query = f"{query} {datetime.now().strftime('%B %Y')}"
 
