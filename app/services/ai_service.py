@@ -438,7 +438,7 @@ class AIService:
         reply = response
 
         if web_results:
-            source_lines = ["\\n\\n**Sources**"]
+            source_lines = ["\n\n**Sources**"]
             for item in web_results[:5]:
                 title = getattr(item, "title", "") or "Source"
                 url = getattr(item, "url", "") or ""
@@ -447,7 +447,7 @@ class AIService:
                     label = title.replace("[", "(").replace("]", ")")
                     source_lines.append(f"- [{label}]({url})")
             if len(source_lines) > 1:
-                reply += "\\n".join(source_lines)
+                reply += "\n".join(source_lines)
 
         return reply
 
