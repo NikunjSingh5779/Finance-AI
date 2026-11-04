@@ -379,3 +379,38 @@ def test_google_news_rss_parser_extracts_publisher_and_date():
     assert "October 28" in results[0].snippet
     assert "Wed, 28 Oct 2026" in results[0].snippet
     assert results[0].source == "google_news"
+
+
+
+def test_failed_gold_spot_quote_returns_clear_unavailable_message(monkeypatch):
+    class FakeMarketProvider:
+        async def get_spot_price(self, symbol, currency="INR"):
+            assert symbol == "XAU"
+            assert currency == "INR"
+            return None
+
+        async def get_current_price(self, symbol):
+            raise AssertionError("Gold spot must not fall back to a futures ticker.")
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    class UnexpectedAIProvider:
+        def generate_response(self, prompt):
+            raise AssertionError("A missing gold quote should not be guessed by the LLM.")
+
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: FakeMarketProvider(),
+    )
+
+    reply = asyncio.run(
+        AIService(provider=UnexpectedAIProvider()).get_financial_advice(
+            "What is the gold price?",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "couldn't retrieve a fresh international gold spot quote" in reply
+    assert "won't substitute a COMEX futures contract" in reply
