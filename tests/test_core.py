@@ -424,7 +424,6 @@ def test_transaction_csv_export(client):
     assert "Books" not in income_only.text
 
 
-
 def test_transaction_csv_import_batches_and_deduplicates(client):
     first = {
         "type": "expense",
