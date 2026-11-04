@@ -22,8 +22,8 @@ def test_ipo_question_returns_clean_fallback_when_search_is_irrelevant(monkeypat
         )
     )
 
-    assert "couldn't verify" in reply.lower()
-    assert "unrelated search results" in reply.lower()
-    assert "RHP" in reply
+    assert "couldn't retrieve" in reply.lower()
+    assert "outdated date" in reply.lower()
+    assert "NSE/BSE" in reply
     assert "company, product" not in reply
     assert "Sources" not in reply
