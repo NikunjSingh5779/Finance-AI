@@ -323,7 +323,7 @@ class AIService:
                 international = ""
 
             freshness = (
-                f"Updated {updated} · {source}."
+                f"Updated {updated} · [Gold API](https://gold-api.com)."
                 if updated
                 else f"Source: {source}; source timestamp unavailable."
             )
