@@ -2,14 +2,9 @@
 
 import asyncio
 import re
+from datetime import date, datetime
 from typing import Any
 from urllib.parse import urlsplit
-
-from datetime import date, datetime
-
-
-from app.providers.market.market_data import get_market_provider
-from app.services.web_research_service import get_web_researcher
 
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
@@ -751,7 +746,7 @@ Rules:
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
 - For stock moves, compare direction and date with the structured quote before accepting the premise.
-- For IPO timelines, compare each evidenced event date with today and state whether the issue is open, closed, allotted or listed.
+- Compare IPO event dates with today; say whether the issue is open, closed, allotted or listed.
 - Date earlier-session coverage separately from today's quote; label reported causes versus speculation.
 - Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
 - Only use web pages and search results that clearly match the named entity and requested topic.
