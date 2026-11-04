@@ -223,7 +223,7 @@ def test_market_explainer_reaches_the_model_without_search(monkeypatch):
 
     assert "Jio Platforms" in reply
     assert "natural conversation" in provider.prompt
-    assert "Do not claim it is listed or unlisted" in provider.prompt
+    assert "Do not claim listing status, a current ticker, or a price" in provider.prompt
 
 
 def test_market_price_search_query_is_current_not_historical():
