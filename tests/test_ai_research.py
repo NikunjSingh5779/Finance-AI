@@ -1,5 +1,6 @@
 import asyncio
 
+from app.providers.search.duckduckgo import SearchResult
 from app.services.ai_service import AIService
 
 
@@ -76,6 +77,72 @@ def test_query_intent_routes_common_questions():
     assert AIService._query_intent("why did google stock fall today") == "market_research"
     assert AIService._query_intent("when is the Jio IPO") == "ipo_research"
     assert AIService._query_intent("how much did I spend on food") == "personal_finance"
+
+
+def test_ipo_research_builds_company_specific_retry_queries():
+    variants = AIService._research_query_variants(
+        "When is the Jio IPO? DRHP SEBI 2026",
+        "ipo_research",
+    )
+    assert len(variants) >= 1
+    assert any("Jio Platforms Limited" in query for query in variants)
+    assert any("listing date" in query.lower() for query in variants)
+
+
+def test_explanatory_market_move_search_uses_one_week_window():
+    assert AIService._research_timelimit(
+        "Why did Google stock fall today?",
+        "market_research",
+    ) == "w"
+    assert AIService._research_timelimit(
+        "What is Google's stock price today?",
+        "market_fact",
+    ) == "d"
+    assert AIService._research_timelimit(
+        "How much did I spend on food?",
+        "personal_finance",
+    ) is None
+
+
+def test_ipo_research_retries_a_broader_company_query(monkeypatch):
+    class FakeResearcher:
+        def __init__(self):
+            self.queries = []
+
+        async def search_and_fetch(self, query, **kwargs):
+            self.queries.append(query)
+            if len(self.queries) == 1:
+                return [], []
+            return [
+                SearchResult(
+                    "Jio Platforms Limited IPO dates",
+                    "https://www.jio.com/about/investor-relations/ipo/",
+                    "Jio Platforms Limited RHP and IPO timeline.",
+                )
+            ], []
+
+    class FakeProvider:
+        def generate_response(self, prompt):
+            assert "Jio Platforms Limited IPO dates" in prompt
+            return "The relevant filing confirms the IPO schedule."
+
+    researcher = FakeResearcher()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: researcher,
+    )
+
+    reply = asyncio.run(
+        AIService(provider=FakeProvider()).get_financial_advice(
+            "When is the Jio IPO?",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert len(researcher.queries) == 2
+    assert "Jio Platforms Limited" in researcher.queries[1]
+    assert "Sources" in reply
 
 
 def test_market_fact_response_is_deterministic():
