@@ -227,7 +227,11 @@ class MarketDataProvider:
             market_time = market_time.astimezone(timezone.utc)
             age_seconds = max(0.0, (now - market_time).total_seconds())
 
-            if age_seconds <= 20 * 60:
+            if (
+                age_seconds <= 20 * 60
+                and math.isfinite(float(latest["Close"]))
+                and float(latest["Close"]) > 0
+            ):
                 latest_date = session_date
                 previous_rows = [
                     row
@@ -307,6 +311,8 @@ class MarketDataProvider:
             else None
         )
         price = float(latest["Close"])
+        if not math.isfinite(price) or price <= 0:
+            return None
         change = price - previous_close if previous_close is not None else None
         change_pct = (
             change / previous_close * 100
