@@ -11,9 +11,12 @@ xai_finance_agent's DuckDuckGoTools integration.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
+import re
 from datetime import datetime
 from typing import Any
+from xml.etree import ElementTree
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +121,17 @@ class DuckDuckGoSearcher:
             logger.debug("DuckDuckGo search via httpx fallback", extra={"query": query, "results": len(results)})
             return results
 
-        logger.warning("DuckDuckGo search returned no results", extra={"query": query})
+        # DuckDuckGo can be rate-limited on hosted backends. Google News RSS is
+        # a public, keyless fallback that keeps time-sensitive questions usable.
+        results = await self._search_google_news_rss(query, max_results)
+        if results:
+            logger.info(
+                "Google News RSS fallback returned results",
+                extra={"query": query, "results": len(results)},
+            )
+            return results
+
+        logger.warning("DuckDuckGo and Google News returned no results", extra={"query": query})
         return []
 
     async def _search_library(
@@ -220,6 +233,61 @@ class DuckDuckGoSearcher:
 
         except Exception as e:
             logger.error(f"DuckDuckGo httpx fallback failed: {e}")
+            return []
+
+    async def _search_google_news_rss(
+        self,
+        query: str,
+        max_results: int = 10,
+    ) -> list[SearchResult]:
+        """Search Google News' public RSS endpoint when DuckDuckGo is unavailable."""
+        try:
+            client = await self._ensure_client()
+            response = await client.get(
+                "https://news.google.com/rss/search",
+                params={
+                    "q": query,
+                    "hl": "en-IN",
+                    "gl": "IN",
+                    "ceid": "IN:en",
+                },
+                timeout=8.0,
+            )
+            response.raise_for_status()
+            root = ElementTree.fromstring(response.content)
+            results: list[SearchResult] = []
+
+            for item in root.findall(".//item")[:max_results]:
+                title = (item.findtext("title") or "").strip()
+                url = (item.findtext("link") or "").strip()
+                description = item.findtext("description") or ""
+                snippet = html.unescape(re.sub(r"<[^>]+>", " ", description))
+                snippet = re.sub(r"\s+", " ", snippet).strip()
+                source_node = item.find("source")
+                publisher = (
+                    (source_node.text or "").strip()
+                    if source_node is not None
+                    else ""
+                )
+                published = (item.findtext("pubDate") or "").strip()
+                if publisher:
+                    snippet = f"{publisher}. {snippet}".strip()
+                if published:
+                    snippet = f"{snippet} Published: {published}".strip()
+
+                if title and url:
+                    results.append(
+                        SearchResult(
+                            title=title,
+                            url=url,
+                            snippet=snippet,
+                            source="google_news",
+                        )
+                    )
+
+            return results
+        except Exception as exc:
+            logger.warning("Google News RSS search failed: %s", exc)
             return []
 
     # ------------------------------------------------------------------
