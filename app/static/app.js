@@ -417,11 +417,11 @@
 
   function appendInlineMarkdown(parent, text) {
     const source = String(text ?? "")
-      .replace(/\\\\([*_])/g, "$1")
-      .replace(/\\\\\*/g, "**")
+      .replace(/\\([*_])/g, "$1")
+      .replace(/\\\*/g, "**")
       .replace(/\\\*/g, "*");
 
-    const pattern = /(\\[[^\\]]+\\]\\(https?:\\/\\/[^)\\s]+\\)|\\*\\*[^*]+\\*\\*|__[^_]+__|\\*[^*]+\\*|_[^_]+_|\x60[^\x60]+\x60)/g;
+    const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\x60[^\x60]+\x60)/g;
     let last = 0;
     let match;
 
@@ -432,7 +432,7 @@
 
       const token = match[0];
       let node;
-      const link = token.match(/^\\[([^\\]]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)$/);
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
       if (link) {
         node = document.createElement("a");
         node.className = "ai-source-link";
@@ -444,7 +444,7 @@
         node = document.createElement("strong");
         node.className = "ai-highlight";
         node.textContent = token.slice(2, -2);
-      } else if (token.startsWith("`")) {
+      } else if (token.startsWith("\x60")) {
         node = document.createElement("code");
         node.textContent = token.slice(1, -1);
       } else {
