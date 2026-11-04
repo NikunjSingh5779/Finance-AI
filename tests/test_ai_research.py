@@ -482,6 +482,8 @@ def test_regulated_finance_questions_trigger_current_research():
 def test_generic_finance_education_does_not_attach_private_account_context():
     assert not AIService._needs_personal_context("Explain compound interest")
     assert AIService._needs_personal_context("How should I invest my savings?")
+    assert not AIService._needs_personal_context("How do I invest in index funds?")
+    assert AIService._needs_personal_context("How much did I spend on food this month?")
 
 
 def test_unrelated_question_is_declined_without_calling_the_ai_provider():
