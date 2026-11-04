@@ -32,7 +32,6 @@ class AIService:
         return get_ai_providers()
 
     @staticmethod
-    @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
         if re.search(r"\b(gold|silver|crude oil|oil price|commodity|commodities)\b", lowered):
@@ -51,6 +50,7 @@ class AIService:
             return "stock"
         return None
 
+    @staticmethod
     def _contains_financial_topic(text: str) -> bool:
         """Recognize a broad range of personal, business, and market-finance topics."""
         lowered = " ".join(text.lower().split())
@@ -86,7 +86,6 @@ class AIService:
         }
         return lowered in greetings or lowered in help_requests
 
-    @staticmethod
     @staticmethod
     def _is_contextual_finance_follow_up(
         question: str,
@@ -125,6 +124,7 @@ class AIService:
         )
         return any(re.search(pattern, lowered) for pattern in follow_up_patterns)
 
+    @staticmethod
     def _is_finance_related(
         question: str,
         conversation: list[dict[str, str]] | None = None,
