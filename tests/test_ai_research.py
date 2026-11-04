@@ -525,4 +525,3 @@ def test_general_finance_question_uses_finance_education_prompt_without_private_
     assert "Query intent: finance_education" in provider.prompt
     assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
     assert "Private purchase" not in provider.prompt
-
