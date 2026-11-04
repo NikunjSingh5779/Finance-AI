@@ -209,6 +209,7 @@ class MarketDataProvider:
             logger.debug("Intraday quote unavailable for %s: %s", symbol, exc)
 
         now = datetime.now(timezone.utc)
+        daily = None
         if intraday is not None and not intraday.empty:
             latest = intraday.iloc[-1]
             raw_index = intraday.index[-1]
@@ -225,28 +226,43 @@ class MarketDataProvider:
             if market_time.tzinfo is None:
                 market_time = market_time.replace(tzinfo=timezone.utc)
             market_time = market_time.astimezone(timezone.utc)
-            age_seconds = max(0.0, (now - market_time).total_seconds())
+            raw_age_seconds = (now - market_time).total_seconds()
+            age_seconds = max(0.0, raw_age_seconds)
 
             if (
-                age_seconds <= 20 * 60
+                raw_age_seconds >= -120
+                and age_seconds <= 20 * 60
                 and math.isfinite(float(latest["Close"]))
                 and float(latest["Close"]) > 0
             ):
                 latest_date = session_date
-                previous_rows = [
-                    row
-                    for index, row in intraday.iloc[:-1].iterrows()
-                    if (
-                        index.date()
-                        if hasattr(index, "date")
-                        else date.fromisoformat(str(index)[:10])
-                    ) < latest_date
-                ]
-                previous_close = (
-                    float(previous_rows[-1]["Close"])
-                    if previous_rows
-                    else None
-                )
+                try:
+                    daily = ticker.history(
+                        period="5d",
+                        interval="1d",
+                        auto_adjust=False,
+                        timeout=6,
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "Previous daily close unavailable for %s: %s",
+                        symbol,
+                        exc,
+                    )
+                    daily = None
+
+                previous_close = None
+                if daily is not None and not daily.empty:
+                    for index, row in daily.iterrows():
+                        daily_date = (
+                            index.date()
+                            if hasattr(index, "date")
+                            else date.fromisoformat(str(index)[:10])
+                        )
+                        if daily_date < latest_date:
+                            candidate = float(row["Close"])
+                            if math.isfinite(candidate) and candidate > 0:
+                                previous_close = candidate
                 price = float(latest["Close"])
                 change = (
                     price - previous_close
@@ -290,16 +306,21 @@ class MarketDataProvider:
                 }
 
         # If the intraday feed is closed or stale, report a dated daily close.
-        try:
-            daily = ticker.history(
-                period="5d",
-                interval="1d",
-                auto_adjust=False,
-                timeout=6,
-            )
-        except Exception as exc:
-            logger.debug("Daily-close fallback unavailable for %s: %s", symbol, exc)
-            daily = None
+        if daily is None:
+            try:
+                daily = ticker.history(
+                    period="5d",
+                    interval="1d",
+                    auto_adjust=False,
+                    timeout=6,
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Daily-close fallback unavailable for %s: %s",
+                    symbol,
+                    exc,
+                )
+                daily = None
 
         if daily is None or daily.empty:
             return None
