@@ -57,6 +57,112 @@ class TransactionRepository:
         ).fetchone()
         return row is not None
 
+    @staticmethod
+    def import_fingerprint(transaction: TransactionCreate) -> tuple:
+        """Return the five-field fingerprint used by CSV imports."""
+        return (
+            transaction.type,
+            float(transaction.amount),
+            transaction.description,
+            transaction.category,
+            transaction.date,
+        )
+
+    def find_existing_import_fingerprints(
+        self,
+        transactions: list[TransactionCreate],
+    ) -> set[tuple]:
+        """Find existing import duplicates with batched tuple lookups."""
+        existing: set[tuple] = set()
+        query_batch_size = 100
+
+        for start in range(0, len(transactions), query_batch_size):
+            batch = transactions[start : start + query_batch_size]
+            if not batch:
+                continue
+            row_placeholders = ", ".join(["(?, ?, ?, ?, ?)"] * len(batch))
+            params = tuple(
+                value
+                for transaction in batch
+                for value in self.import_fingerprint(transaction)
+            )
+            rows = self.conn.execute(
+                """
+                SELECT type, amount, description, category, date
+                FROM transactions
+                WHERE (type, amount, description, category, date)
+                IN ("""
+                + row_placeholders
+                + ")",
+                params,
+            ).fetchall()
+            existing.update(
+                (
+                    row["type"],
+                    float(row["amount"]),
+                    row["description"],
+                    row["category"],
+                    row["date"],
+                )
+                for row in rows
+            )
+
+        return existing
+
+    def existing_account_ids(self, account_ids: list[int]) -> set[int]:
+        """Resolve valid account IDs once per import batch, respecting RLS."""
+        unique_ids = sorted(
+            {int(account_id) for account_id in account_ids if account_id is not None}
+        )
+        existing: set[int] = set()
+
+        for start in range(0, len(unique_ids), 500):
+            batch = unique_ids[start : start + 500]
+            placeholders = ", ".join(["?"] * len(batch))
+            rows = self.conn.execute(
+                f"SELECT id FROM accounts WHERE id IN ({placeholders})",
+                tuple(batch),
+            ).fetchall()
+            existing.update(int(row["id"]) for row in rows)
+
+        return existing
+
+    def create_many_for_import(
+        self,
+        transactions: list[TransactionCreate],
+    ) -> list[TransactionOut]:
+        """Insert an import chunk in one statement and one commit."""
+        if not transactions:
+            return []
+
+        values_sql = ", ".join(["(?, ?, ?, ?, ?, ?)"] * len(transactions))
+        params = tuple(
+            value
+            for transaction in transactions
+            for value in (
+                transaction.type,
+                transaction.amount,
+                transaction.description,
+                transaction.category,
+                transaction.date,
+                transaction.account_id,
+            )
+        )
+        rows = self.conn.execute(
+            """
+            INSERT INTO transactions
+                (type, amount, description, category, date, account_id)
+            VALUES """
+            + values_sql
+            + """
+            RETURNING id, type, amount, description, category, date, created, account_id
+            """,
+            params,
+        ).fetchall()
+        created = [TransactionOut(**dict(row)) for row in rows]
+        self.conn.commit()
+        return created
+
     def get(self, transaction_id: int) -> Optional[TransactionOut]:
         row = self.conn.execute(
             "SELECT * FROM transactions WHERE id = ?",

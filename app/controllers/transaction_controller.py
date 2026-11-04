@@ -1,11 +1,15 @@
 import csv
 from io import StringIO
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.core.database import get_db
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionOut,
+    TransactionUpdate,
+)
 from app.repositories.transaction_repository import TransactionRepository
 from app.services.transaction_service import TransactionService
 
@@ -135,37 +139,108 @@ def delete_transaction(txn_id: int):
 
 @router.post("/import", status_code=201)
 def import_transactions(txns: list[TransactionCreate]):
-    if len(txns) > 1000:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=413, detail="Import is limited to 1,000 rows per request.")
+    max_import_rows = 5000
+    import_batch_size = 100
+    if len(txns) > max_import_rows:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Import is limited to {max_import_rows:,} rows per request."
+            ),
+        )
 
     conn = get_db()
     try:
         service = _service(conn)
+        repository = service.repository
         created = []
         errors = []
         duplicates = []
 
-        for index, txn in enumerate(txns):
-            try:
-                if service.repository.is_import_duplicate(txn):
+        for batch_start in range(0, len(txns), import_batch_size):
+            batch = txns[batch_start : batch_start + import_batch_size]
+            duplicate_start = len(duplicates)
+            error_start = len(errors)
+
+            existing_fingerprints = (
+                repository.find_existing_import_fingerprints(batch)
+            )
+            account_ids = [
+                transaction.account_id
+                for transaction in batch
+                if transaction.account_id is not None
+            ]
+            valid_account_ids = repository.existing_account_ids(account_ids)
+
+            accepted = []
+            seen_in_batch = set()
+            for offset, txn in enumerate(batch):
+                index = batch_start + offset
+                fingerprint = repository.import_fingerprint(txn)
+
+                if (
+                    fingerprint in existing_fingerprints
+                    or fingerprint in seen_in_batch
+                ):
                     duplicates.append({
                         "index": index,
                         "description": txn.description,
                         "date": txn.date,
                     })
                     continue
-                created.append(service.create_transaction(txn).model_dump())
-            except Exception as exc:
-                # A failed PostgreSQL statement aborts its transaction. Roll it
-                # back before processing the next row; the session-scoped
-                # authenticated role/claims remain attached to this connection.
+
+                if (
+                    txn.account_id is not None
+                    and txn.account_id not in valid_account_ids
+                ):
+                    errors.append({
+                        "index": index,
+                        "error": (
+                            f"Account with id {txn.account_id} does not exist"
+                        ),
+                        "transaction": txn.model_dump(),
+                    })
+                    continue
+
+                seen_in_batch.add(fingerprint)
+                accepted.append(txn)
+
+            if not accepted:
+                continue
+
+            try:
+                created_rows = repository.create_many_for_import(accepted)
+                created.extend(
+                    transaction.model_dump() for transaction in created_rows
+                )
+            except Exception:
+                # A database constraint/trigger can still reject a whole
+                # statement. Fall back to the legacy row-by-row path for this
+                # chunk so valid rows are retained and precise errors returned.
                 conn.rollback()
-                errors.append({
-                    "index": index,
-                    "error": str(exc),
-                    "transaction": txn.model_dump(),
-                })
+                del duplicates[duplicate_start:]
+                del errors[error_start:]
+
+                for offset, txn in enumerate(batch):
+                    index = batch_start + offset
+                    try:
+                        if repository.is_import_duplicate(txn):
+                            duplicates.append({
+                                "index": index,
+                                "description": txn.description,
+                                "date": txn.date,
+                            })
+                            continue
+                        created.append(
+                            service.create_transaction(txn).model_dump()
+                        )
+                    except Exception as exc:
+                        conn.rollback()
+                        errors.append({
+                            "index": index,
+                            "error": str(exc),
+                            "transaction": txn.model_dump(),
+                        })
 
         return {
             "created": created,

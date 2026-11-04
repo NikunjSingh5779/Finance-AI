@@ -36,6 +36,69 @@
     edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5"/><path d="M4 20l4.5-1 10.8-10.8a2.1 2.1 0 0 0-3-3L5.5 16 4 20Z"/></svg>'
   });
 
+  const CATEGORY_EMOJIS = Object.freeze({
+    bills: "💳",
+    education: "🎓",
+    entertainment: "🎮",
+    food: "🍽️",
+    food_drink: "🍽️",
+    food_delivery: "🍔",
+    groceries: "🛒",
+    grocery: "🛒",
+    gifts: "🎁",
+    health: "💊",
+    medical: "💊",
+    miscellaneous: "📦",
+    personal_care: "🧴",
+    rent: "🏠",
+    housing: "🏠",
+    salary: "💵",
+    income: "💰",
+    savings: "🐷",
+    shopping: "🛍️",
+    subscriptions: "📺",
+    transport: "🚗",
+    travel: "✈️",
+    utilities: "⚡",
+    utility: "⚡",
+    investment: "📈",
+    insurance: "🛡️",
+    loan: "🏦",
+    fuel: "⛽",
+    pets: "🐾",
+    childcare: "🧸",
+    taxes: "🧾",
+    uncategorized: "🧾"
+  });
+
+  function getCategoryEmoji(category, type = "expense") {
+    const key = String(category || "")
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    if (CATEGORY_EMOJIS[key]) return CATEGORY_EMOJIS[key];
+
+    if (/grocery|groceries|supermarket|produce/.test(key)) return "🛒";
+    if (/food|restaurant|dining|cafe|coffee|meal/.test(key)) return "🍽️";
+    if (/health|medical|doctor|pharmacy|dental|hospital/.test(key)) return "💊";
+    if (/travel|flight|airfare|hotel|holiday|vacation/.test(key)) return "✈️";
+    if (/utility|electric|water|internet|mobile|recharge/.test(key)) return "⚡";
+    if (/rent|housing|home|household/.test(key)) return "🏠";
+    if (/education|school|college|course|tuition|books/.test(key)) return "🎓";
+    if (/entertainment|gaming|game|movie|streaming/.test(key)) return "🎮";
+    if (/bill|card|emi|loan|bank/.test(key)) return "💳";
+    if (/salary|payroll|wage|income|deposit/.test(key)) return "💵";
+    if (/shopping|clothes|apparel|fashion/.test(key)) return "🛍️";
+    if (/transport|fuel|petrol|diesel|cab|taxi|vehicle/.test(key)) return "🚗";
+    if (/gift|donation|charity/.test(key)) return "🎁";
+    if (/subscription/.test(key)) return "📺";
+
+    return type === "income" ? "💰" : "🧾";
+  }
+
   function setUiIcon(element, name) {
     if (element) element.innerHTML = UI_ICONS[name] || UI_ICONS.transaction;
   }
@@ -905,7 +968,9 @@
 
       const icon = document.createElement("div");
       icon.className = "budget-icon";
-      setUiIcon(icon, "budget");
+      icon.textContent = getCategoryEmoji(budget.category);
+      icon.setAttribute("role", "img");
+      icon.setAttribute("aria-label", `${budget.category} category`);
       const name = document.createElement("span");
       name.className = detailed ? "bpi-name" : "budget-name";
       name.textContent = budget.category;
@@ -1040,7 +1105,9 @@
       icon.style.background = txn.type === "income"
         ? "rgba(34,197,94,.1)"
         : `rgba(${hashColor(txn.category)},.1)`;
-      setUiIcon(icon, "transaction");
+      icon.textContent = getCategoryEmoji(txn.category, txn.type);
+      icon.setAttribute("role", "img");
+      icon.setAttribute("aria-label", `${txn.category || "Transaction"} category`);
 
       const info = document.createElement("div");
       info.className = "txn-info";
@@ -1107,7 +1174,9 @@
       icon.style.background = txn.type === "income"
         ? "rgba(34,197,94,.1)"
         : `rgba(${hashColor(txn.category)},.1)`;
-      setUiIcon(icon, "transaction");
+      icon.textContent = getCategoryEmoji(txn.category, txn.type);
+      icon.setAttribute("role", "img");
+      icon.setAttribute("aria-label", `${txn.category || "Transaction"} category`);
 
       const info = document.createElement("div");
       info.className = "txn-info";
@@ -1959,7 +2028,7 @@
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
       });
-      await refreshAll();
+      await Promise.all([loadTransactions(), loadAccounts(), loadSummary()]);
 
       const imported = Number(result.imported || 0);
       const duplicates = Number(result.duplicate_count || result.duplicates?.length || 0);
