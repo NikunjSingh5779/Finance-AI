@@ -527,3 +527,90 @@ def test_general_finance_question_uses_finance_education_prompt_without_private_
     assert "Query intent: finance_education" in provider.prompt
     assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
     assert "Private purchase" not in provider.prompt
+
+
+def test_personal_finance_overview_prompt_uses_structured_markdown_layout():
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "## Financial Overview\\n- **Monthly Income:** ₹100,000"
+
+    provider = CapturingProvider()
+    reply = asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "How is my financial health?",
+            financial_context={
+                "summary": {
+                    "income": 100000,
+                    "expense": 30000,
+                    "balance": 70000,
+                    "savings_rate": 70,
+                    "category_totals": {
+                        "groceries": 10000,
+                        "rent": 20000,
+                    },
+                },
+                "recent_transactions": [
+                    {
+                        "date": "2026-11-04",
+                        "description": "Grocery store",
+                        "category": "groceries",
+                        "type": "expense",
+                        "amount": 10000,
+                    }
+                ],
+                "budgets": [
+                    {"category": "groceries", "limit_amt": 20000},
+                    {"category": "rent", "limit_amt": 25000},
+                ],
+                "period": {
+                    "start_date": "2026-11-01",
+                    "end_date": "2026-11-05",
+                },
+            },
+            conversation=[],
+        )
+    )
+
+    assert "Financial Overview" in reply
+    assert "## Financial Overview" in provider.prompt
+    assert "## Recent Spending (2026-11-01 to 2026-11-05)" in provider.prompt
+    assert "| Category | Amount | Monthly Budget | % of Budget Used |" in provider.prompt
+    assert (
+        "groceries: ₹10000.00 spent; monthly budget ₹20000.00; "
+        "budget used 50.0%"
+    ) in provider.prompt
+    assert (
+        "rent: ₹20000.00 spent; monthly budget ₹25000.00; "
+        "budget used 80.0%"
+    ) in provider.prompt
+    assert "Do not return the report as plain paragraphs" in provider.prompt
+
+
+def test_personal_finance_report_format_does_not_leak_into_general_finance_education():
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "Compound interest earns interest on accumulated interest."
+
+    provider = CapturingProvider()
+    asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "Explain compound interest",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000},
+                "recent_transactions": [
+                    {"description": "Private purchase", "amount": 999}
+                ],
+            },
+            conversation=[],
+        )
+    )
+
+    assert "FINANCE EDUCATION / RESEARCH RESPONSE FORMAT" in provider.prompt
+    assert "PERSONAL FINANCIAL OVERVIEW RESPONSE FORMAT" not in provider.prompt
+    assert "Private purchase" not in provider.prompt
