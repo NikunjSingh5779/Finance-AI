@@ -277,8 +277,12 @@ class AIService:
             timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
-            local_time = timestamp.astimezone(ZoneInfo("Asia/Kolkata"))
-            return local_time.strftime("%d %b %Y, %I:%M %p IST")
+            try:
+                local_time = timestamp.astimezone(ZoneInfo("Asia/Kolkata"))
+                return local_time.strftime("%d %b %Y, %I:%M %p IST")
+            except Exception:
+                utc_time = timestamp.astimezone(timezone.utc)
+                return utc_time.strftime("%d %b %Y, %I:%M %p UTC")
         except (TypeError, ValueError):
             return None
 
