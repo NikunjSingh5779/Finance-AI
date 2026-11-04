@@ -177,8 +177,8 @@ class AIService:
             )
             if not any(term in lowered for term in analytical_terms):
                 fact_terms = (
-                    "price", "quote", "close", "open", "high", "low",
-                    "change", "down", "up", "gain", "drop", "fall",
+                    "price", "quote", "rate", "close", "open", "high", "low",
+                    "per gram", "per 10g", "change", "down", "up", "gain", "drop", "fall",
                     "today", "yesterday", "current", "now", "realtime",
                 )
                 if any(term in lowered for term in fact_terms):
