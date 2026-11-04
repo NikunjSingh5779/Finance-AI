@@ -184,8 +184,11 @@ def test_intraday_change_uses_official_daily_close_not_previous_extended_hours_b
         index=daily_index,
     )
 
+    history_calls = []
+
     class FakeTicker:
         def history(self, period, interval, **kwargs):
+            history_calls.append((interval, kwargs))
             return intraday if interval == "5m" else daily
 
     monkeypatch.setattr(yf, "Ticker", lambda symbol: FakeTicker())
@@ -197,3 +200,36 @@ def test_intraday_change_uses_official_daily_close_not_previous_extended_hours_b
     assert result["previous_close"] == 99.0
     assert result["change"] == 2.0
     assert round(result["change_pct"], 2) == 2.02
+    intraday_options = next(kwargs for interval, kwargs in history_calls if interval == "5m")
+    assert intraday_options["prepost"] is False
+
+
+
+def test_gold_spot_failure_does_not_fall_back_to_comex_futures(monkeypatch):
+    class FakeMarketProvider:
+        def __init__(self):
+            self.spot_calls = []
+            self.quote_calls = []
+
+        async def get_spot_price(self, symbol, currency="INR"):
+            self.spot_calls.append((symbol, currency))
+            return None
+
+        async def get_current_price(self, symbol):
+            self.quote_calls.append(symbol)
+            return {"symbol": symbol, "price": 123.0}
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    provider = FakeMarketProvider()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: provider,
+    )
+
+    result = asyncio.run(AIService()._get_market_data("what is the gold price"))
+
+    assert result is None
+    assert provider.spot_calls == [("XAU", "INR")]
+    assert provider.quote_calls == []
