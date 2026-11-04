@@ -39,7 +39,7 @@ fs.writeFileSync(
     "  X-Frame-Options: SAMEORIGIN",
     "  Permissions-Policy: camera=(), microphone=()",
     "",
-  ].join("\\n"),
+  ].join("\n"),
   "utf8"
 );
 
