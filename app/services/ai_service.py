@@ -740,8 +740,8 @@ Rules:
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
 - For stock moves, compare direction and date with the structured quote before accepting the premise.
-- When coverage describes an earlier session, state its date separately from today's quote and distinguish reported causes from speculation.
-- For IPO dates, prefer issuer, SEBI, NSE and BSE filings; treat IPO, DRHP, RHP, prospectus, allotment and listing as related terms.
+- Date earlier-session coverage separately from today's quote; label reported causes versus speculation.
+- Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say it could not be verified; do not fill the gap with guesses.
