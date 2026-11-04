@@ -418,7 +418,7 @@
   function appendInlineMarkdown(parent, text) {
     const source = String(text ?? "")
       .replace(/\\([*_])/g, "$1")
-      .replace(/\\\*/g, "**")
+      .replace(/\\\*\\\*/g, "**")
       .replace(/\\\*/g, "*");
 
     const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\x60[^\x60]+\x60)/g;
