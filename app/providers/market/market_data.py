@@ -201,7 +201,7 @@ class MarketDataProvider:
             intraday = ticker.history(
                 period="5d",
                 interval="5m",
-                prepost=True,
+                prepost=False,
                 auto_adjust=False,
                 timeout=6,
             )
