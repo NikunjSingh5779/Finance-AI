@@ -1167,6 +1167,14 @@ class AIService:
         summary = context.get("summary", {})
         recent = context.get("recent_transactions", [])[:8]
         budgets = context.get("budgets", [])[:10]
+        period = context.get("period") or {}
+        period_start = str(period.get("start_date") or "")
+        period_end = str(period.get("end_date") or "")
+        period_label = (
+            f"{period_start} to {period_end}"
+            if period_start and period_end
+            else "the current reporting period"
+        )
 
         recent_text = "\n".join(
             f"- {item.get('date')}: {item.get('description')} | "
@@ -1174,6 +1182,44 @@ class AIService:
             f"₹{item.get('amount')}"
             for item in recent
         ) or "- No recent transactions"
+
+        budget_limits: dict[str, float] = {}
+        for item in budgets:
+            category = str(item.get("category") or "").strip()
+            if not category:
+                continue
+            try:
+                budget_limits[category.casefold()] = float(item.get("limit_amt") or 0)
+            except (TypeError, ValueError):
+                continue
+
+        category_totals = summary.get("category_totals") or {}
+        category_lines: list[str] = []
+        if isinstance(category_totals, dict):
+            sorted_categories = sorted(
+                category_totals.items(),
+                key=lambda item: float(item[1] or 0),
+                reverse=True,
+            )
+            for category, raw_spend in sorted_categories[:10]:
+                try:
+                    spent = float(raw_spend or 0)
+                except (TypeError, ValueError):
+                    continue
+                limit = budget_limits.get(str(category).strip().casefold())
+                if limit is not None and limit > 0:
+                    usage = f"{spent / limit * 100:.1f}%"
+                    budget_value = f"₹{limit:.2f}"
+                else:
+                    usage = "not available (no positive budget limit)"
+                    budget_value = "not set"
+                category_lines.append(
+                    f"- {category}: ₹{spent:.2f} spent; "
+                    f"monthly budget {budget_value}; budget used {usage}"
+                )
+        category_spending_text = "\n".join(category_lines) or (
+            "- No category spending totals available"
+        )
 
         budget_text = "\n".join(
             f"- {item.get('category')}: ₹{item.get('limit_amt')}/month"
@@ -1195,12 +1241,19 @@ class AIService:
 
         personal_section = (
             f"""CURRENT PERIOD FINANCIAL SUMMARY
+Reporting period: {period_label}
 Income: ₹{summary.get('income', 0):.2f}
 Expenses: ₹{summary.get('expense', 0):.2f}
 Net cash flow: ₹{summary.get('balance', 0):.2f}
 Savings rate: {summary.get('savings_rate', 0):.1f}%
 
-RECENT TRANSACTIONS
+CATEGORY SPENDING TOTALS
+These are authoritative, aggregated expense totals for the reporting period.
+Use these figures for the spending table; do not estimate category totals from
+the shorter recent-transactions sample.
+{category_spending_text}
+
+RECENT TRANSACTIONS (examples only)
 {recent_text}
 
 BUDGETS
@@ -1210,6 +1263,66 @@ BUDGETS
             if include_financial_context
             else ""
         )
+
+        lowered_question = question.lower()
+        overview_terms = (
+            "financial health",
+            "spending analysis",
+            "spending breakdown",
+            "budget overview",
+            "financial overview",
+            "financial summary",
+            "analyze my finances",
+            "analyse my finances",
+            "how am i doing financially",
+            "overall financial",
+        )
+        is_personal_overview = include_financial_context and any(
+            term in lowered_question for term in overview_terms
+        )
+
+        if is_personal_overview:
+            response_format = f"""PERSONAL FINANCIAL OVERVIEW RESPONSE FORMAT
+The user is asking for an assessment or analysis of their own finances. Match
+this clean, structured Markdown layout every time:
+1. Begin with one brief sentence giving the overall assessment.
+2. Add the heading "## Financial Overview".
+3. Show these metrics as a compact bullet list, using bold labels:
+   - **Monthly Income**
+   - **Period Expenses**
+   - **Net Cash Flow**
+   - **Savings Rate**
+   Use the supplied values exactly and format INR amounts clearly.
+4. Add the heading "## Recent Spending ({period_label})".
+5. Add a Markdown table with exactly these columns:
+   | Category | Amount | Monthly Budget | % of Budget Used |
+   Populate it from CATEGORY SPENDING TOTALS. Use the supplied spend, budget,
+   and usage values. Use an em dash when no positive budget exists. Do not
+   invent categories, amounts, limits, percentages, or missing transactions.
+6. Add "## What This Means" with two or three concise, evidence-based bullets
+   explaining the user's cash flow, savings rate, and largest spending areas.
+7. Add "## Recommended Actions" with up to three practical actions when useful.
+   Do not pad the report with generic advice or repeat the metric list.
+Use Markdown headings, bold text, bullets, and a real pipe-delimited Markdown
+table. Do not return the report as plain paragraphs or as a code block.
+"""
+        elif include_financial_context:
+            response_format = """PERSONAL FINANCE RESPONSE FORMAT
+Use Markdown formatting rather than a wall of prose. Answer the precise
+question first. Present relevant account figures as concise bullets with bold
+labels, show calculations when useful, and use a Markdown table for a genuine
+category or period comparison. Only include personal figures supplied in the
+financial context; do not add unrelated overview sections to a narrow question.
+"""
+        else:
+            response_format = """FINANCE EDUCATION / RESEARCH RESPONSE FORMAT
+Use readable Markdown structure. Answer directly first, then use short
+headings, bullets, numbered steps, or a comparison table where they materially
+improve clarity. Keep explanations complete but avoid a single long paragraph.
+For current or regulated facts, clearly label dates, jurisdiction, uncertainty,
+and supporting sources. Do not force a personal-finance summary into a general
+finance answer.
+"""
 
         return f"""You are FinanceAI.
 Today is {date.today().isoformat()}.
@@ -1249,16 +1362,14 @@ Rules:
 - If relevant evidence is unavailable, clearly say what could not be verified; do not fill the gap with guesses.
 - For market explainers, explain the company/security in plain language.
   Do not claim listing status, a current ticker, or a price without supplied evidence.
-- Reply like a knowledgeable finance assistant in a natural conversation,
-  not like a compressed report template.
-- Answer directly first, then explain the important context and why it matters.
-- Use complete sentences and short paragraphs. Use bullets for timelines,
-  comparisons, or multiple distinct points, not by default.
-- For explanatory questions, usually provide around 150–250 words.
-  Simple factual answers can be shorter.
-- Avoid forced Summary/Key points/Next step headings unless they improve clarity.
-- Do not repeat the user's question.
+- Answer directly first and explain the important context and why it matters.
+- Keep the tone natural and conversational; write in a natural conversation style.
+- Use complete sentences. Keep paragraphs concise and avoid repeating the question.
+- For explanatory questions, provide enough detail to answer fully; simple facts
+  can be brief and complex topics can be longer.
+- Do not claim that an answer is complete when evidence is missing.
 
+{response_format}
 {personal_section}CONVERSATION HISTORY
 {history_text}
 
