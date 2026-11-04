@@ -59,7 +59,7 @@ class TransactionRepository:
 
     @staticmethod
     def import_fingerprint(transaction: TransactionCreate) -> tuple:
-        """Return the same five-field fingerprint used by legacy CSV imports."""
+        """Return the five-field fingerprint used by CSV imports."""
         return (
             transaction.type,
             float(transaction.amount),
@@ -111,7 +111,9 @@ class TransactionRepository:
 
     def existing_account_ids(self, account_ids: list[int]) -> set[int]:
         """Resolve valid account IDs once per import batch, respecting RLS."""
-        unique_ids = sorted({int(account_id) for account_id in account_ids if account_id is not None})
+        unique_ids = sorted(
+            {int(account_id) for account_id in account_ids if account_id is not None}
+        )
         existing: set[int] = set()
 
         for start in range(0, len(unique_ids), 500):
