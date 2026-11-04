@@ -265,7 +265,91 @@
     window.location.reload();
   }
 
+  function base64UrlEncode(bytes) {
+    let binary = "";
+    bytes.forEach(value => { binary += String.fromCharCode(value); });
+    return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  }
+
+  async function signInWithGoogle() {
+    const button = $("auth-google");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Connecting to Google…";
+    }
+
+    try {
+      if (!window.crypto?.subtle || !window.crypto?.getRandomValues) {
+        throw new Error("This browser does not support secure Google sign-in.");
+      }
+
+      const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+      const verifier = base64UrlEncode(verifierBytes);
+      const challengeDigest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(verifier),
+      );
+      const challenge = base64UrlEncode(new Uint8Array(challengeDigest));
+
+      sessionStorage.setItem("financeai.google.pkce.verifier", verifier);
+      const result = await authRequest("/auth/google/start", {
+        code_challenge: challenge,
+      });
+      if (!result.url) throw new Error("Supabase did not return a Google authorization URL.");
+      window.location.assign(result.url);
+    } catch (error) {
+      sessionStorage.removeItem("financeai.google.pkce.verifier");
+      showAuthError(error instanceof Error ? error.message : "Google sign-in could not be started.");
+      if (button) {
+        button.disabled = false;
+        button.innerHTML = '<span class="google-symbol" aria-hidden="true">G</span> Continue with Google';
+      }
+    }
+  }
+
+  async function handleGoogleOAuthCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const oauthCode = params.get("code");
+    const oauthError = params.get("error_description") || params.get("error");
+
+    if (!oauthCode && !oauthError) return false;
+
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, document.title, cleanUrl);
+
+    if (oauthError) {
+      sessionStorage.removeItem("financeai.google.pkce.verifier");
+      showAuthScreen(oauthError);
+      return true;
+    }
+
+    const verifier = sessionStorage.getItem("financeai.google.pkce.verifier");
+    sessionStorage.removeItem("financeai.google.pkce.verifier");
+    if (!verifier) {
+      showAuthScreen("Google sign-in expired. Please try again.");
+      return true;
+    }
+
+    try {
+      const result = await authRequest("/auth/google/exchange", {
+        auth_code: oauthCode,
+        code_verifier: verifier,
+      });
+      if (!result.access_token || !result.refresh_token) {
+        throw new Error("Google sign-in completed without a FinanceAI session.");
+      }
+      setAuthSession(result);
+      showAppShell();
+      init();
+    } catch (error) {
+      showAuthScreen(error instanceof Error ? error.message : "Google sign-in failed.");
+    }
+    return true;
+  }
+
   async function initAuth() {
+    if (await handleGoogleOAuthCallback()) return;
+
     try {
       const response = await fetch(API + "/auth/config");
       if (!response.ok) throw new Error("Cannot load authentication configuration.");
@@ -2508,6 +2592,7 @@
 
   $("auth-form")?.addEventListener("submit", submitAuth);
   $("auth-toggle")?.addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  $("auth-google")?.addEventListener("click", signInWithGoogle);
   $("logout-btn")?.addEventListener("click", logout);
   setAuthMode("login");
 
