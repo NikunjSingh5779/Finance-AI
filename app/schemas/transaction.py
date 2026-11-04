@@ -80,4 +80,13 @@ class TransactionUpdate(BaseModel):
 
 class TransactionOut(TransactionBase):
     id: int
-    created: str
+    created: str | None
+
+    @field_validator("created", mode="before")
+    @classmethod
+    def normalize_created(cls, value: str | datetime | None) -> str | None:
+        # SQLite returns timestamp strings, while psycopg returns datetime objects.
+        # Normalize both backends to the same API representation.
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
