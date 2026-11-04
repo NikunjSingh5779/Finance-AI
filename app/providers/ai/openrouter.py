@@ -5,7 +5,11 @@ import os
 
 import requests
 
-from .base import AIProvider
+from .base import (
+    AIProvider,
+    expanded_output_token_limit,
+    get_output_token_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,32 +76,65 @@ class OpenRouterProvider(AIProvider):
             models.append("openrouter/free")
 
         failures: list[str] = []
+        initial_budget = get_output_token_limit(
+            "OPENROUTER_MAX_OUTPUT_TOKENS"
+        )
+
+        def request_model(model: str, token_budget: int) -> tuple[str, bool]:
+            response = self.session.post(
+                f"{self.base_url}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": token_budget,
+                    "temperature": 0.7,
+                },
+                timeout=45,
+            )
+            if not response.ok:
+                body = response.text[:300].replace("\n", " ")
+                raise RuntimeError(
+                    f"HTTP {response.status_code}: {body}"
+                )
+
+            data = response.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise RuntimeError("OpenRouter returned no completion choices")
+
+            choice = choices[0]
+            content = choice.get("message", {}).get("content", "")
+            if not isinstance(content, str) or not content.strip():
+                raise RuntimeError("OpenRouter returned an empty response")
+
+            finish_reason = str(choice.get("finish_reason") or "").lower()
+            truncated = finish_reason in {"length", "max_tokens"}
+            return content.strip(), truncated
 
         def try_models(candidates: list[str]) -> str | None:
             for model in candidates:
                 try:
-                    response = self.session.post(
-                        f"{self.base_url}/chat/completions",
-                        json={
-                            "model": model,
-                            "messages": [{"role": "user", "content": prompt}],
-                            "max_tokens": 1024,
-                            "temperature": 0.7,
-                        },
-                        timeout=30,
-                    )
-                    if not response.ok:
-                        body = response.text[:300].replace("\n", " ")
+                    token_budget = initial_budget
+                    for attempt in range(2):
+                        content, truncated = request_model(model, token_budget)
+                        if not truncated:
+                            return content
+
+                        retry_budget = expanded_output_token_limit(token_budget)
+                        if attempt == 0 and retry_budget > token_budget:
+                            logger.warning(
+                                "OpenRouter response from %s reached %s tokens; retrying with %s",
+                                model,
+                                token_budget,
+                                retry_budget,
+                            )
+                            token_budget = retry_budget
+                            continue
+
                         failures.append(
-                            f"{model} -> HTTP {response.status_code}: {body}"
+                            f"{model} -> response still reached the {token_budget}-token output limit"
                         )
-                        continue
-                    data = response.json()
-                    choices = data.get("choices") or []
-                    if choices:
-                        content = choices[0].get("message", {}).get("content", "")
-                        if isinstance(content, str) and content.strip():
-                            return content.strip()
+                        break
                 except Exception as exc:
                     logger.warning("OpenRouter model %s failed: %s", model, exc)
                     failures.append(f"{model} -> {exc}")

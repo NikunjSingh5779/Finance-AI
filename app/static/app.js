@@ -31,7 +31,7 @@
   const $ = id => document.getElementById(id);
 
   const UI_ICONS = Object.freeze({
-    transaction: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10M7 8.5h10M7 12.5h6"/><path d="M5 3.5v17l3-1.8 4 1.8 4-1.8 3 1.8v-17"/></svg>',
+    transaction: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-2.75-1.7L12 20.5l-2.75-1.7-2.75 1.7v-17Z"/><path d="M9 8h6M9 11.5h6M9 15h4"/></svg>',
     budget: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v8.5h8.5"/></svg>',
     edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5"/><path d="M4 20l4.5-1 10.8-10.8a2.1 2.1 0 0 0-3-3L5.5 16 4 20Z"/></svg>'
   });
