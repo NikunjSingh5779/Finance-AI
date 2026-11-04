@@ -10,6 +10,7 @@
   let txnsData = [];
   let transactionTypeFilter = "all";
   let budgetsData = [];
+  let budgetCategoryTotals = {};
   let accountsData = [];
   let pendingCSVImport = null;
   let summaryData = {};
@@ -420,7 +421,7 @@
       .replace(/\\\*\\\*/g, "**")
       .replace(/\\\*/g, "*");
 
-    const pattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\`[^\`]+\`)/g;
+    const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\x60[^\x60]+\x60)/g;
     let last = 0;
     let match;
 
@@ -431,12 +432,19 @@
 
       const token = match[0];
       let node;
-
-      if (token.startsWith("**") || token.startsWith("__")) {
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      if (link) {
+        node = document.createElement("a");
+        node.className = "ai-source-link";
+        node.href = link[2];
+        node.target = "_blank";
+        node.rel = "noopener noreferrer";
+        node.textContent = link[1];
+      } else if (token.startsWith("**") || token.startsWith("__")) {
         node = document.createElement("strong");
         node.className = "ai-highlight";
         node.textContent = token.slice(2, -2);
-      } else if (token.startsWith("`")) {
+      } else if (token.startsWith("\x60")) {
         node = document.createElement("code");
         node.textContent = token.slice(1, -1);
       } else {
@@ -562,8 +570,14 @@
   }
 
   function syncTopbarRangeButtons() {
-    $("topbar-month-btn")?.classList.toggle("active", selectedRange === "1M");
-    $("topbar-all-btn")?.classList.toggle("active", selectedRange === "All");
+    const monthButton = $("topbar-month-btn");
+    const allButton = $("topbar-all-btn");
+    const monthSelected = selectedRange === "1M";
+    const allSelected = selectedRange === "All";
+    monthButton?.classList.toggle("active", monthSelected);
+    allButton?.classList.toggle("active", allSelected);
+    monthButton?.setAttribute("aria-pressed", String(monthSelected));
+    allButton?.setAttribute("aria-pressed", String(allSelected));
   }
   function getIcon(category) {
     const map = {
@@ -853,15 +867,14 @@
     });
   }
 
-  function updateBudgetUI(transactions = getFilteredTransactions()) {
-    const categoryTotals = getCategoryTotals(transactions);
-    renderBudgetContainer($("budget-items"), categoryTotals, false);
-    renderBudgetContainer($("budget-page-list"), categoryTotals, true);
+  function updateBudgetUI() {
+    renderBudgetContainer($("budget-items"), budgetCategoryTotals, false);
+    renderBudgetContainer($("budget-page-list"), budgetCategoryTotals, true);
   }
 
   function renderBudgetContainer(container, categories, detailed) {
     if (!container) return;
-    while (container.firstChild) container.removeChild(container.firstChild);
+    container.replaceChildren();
 
     if (!budgetsData.length) {
       const empty = document.createElement("div");
@@ -874,8 +887,10 @@
     budgetsData.forEach(budget => {
       const spent = Number(categories[budget.category] || 0);
       const limit = Number(budget.limit_amt || 0);
-      const pct = limit > 0 ? Math.min(100, spent / limit * 100) : 0;
-      const over = spent >= limit;
+      const pct = limit > 0 ? (spent / limit) * 100 : 0;
+      const barPct = Math.min(100, Math.max(0, pct));
+      const over = limit > 0 && spent > limit;
+      const reached = limit > 0 && !over && spent >= limit;
 
       const item = document.createElement("div");
       item.className = detailed ? "budget-page-item" : "budget-item";
@@ -888,6 +903,7 @@
       left.style.display = "flex";
       left.style.alignItems = "center";
       left.style.gap = "10px";
+      left.style.minWidth = "0";
 
       const icon = document.createElement("div");
       icon.className = "budget-icon";
@@ -900,7 +916,9 @@
       if (detailed) {
         const remove = document.createElement("button");
         remove.className = "del-btn";
+        remove.type = "button";
         remove.textContent = "Remove";
+        remove.setAttribute("aria-label", `Remove ${budget.category} budget`);
         remove.addEventListener("click", () => deleteBudget(budget.category));
         header.append(left, remove);
       } else {
@@ -911,31 +929,65 @@
         main.textContent = `${fmt(spent)} / ${fmt(limit)}`;
         const sub = document.createElement("div");
         sub.className = "amount-sub";
-        sub.textContent = over ? `Over by ${fmt(spent - limit)}` : `Remaining ${fmt(limit - spent)}`;
+        sub.textContent = over
+          ? `Over by ${fmt(spent - limit)}`
+          : reached
+            ? "Monthly limit reached"
+            : `Remaining ${fmt(limit - spent)}`;
         amount.append(main, sub);
         header.append(left, amount);
       }
 
       const bar = document.createElement("div");
       bar.className = "budget-bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-label", `${budget.category} budget this month`);
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", barPct.toFixed(1));
+      bar.setAttribute("aria-valuetext", `${pct.toFixed(0)}% of monthly limit used`);
+
       const fill = document.createElement("div");
-      fill.className = `budget-fill ${over ? "red" : pct >= 80 ? "yellow" : "green"}`;
-      fill.style.width = pct.toFixed(1) + "%";
+      fill.className = `budget-fill ${over ? "red" : reached || pct >= 80 ? "yellow" : "green"}`;
+      fill.style.width = barPct.toFixed(1) + "%";
       bar.appendChild(fill);
 
       item.appendChild(header);
       if (detailed) {
         const amounts = document.createElement("div");
         amounts.className = "bpi-amounts";
-        amounts.textContent = `Spent: ${fmt(spent)}   •   Limit: ${fmt(limit)}`;
+
+        const spentBlock = document.createElement("div");
+        spentBlock.className = "bpi-amount";
+        const spentLabel = document.createElement("span");
+        spentLabel.className = "bpi-amount-label";
+        spentLabel.textContent = "Spent this month";
+        const spentValue = document.createElement("strong");
+        spentValue.textContent = fmt(spent);
+        spentBlock.append(spentLabel, spentValue);
+
+        const limitBlock = document.createElement("div");
+        limitBlock.className = "bpi-amount";
+        const limitLabel = document.createElement("span");
+        limitLabel.className = "bpi-amount-label";
+        limitLabel.textContent = "Monthly limit";
+        const limitValue = document.createElement("strong");
+        limitValue.textContent = fmt(limit);
+        limitBlock.append(limitLabel, limitValue);
+
+        amounts.append(spentBlock, limitBlock);
         item.appendChild(amounts);
       }
       item.appendChild(bar);
 
       if (detailed) {
         const status = document.createElement("div");
-        status.style.cssText = "font-size:11px;color:var(--text3);margin-top:6px";
-        status.textContent = `${pct.toFixed(0)}% used${over ? " · Over budget!" : pct >= 80 ? " · Near limit" : ""}`;
+        status.className = `budget-status ${over ? "over" : reached ? "reached" : ""}`;
+        status.textContent = over
+          ? `${pct.toFixed(0)}% used · Over budget by ${fmt(spent - limit)}`
+          : reached
+            ? "100% used · Monthly limit reached"
+            : `${pct.toFixed(0)}% of monthly limit used · ${fmt(limit - spent)} remaining`;
         item.appendChild(status);
       }
       container.appendChild(item);
@@ -1023,7 +1075,11 @@
       del.textContent = "Delete";
       del.addEventListener("click", () => deleteTxn(txn.id));
 
-      row.append(icon, info, category, amount, edit, del);
+      const actions = document.createElement("div");
+      actions.className = "txn-row-actions";
+      actions.append(edit, del);
+
+      row.append(icon, info, category, amount, actions);
       container.appendChild(row);
     });
   }
@@ -1180,10 +1236,13 @@
   async function loadSummary() {
     try {
       const period = selectedRange.toLowerCase();
-      const [selected, all] = await Promise.all([
+      const [selected, all, monthlyBudgetSummary] = await Promise.all([
         apiFetch("/summary?period=" + encodeURIComponent(period)),
-        apiFetch("/summary?period=all")
+        apiFetch("/summary?period=all"),
+        period === "1m" ? Promise.resolve(null) : apiFetch("/summary?period=1m")
       ]);
+      const budgetSummary = period === "1m" ? selected : monthlyBudgetSummary;
+      budgetCategoryTotals = budgetSummary?.category_totals || {};
 
       summaryData = selected;
       summaryAll = all;
@@ -1231,8 +1290,8 @@
       makeSparkline("spark-sav", savArr.length ? savArr : [0, savings], "#f59e0b");
 
       renderCatChart(categoryTotals);
-      renderBudgetContainer($("budget-items"), categoryTotals, false);
-      renderBudgetContainer($("budget-page-list"), categoryTotals, true);
+      renderBudgetContainer($("budget-items"), budgetCategoryTotals, false);
+      renderBudgetContainer($("budget-page-list"), budgetCategoryTotals, true);
       renderCashflowChart(selected.monthly || {});
       renderInsightsCard();
     } catch (error) {
@@ -1244,8 +1303,8 @@
   function updateDashboardByRange() {
     const categoryTotals = summaryData.category_totals || {};
     renderCatChart(categoryTotals);
-    renderBudgetContainer($("budget-items"), categoryTotals, false);
-    renderBudgetContainer($("budget-page-list"), categoryTotals, true);
+    renderBudgetContainer($("budget-items"), budgetCategoryTotals, false);
+    renderBudgetContainer($("budget-page-list"), budgetCategoryTotals, true);
     $("cat-period").textContent = rangeCategoryLabel(selectedRange.toLowerCase());
     renderCashflowChart(summaryData.monthly || {});
   }

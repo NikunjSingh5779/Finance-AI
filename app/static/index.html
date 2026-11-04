@@ -118,8 +118,8 @@
         <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%)"><span class="kbd">⌘K</span></span>
       </div>
       <div class="topbar-actions">
-        <button class="month-btn active" id="topbar-month-btn" onclick="filterThisMonth()">📅 This month</button>
-        <button class="month-btn" id="topbar-all-btn" onclick="filterAllTime()">All</button>
+        <button class="month-btn active" id="topbar-month-btn" aria-pressed="true" onclick="filterThisMonth()">📅 This month</button>
+        <button class="month-btn" id="topbar-all-btn" aria-pressed="false" onclick="filterAllTime()">All time</button>
         <div class="icon-btn" title="Notifications">🔔</div>
         <button class="add-btn" onclick="openModal()">+ Add transaction</button>
       </div>

@@ -5,6 +5,7 @@ from app.services.web_research_service import (
     WebPage,
     WebResearchService,
     _is_relevant_text,
+    _query_core_tokens,
 )
 
 
@@ -24,6 +25,28 @@ def test_jio_ipo_filter_accepts_matching_company_and_topic():
         "The Jio public issue and listing plan are discussed in the filing.",
         "https://www.example-finance-news.com/jio-ipo",
     )
+
+
+def test_ipo_relevance_accepts_company_rhp_terminology():
+    assert _is_relevant_text(
+        "When is Jio IPO?",
+        "Jio Platforms Limited — RHP",
+        "Jio Platforms Limited.",
+        "https://www.jio.com/about/investor-relations/ipo/",
+    )
+
+
+def test_ipo_relevance_rejects_a_different_issuer():
+    assert not _is_relevant_text(
+        "When is Jio IPO?",
+        "Example Industries initial public offer",
+        "The prospectus and listing dates for Example Industries.",
+        "https://www.example.com/example-ipo",
+    )
+
+
+def test_query_core_tokens_ignore_year_and_ipo_vocabulary():
+    assert _query_core_tokens("When is Jio IPO 2026?") == {"jio"}
 
 
 def test_general_research_requires_the_named_entity():
