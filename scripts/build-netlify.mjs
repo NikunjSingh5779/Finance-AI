@@ -27,7 +27,23 @@ app = app.replace(
 fs.writeFileSync(indexPath, index, "utf8");
 fs.writeFileSync(appPath, app, "utf8");
 
-console.log("FinanceAI Netlify static site prepared.");
+// Netlify reads security headers from netlify.toml. Cloudflare Pages uses
+// a static _headers file, so emit the equivalent rules into the build output.
+const headersPath = path.join(output, "_headers");
+fs.writeFileSync(
+  headersPath,
+  [
+    "/*",
+    "  X-Content-Type-Options: nosniff",
+    "  Referrer-Policy: strict-origin-when-cross-origin",
+    "  X-Frame-Options: SAMEORIGIN",
+    "  Permissions-Policy: camera=(), microphone=()",
+    "",
+  ].join("\\n"),
+  "utf8"
+);
+
+console.log("FinanceAI static site prepared.");
 console.log(
   apiUrl
     ? "Frontend API URL configured for: " + apiUrl
