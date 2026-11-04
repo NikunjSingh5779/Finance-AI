@@ -417,7 +417,7 @@
 
   function appendInlineMarkdown(parent, text) {
     const source = String(text ?? "")
-      .replace(/\\([*_])/g, "$1")
+      .replace(/\\\\([*_])/g, "$1")
       .replace(/\\\*\\\*/g, "**")
       .replace(/\\\*/g, "*");
 
