@@ -229,7 +229,7 @@ def get_db() -> Any:
         )
 
     if using_postgres():
-        return _connect_postgres()
+        return SQLiteCompatConnection(_connect_postgres())
 
     db_path = Path(os.getenv("DB_PATH", "finance.db")).expanduser()
     if db_path.parent != Path("."):
