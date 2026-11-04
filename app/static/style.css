@@ -140,7 +140,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 
 .sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .sidebar-logo{padding:18px 20px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.logo-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px}
+.logo-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1}
 .logo-text{font-size:14px;font-weight:700;color:var(--text)}
 .logo-sub{font-size:11px;color:var(--text3);font-weight:400}
 .sidebar-section{padding:16px 12px 4px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:0.8px;text-transform:uppercase}
