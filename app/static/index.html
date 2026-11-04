@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinanceAI — Personal Finance</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<link rel="stylesheet" href="/static/style.css?v=2026-11-04-google-1">
+<link rel="stylesheet" href="/static/style.css?v=2026-11-04-workspace-1">
 <link rel="stylesheet" href="/static/insights.css">
 </head>
 <body>
@@ -69,14 +69,37 @@
     <div class="sidebar-section">General</div>
     <div style="padding:0 8px 4px">
       <div class="nav-item" onclick="goPage('ai-page',this)"><span class="nav-icon">✦</span> AI Assistant</div>
-      <div class="nav-item" onclick="toggleTheme()">
-  <span class="nav-icon">🌙</span> Dark/light </div>
     </div>
     <div class="sidebar-user">
-      <div class="user-row">
-        <div class="avatar">AC</div>
-        <div><div class="user-name">Someone</div><div class="user-ws">Personal workspace</div></div>
-        <div style="margin-left:auto;color:var(--text3);font-size:14px">⌄</div>
+      <div class="profile-wrap">
+        <button class="user-row" id="profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="profile-menu">
+          <span class="avatar" id="user-avatar">FA</span>
+          <span class="profile-identity">
+            <span class="user-name" id="user-name">Finance User</span>
+            <span class="user-ws" id="user-email">Private workspace</span>
+          </span>
+          <span class="profile-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div class="profile-menu" id="profile-menu" role="menu" hidden>
+          <div class="profile-menu-heading">
+            <span class="profile-menu-kicker">SIGNED IN AS</span>
+            <span class="profile-menu-email" id="profile-menu-email">Private workspace</span>
+          </div>
+          <button class="profile-menu-item" id="profile-add-account" type="button" role="menuitem">
+            <span class="profile-menu-icon">＋</span>
+            <span><strong>Add financial account</strong><small>Bank, savings, cash or card</small></span>
+          </button>
+          <button class="profile-menu-item" id="profile-theme-toggle" type="button" role="menuitem" aria-pressed="false">
+            <span class="profile-menu-icon" id="profile-theme-icon">☀</span>
+            <span><strong>Appearance</strong><small id="profile-theme-label">Switch to light mode</small></span>
+            <span class="profile-menu-value" id="profile-theme-value">Dark</span>
+          </button>
+          <div class="profile-menu-divider"></div>
+          <button class="profile-menu-item signout-item" id="logout-btn" type="button" role="menuitem">
+            <span class="profile-menu-icon">↪</span>
+            <span><strong>Sign out</strong><small>Log out of this device</small></span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -291,6 +314,37 @@
   </div>
 </div>
 
+<!-- TRANSACTION CSV IMPORT PREVIEW -->
+<div class="modal-overlay" id="modal-csv-import" aria-hidden="true">
+  <div class="modal csv-import-modal" role="dialog" aria-modal="true" aria-labelledby="csv-import-title">
+    <div class="csv-import-header">
+      <div>
+        <div class="modal-title" id="csv-import-title">Review CSV import</div>
+        <p class="csv-import-subtitle">Check the detected rows and match external account labels before importing.</p>
+      </div>
+      <button class="csv-modal-close" id="csv-import-close" type="button" aria-label="Close import preview">×</button>
+    </div>
+    <div class="csv-import-summary" id="csv-import-summary"></div>
+    <section class="csv-account-mapping-section" id="csv-account-mapping-section" hidden>
+      <div class="csv-section-title">Account mapping</div>
+      <p class="csv-section-note">These account codes come from your CSV. Match each one to a FinanceAI account, or leave it unassigned.</p>
+      <div class="csv-account-mappings" id="csv-account-mappings"></div>
+    </section>
+    <div class="csv-section-title csv-preview-title">Transaction preview <span id="csv-preview-count"></span></div>
+    <div class="csv-preview-table-wrap">
+      <table class="csv-preview-table">
+        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th class="numeric">Amount</th><th>CSV account</th></tr></thead>
+        <tbody id="csv-preview-rows"></tbody>
+      </table>
+    </div>
+    <p class="csv-import-footnote" id="csv-import-footnote"></p>
+    <div class="modal-footer csv-import-footer">
+      <button class="btn-cancel" id="csv-import-cancel" type="button">Cancel</button>
+      <button class="btn-submit" id="csv-import-confirm" type="button">Import transactions</button>
+    </div>
+  </div>
+</div>
+
 <!-- ADD TRANSACTION MODAL -->
 <div class="modal-overlay" id="modal">
   <div class="modal">
@@ -414,6 +468,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=2026-11-04-google-1"></script>
+<script src="/static/app.js?v=2026-11-04-workspace-1"></script>
 </body>
 </html>
