@@ -30,6 +30,16 @@
 
   const $ = id => document.getElementById(id);
 
+  const UI_ICONS = Object.freeze({
+    transaction: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10M7 8.5h10M7 12.5h6"/><path d="M5 3.5v17l3-1.8 4 1.8 4-1.8 3 1.8v-17"/></svg>',
+    budget: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v8.5h8.5"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5"/><path d="M4 20l4.5-1 10.8-10.8a2.1 2.1 0 0 0-3-3L5.5 16 4 20Z"/></svg>'
+  });
+
+  function setUiIcon(element, name) {
+    if (element) element.innerHTML = UI_ICONS[name] || UI_ICONS.transaction;
+  }
+
   function fmt(value) {
     const n = Number(value);
     return "₹" + (Number.isFinite(n) ? n : 0).toLocaleString("en-IN", {
@@ -579,18 +589,6 @@
     monthButton?.setAttribute("aria-pressed", String(monthSelected));
     allButton?.setAttribute("aria-pressed", String(allSelected));
   }
-  function getIcon(category) {
-    const map = {
-      "housing": "🏠", "food": "🍔", "food & drink": "🍔",
-      "transport": "🚗", "shopping": "🛍", "entertainment": "🎮",
-      "utilities": "⚡", "travel": "✈", "trip": "✈",
-      "subscriptions": "📱", "health": "💊", "salary": "💼",
-      "freelance": "💻", "investments": "📈", "games": "🎮",
-      "emis": "🏦", "projects": "📁", "other": "📦"
-    };
-    return map[String(category || "").trim().toLowerCase()] || "💳";
-  }
-
   function hashColor(value) {
     const colors = [
       "239,68,68", "245,158,11", "59,130,246",
@@ -907,7 +905,7 @@
 
       const icon = document.createElement("div");
       icon.className = "budget-icon";
-      icon.textContent = getIcon(budget.category);
+      setUiIcon(icon, "budget");
       const name = document.createElement("span");
       name.className = detailed ? "bpi-name" : "budget-name";
       name.textContent = budget.category;
@@ -1042,7 +1040,7 @@
       icon.style.background = txn.type === "income"
         ? "rgba(34,197,94,.1)"
         : `rgba(${hashColor(txn.category)},.1)`;
-      icon.textContent = getIcon(txn.category);
+      setUiIcon(icon, "transaction");
 
       const info = document.createElement("div");
       info.className = "txn-info";
@@ -1052,7 +1050,7 @@
       const meta = document.createElement("div");
       meta.className = "txn-meta";
       const account = getAccountName(txn.account_id);
-      meta.textContent = `${txn.category || ""}${account ? " · " + account : ""} • ${txn.date || ""}`;
+      meta.textContent = [txn.category, account, txn.date].filter(Boolean).join(", ");
       info.append(title, meta);
 
       const category = document.createElement("span");
@@ -1066,12 +1064,15 @@
 
       const edit = document.createElement("button");
       edit.className = "edit-btn";
-      edit.textContent = "✏️";
+      edit.type = "button";
+      edit.setAttribute("aria-label", "Edit transaction");
       edit.title = "Edit";
+      setUiIcon(edit, "edit");
       edit.addEventListener("click", () => openEditModal(txn.id));
 
       const del = document.createElement("button");
       del.className = "del-btn";
+      del.type = "button";
       del.textContent = "Delete";
       del.addEventListener("click", () => deleteTxn(txn.id));
 
@@ -1106,7 +1107,7 @@
       icon.style.background = txn.type === "income"
         ? "rgba(34,197,94,.1)"
         : `rgba(${hashColor(txn.category)},.1)`;
-      icon.textContent = getIcon(txn.category);
+      setUiIcon(icon, "transaction");
 
       const info = document.createElement("div");
       info.className = "txn-info";
@@ -1163,11 +1164,14 @@
       actions.className = "account-actions";
 
       const edit = document.createElement("button");
+      edit.type = "button";
       edit.className = "edit-btn";
-      edit.textContent = "✏️";
+      edit.setAttribute("aria-label", "Edit account");
+      setUiIcon(edit, "edit");
       edit.addEventListener("click", () => editAccount(account.id));
 
       const del = document.createElement("button");
+      del.type = "button";
       del.className = "del-btn";
       del.textContent = "Delete";
       del.addEventListener("click", () => deleteAccount(account.id));
@@ -2249,18 +2253,16 @@
     hero.className = "insights-hero";
 
     const heroText = document.createElement("div");
-    const eyebrow = document.createElement("div");
-    eyebrow.className = "txn-card-label";
-    eyebrow.textContent = "Finance intelligence";
-    const title = document.createElement("div");
+    const title = document.createElement("h1");
     title.className = "insights-title";
     title.textContent = "Financial Health & Insights";
     const subtitle = document.createElement("div");
     subtitle.className = "insights-subtitle";
     subtitle.textContent = "Explainable signals calculated from your recorded finances.";
-    heroText.append(eyebrow, title, subtitle);
+    heroText.append(title, subtitle);
 
     const refresh = document.createElement("button");
+    refresh.type = "button";
     refresh.className = "insights-refresh";
     refresh.textContent = "↻ Refresh";
     refresh.addEventListener("click", loadInsightsPage);
@@ -2336,7 +2338,7 @@
     const metrics = document.createElement("div");
     metrics.className = "health-metrics";
     metrics.textContent =
-      `Savings ${Number(health.metrics?.savings_rate || 0).toFixed(1)}% · Cash buffer ${Number(health.metrics?.months_of_buffer || 0).toFixed(1)} months`;
+      `Savings ${Number(health.metrics?.savings_rate || 0).toFixed(1)}%, cash buffer ${Number(health.metrics?.months_of_buffer || 0).toFixed(1)} months`;
     scoreCard.append(score, grade, metrics);
 
     const details = document.createElement("div");
@@ -2442,17 +2444,15 @@
     const hero = document.createElement("div");
     hero.className = "planning-hero";
     const heroText = document.createElement("div");
-    const eyebrow = document.createElement("div");
-    eyebrow.className = "txn-card-label";
-    eyebrow.textContent = "Planning & wealth";
-    const title = document.createElement("div");
+    const title = document.createElement("h1");
     title.className = "planning-title";
     title.textContent = "Goals, Net Worth & Monthly Report";
     const subtitle = document.createElement("div");
     subtitle.className = "planning-subtitle";
     subtitle.textContent = "Track what you are building, what you own, and how the month went.";
-    heroText.append(eyebrow, title, subtitle);
+    heroText.append(title, subtitle);
     const refresh = document.createElement("button");
+    refresh.type = "button";
     refresh.className = "planning-refresh";
     refresh.textContent = "↻ Refresh";
     refresh.addEventListener("click", loadPlanningPage);
@@ -2475,11 +2475,13 @@
     [["goal-name","text","Goal name"],["goal-target","number","Target ₹"],["goal-current","number","Current ₹"],["goal-date","date","Target date"],["goal-category","text","Category"]].forEach(([id,type,placeholder]) => {
       const input = document.createElement("input");
       input.id = id; input.type = type; input.placeholder = placeholder;
+      input.setAttribute("aria-label", placeholder);
       if (id === "goal-category") input.value = "Savings";
       if (type === "number") { input.min = id === "goal-target" ? "0.01" : "0"; input.step = "0.01"; }
       form.appendChild(input);
     });
     const addButton = document.createElement("button");
+    addButton.type = "button";
     addButton.className = "btn-add";
     addButton.textContent = "Add goal";
     addButton.addEventListener("click", createGoal);
@@ -2497,6 +2499,7 @@
     reportTitle.textContent = "Monthly report";
     const month = document.createElement("input");
     month.id = "report-month"; month.type = "month";
+    month.setAttribute("aria-label", "Report month");
     month.addEventListener("change", loadMonthlyReport);
     reportHeader.append(reportTitle, month);
     const report = document.createElement("div"); report.id = "monthly-report";
@@ -2632,8 +2635,10 @@
       const footer=document.createElement("div"); footer.className="goal-footer";
       const plan=document.createElement("span"); plan.textContent=goal.monthly_required ? fmtDec(goal.monthly_required)+"/month needed" : (goal.status==="completed" ? "Goal completed" : "Set a target date for a monthly plan");
       const actions=document.createElement("div");
-      const update=document.createElement("button"); update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
-      const remove=document.createElement("button"); remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
+      const update=document.createElement("button");
+      update.type = "button"; update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
+      const remove=document.createElement("button");
+      remove.type = "button"; remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
       actions.append(update,remove); footer.append(plan,actions);
       item.append(top,pr,bar,footer); list.appendChild(item);
     });
@@ -2730,30 +2735,8 @@
     createInsightsPage();
     createPlanningPage();
 
-    const navHost = document.querySelector(".sidebar > div:nth-of-type(2)");
-    if (navHost && !$("planning-nav-item")) {
-      const item = document.createElement("div");
-      item.className = "nav-item";
-      item.id = "planning-nav-item";
-      const icon = document.createElement("span");
-      icon.className = "nav-icon";
-      icon.textContent = "◎";
-      item.append(icon, document.createTextNode(" Planning & Wealth"));
-      item.addEventListener("click", activatePlanning);
-      navHost.appendChild(item);
-    }
-
-    if (navHost && !$("insights-nav-item")) {
-      const item = document.createElement("div");
-      item.className = "nav-item";
-      item.id = "insights-nav-item";
-      const icon = document.createElement("span");
-      icon.className = "nav-icon";
-      icon.textContent = "◈";
-      item.append(icon, document.createTextNode(" Financial Insights"));
-      item.addEventListener("click", activateInsights);
-      navHost.appendChild(item);
-    }
+    $("planning-nav-item")?.addEventListener("click", activatePlanning);
+    $("insights-nav-item")?.addEventListener("click", activateInsights);
 
     $("modal")?.addEventListener("click", event => {
       if (event.target === $("modal")) closeModal();
