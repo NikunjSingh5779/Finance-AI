@@ -268,7 +268,7 @@
   function base64UrlEncode(bytes) {
     let binary = "";
     bytes.forEach(value => { binary += String.fromCharCode(value); });
-    return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
   async function signInWithGoogle() {
