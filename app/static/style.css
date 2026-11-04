@@ -1034,3 +1034,148 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Inter'
   cursor: pointer;
 }
 .logout-btn:hover { color: var(--text, #f4f4f5); border-color: var(--green, #18c55e); }
+
+/* FinanceAI workspace profile menu */
+.profile-wrap { position: relative; }
+.user-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+.profile-identity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-identity .user-name,
+.profile-identity .user-ws {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-chevron { margin-left: auto; color: var(--text3); transition: transform .15s ease; }
+.user-row[aria-expanded="true"] .profile-chevron { transform: rotate(180deg); }
+.profile-menu {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 10px);
+  z-index: 260;
+  padding: 8px;
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  background: var(--bg2);
+  box-shadow: 0 18px 50px rgba(0,0,0,.42);
+}
+.profile-menu-heading { padding: 10px 10px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.profile-menu-kicker { display:block; font-size:9px; font-weight:700; letter-spacing:.12em; color:var(--text3); margin-bottom:4px; }
+.profile-menu-email { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); font-size:11px; }
+.profile-menu-item {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.profile-menu-item:hover { background: var(--bg3); }
+.profile-menu-item > span:nth-child(2) { display:flex; flex:1; flex-direction:column; gap:2px; min-width:0; }
+.profile-menu-item strong { font-size:12px; font-weight:600; }
+.profile-menu-item small { font-size:10px; color:var(--text3); }
+.profile-menu-icon { width:24px; height:24px; display:grid; place-items:center; border-radius:7px; background:var(--bg3); color:var(--text2); font-size:15px; }
+.profile-menu-value { color:var(--text3); font-size:10px; }
+.profile-menu-divider { height:1px; background:var(--border); margin:6px 4px; }
+.profile-menu-item.signout-item { color:var(--red); }
+.profile-menu-item.signout-item .profile-menu-icon { color:var(--red); background:var(--red-bg); }
+
+/* CSV review and account mapping dialog */
+.csv-import-modal {
+  width: min(920px, 94vw);
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow: auto;
+  padding: 24px;
+}
+.csv-import-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.csv-import-header .modal-title { margin-bottom:5px; }
+.csv-import-subtitle { color:var(--text3); font-size:12px; line-height:1.5; }
+.csv-modal-close {
+  width:32px; height:32px; flex:0 0 32px; border:1px solid var(--border2);
+  border-radius:8px; background:var(--bg3); color:var(--text2); font-size:20px; cursor:pointer;
+}
+.csv-import-summary { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 16px; }
+.csv-summary-chip { display:flex; align-items:center; gap:6px; padding:7px 10px; border-radius:8px; background:var(--bg3); color:var(--text2); font-size:11px; }
+.csv-summary-chip strong { color:var(--text); font-size:13px; }
+.csv-section-title { font-size:12px; color:var(--text); font-weight:700; margin-bottom:7px; }
+.csv-section-note { font-size:11px; color:var(--text3); line-height:1.5; margin-bottom:10px; }
+.csv-account-mapping-section { padding:14px; margin-bottom:16px; border:1px solid var(--border); border-radius:12px; background:var(--bg3); }
+.csv-account-mappings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.csv-account-map-row { display:flex; align-items:center; gap:10px; min-width:0; }
+.csv-account-code { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); font-size:11px; }
+.csv-account-map-row select {
+  flex:1.2; min-width:0; height:36px; padding:0 9px; border:1px solid var(--border2);
+  border-radius:8px; background:var(--bg4); color:var(--text); font:inherit; font-size:11px;
+}
+.csv-preview-title { display:flex; align-items:center; justify-content:space-between; margin:14px 0 8px; }
+.csv-preview-title span { color:var(--text3); font-size:10px; font-weight:500; }
+.csv-preview-table-wrap { max-height:280px; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.csv-preview-table { width:100%; border-collapse:collapse; min-width:650px; font-size:11px; }
+.csv-preview-table th { position:sticky; top:0; z-index:1; background:var(--bg3); color:var(--text3); text-align:left; font-size:10px; font-weight:700; padding:10px; }
+.csv-preview-table td { border-top:1px solid var(--border); color:var(--text2); padding:9px 10px; max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.csv-preview-table td:first-child { color:var(--text); }
+.csv-preview-table .numeric { text-align:right; }
+.csv-preview-table .amount-income { color:var(--green); }
+.csv-preview-table .amount-expense { color:var(--text); }
+.csv-import-footnote { margin-top:10px; color:var(--text3); font-size:10px; line-height:1.5; }
+.csv-import-footer { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.csv-import-footer button { min-width:132px; }
+.csv-import-footer button:disabled { opacity:.55; cursor:wait; }
+
+/* Keep the auth screen truly viewport-centered at every size. */
+html, body { width:100%; min-height:100%; margin:0; }
+body { overflow-x:hidden; }
+.auth-screen {
+  width:100%;
+  min-height:100vh;
+  min-height:100svh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:clamp(16px, 4vw, 32px);
+  margin:0;
+}
+.auth-card {
+  width:min(100%, 420px);
+  max-height:calc(100svh - 32px);
+  overflow-y:auto;
+  margin:auto;
+}
+@media (max-width: 900px) {
+  .profile-menu { left:8px; right:8px; }
+  .csv-import-modal { width:100%; max-width:100%; max-height:100svh; border-radius:0; padding:18px; }
+}
+@media (max-width: 600px) {
+  .auth-screen { padding:14px; align-items:center; }
+  .auth-card { width:100%; max-width:420px; padding:22px 18px; border-radius:16px; }
+  .auth-brand { margin-bottom:22px; }
+  .auth-title { font-size:25px; }
+  .csv-account-mappings { grid-template-columns:1fr; }
+  .csv-account-map-row { flex-direction:column; align-items:stretch; gap:5px; }
+  .csv-account-map-row select { width:100%; }
+  .csv-import-footer { flex-direction:column-reverse; }
+  .csv-import-footer button { width:100%; }
+}
+
