@@ -1,0 +1,38 @@
+.pwa-banner{
+  position:fixed;
+  z-index:10050;
+  top:calc(env(safe-area-inset-top, 0px) + 10px);
+  left:50%;
+  transform:translateX(-50%);
+  width:min(92vw, 560px);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 14px;
+  border:1px solid #34343b;
+  border-radius:14px;
+  background:rgba(24,24,27,.97);
+  color:#f4f4f5;
+  box-shadow:0 12px 36px rgba(0,0,0,.35);
+  backdrop-filter:blur(14px);
+}
+.pwa-banner-message{margin:0;font-size:13px;line-height:1.45;flex:1;min-width:0}
+.pwa-banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.pwa-action,.pwa-dismiss{
+  min-height:36px;
+  border-radius:9px;
+  padding:7px 11px;
+  font:600 12px/1.2 inherit;
+  cursor:pointer;
+}
+.pwa-action{border:1px solid #22c55e;background:#22c55e;color:#07130b}
+.pwa-dismiss{border:1px solid #3f3f46;background:transparent;color:#d4d4d8}
+.pwa-action:focus-visible,.pwa-dismiss:focus-visible{outline:2px solid #86efac;outline-offset:2px}
+@media(max-width:480px){
+  .pwa-banner{align-items:flex-start;gap:9px;padding:11px}
+  .pwa-banner-message{font-size:12px}
+  .pwa-banner-actions{gap:6px}
+  .pwa-action,.pwa-dismiss{padding:7px 8px}
+}
+@media(prefers-reduced-motion:reduce){.pwa-banner{scroll-behavior:auto}}
