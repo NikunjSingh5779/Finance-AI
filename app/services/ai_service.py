@@ -9,9 +9,11 @@ from urllib.parse import urlsplit
 from app.core.exceptions import ProviderUnavailableError
 from app.providers.ai.base import AIProvider
 from app.providers.ai.discovery import get_ai_providers
+from app.providers.market.market_data import get_market_provider
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
+from app.services.web_research_service import get_web_researcher
 
 
 class AIService:
@@ -647,7 +649,10 @@ class AIService:
             not is_explanatory_move
             and market_type == "stock"
             and symbol
-            and any(term in lowered_query for term in ("price", "share", "stock", "close", "quote"))
+            and any(
+                term in lowered_query
+                for term in ("price", "share", "stock", "close", "quote")
+            )
         ):
             target_date = AIService._extract_date(query)
             suffix = f" {target_date}" if target_date else ""
