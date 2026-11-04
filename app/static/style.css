@@ -1810,6 +1810,7 @@ body { overflow-x:clip; }
 
 
 /* Accessible navigation, iconography and controls. */
+.transaction-table-head { display: none; }
 .nav-item {
   display: flex;
   align-items: center;
@@ -2407,9 +2408,5 @@ textarea:focus-visible {
     font-size: 13px;
     line-height: 1.55;
   }
-  @media (max-width: 900px) {
-    .transaction-table-head {
-      display: none;
-    }
-  }
 }
+
