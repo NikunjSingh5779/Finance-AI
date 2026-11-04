@@ -425,7 +425,7 @@ def test_transaction_csv_export(client):
 
 
 
-def test_transaction_csv_import_batches_records_and_preserves_deduplication(client):
+def test_transaction_csv_import_batches_and_deduplicates(client):
     first = {
         "type": "expense",
         "amount": 125.5,
@@ -433,14 +433,14 @@ def test_transaction_csv_import_batches_records_and_preserves_deduplication(clie
         "category": "Groceries",
         "date": "2026-10-01",
     }
-    rows = [
+    rows = [first] + [
         {
             **first,
             "description": f"Purchase {index}",
             "amount": index + 1,
             "date": f"2026-10-{(index % 28) + 1:02d}",
         }
-        for index in range(200)
+        for index in range(1, 200)
     ]
     rows.append(first)
 
@@ -460,7 +460,7 @@ def test_transaction_csv_import_batches_records_and_preserves_deduplication(clie
     assert repeated.json()["failed"] == 0
 
 
-def test_transaction_csv_import_keeps_account_validation_and_row_errors(client):
+def test_transaction_csv_import_validates_account_mappings(client):
     account = client.post(
         "/accounts",
         json={"name": "Import account", "balance": 0, "type": "checking"},
