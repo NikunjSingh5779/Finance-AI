@@ -169,7 +169,7 @@
     }
   }
 
-  async function apiFetch(path, options = {}, retryOnUnauthorized = true) {
+  async function apiResponse(path, options = {}, retryOnUnauthorized = true) {
     const headers = {
       Accept: "application/json",
       ...(options.headers || {}),
@@ -177,14 +177,20 @@
     if (authSession?.access_token) {
       headers.Authorization = "Bearer " + authSession.access_token;
     }
+
     const response = await fetch(API + path, { ...options, headers });
     if (response.status === 401 && retryOnUnauthorized && !path.startsWith("/auth/")) {
       if (await refreshAuthSession()) {
-        return apiFetch(path, options, false);
+        return apiResponse(path, options, false);
       }
       showAuthScreen("Your session expired. Please sign in again.");
       throw new Error("Authentication required");
     }
+    return response;
+  }
+
+  async function apiFetch(path, options = {}, retryOnUnauthorized = true) {
+    const response = await apiResponse(path, options, retryOnUnauthorized);
     if (!response.ok) {
       let message = response.statusText || "Request failed";
       try {
@@ -1458,8 +1464,136 @@
       : parsed.toISOString().slice(0, 10);
   }
 
-  function exportCSV() {
-    window.location.href = "/transactions/export.csv";
+  function parseCSVDocument(source) {
+    const input = String(source || "").replace(/^\uFEFF/, "");
+    const records = [];
+    let row = [];
+    let cell = "";
+    let quoted = false;
+
+    for (let index = 0; index < input.length; index += 1) {
+      const character = input[index];
+      if (character === '"') {
+        if (quoted && input[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (character === "," && !quoted) {
+        row.push(cell.trim());
+        cell = "";
+      } else if ((character === "\n" || character === "\r") && !quoted) {
+        if (character === "\r" && input[index + 1] === "\n") index += 1;
+        row.push(cell.trim());
+        cell = "";
+        if (row.some(value => value !== "")) records.push(row);
+        row = [];
+      } else {
+        cell += character;
+      }
+    }
+
+    row.push(cell.trim());
+    if (row.some(value => value !== "")) records.push(row);
+    return records;
+  }
+
+  function parseImportAmount(value) {
+    let raw = String(value ?? "").trim();
+    if (!raw) return NaN;
+    const parenthesized = /^\(.*\)$/.test(raw);
+    raw = raw
+      .replace(/[₹$€£,\s]/g, "")
+      .replace(/[()]/g, "")
+      .replace(/[^0-9.+-]/g, "");
+    const amount = Number(raw);
+    if (!Number.isFinite(amount)) return NaN;
+    return parenthesized ? -Math.abs(amount) : amount;
+  }
+
+  function parseImportDate(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return null;
+
+    const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    let year;
+    let month;
+    let day;
+
+    if (iso) {
+      [, year, month, day] = iso;
+    } else {
+      const numeric = raw.match(/^(\d{1,2})[/. -](\d{1,2})[/. -](\d{2,4})$/);
+      if (numeric) {
+        let first = Number(numeric[1]);
+        let second = Number(numeric[2]);
+        year = numeric[3];
+        if (year.length === 2) year = (Number(year) > 50 ? "19" : "20") + year;
+        // FinanceAI is primarily used with Indian date conventions (DD/MM/YYYY).
+        if (first > 12) {
+          day = String(first);
+          month = String(second);
+        } else if (second > 12) {
+          month = String(first);
+          day = String(second);
+        } else {
+          day = String(first);
+          month = String(second);
+        }
+      } else {
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return null;
+        year = String(parsed.getFullYear());
+        month = String(parsed.getMonth() + 1);
+        day = String(parsed.getDate());
+      }
+    }
+
+    const y = Number(year);
+    const m = Number(month);
+    const d = Number(day);
+    const check = new Date(Date.UTC(y, m - 1, d));
+    if (
+      !Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d) ||
+      check.getUTCFullYear() !== y ||
+      check.getUTCMonth() + 1 !== m ||
+      check.getUTCDate() !== d
+    ) return null;
+
+    return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  async function exportCSV() {
+    try {
+      const response = await apiResponse("/transactions/export.csv", {
+        headers: {Accept: "text/csv"}
+      });
+      if (!response.ok) {
+        let message = response.statusText || "Export failed";
+        try {
+          const payload = await response.json();
+          message = payload.detail || payload.message || message;
+        } catch (_) {}
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = filenameMatch?.[1] || "financeai-transactions.csv";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("Transactions CSV exported.");
+    } catch (error) {
+      showToast("Export failed: " + error.message, "error");
+    }
   }
 
   async function importCSV(input) {
@@ -1467,43 +1601,80 @@
     if (!file) return;
 
     try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
-      if (lines.length < 2) {
-        showToast("CSV has no data rows.", "error");
-        return;
+      const records = parseCSVDocument(await file.text());
+      if (records.length < 2) {
+        throw new Error("CSV must contain a header row and at least one data row.");
       }
 
-      const headers = parseCSVLine(lines[0]).map(header =>
-        header.toLowerCase().replace(/[^a-z0-9_]/g, "")
+      const headers = records[0].map(header =>
+        String(header || "").toLowerCase().replace(/[^a-z0-9]/g, "")
       );
       const rows = [];
+      let skipped = 0;
 
-      for (let index = 1; index < lines.length; index += 1) {
-        const values = parseCSVLine(lines[index]);
-        const row = {};
+      for (const values of records.slice(1)) {
+        const sourceRow = {};
         headers.forEach((header, position) => {
-          row[header] = (values[position] || "").trim();
+          sourceRow[header] = String(values[position] ?? "").trim();
         });
+        const get = (...names) => {
+          for (const name of names) {
+            if (sourceRow[name] !== undefined && sourceRow[name] !== "") return sourceRow[name];
+          }
+          return "";
+        };
 
-        const amount = Math.abs(Number(row.amount));
-        const category = row.category || row.cat || "";
-        if (!Number.isFinite(amount) || amount <= 0 || !category) continue;
+        const debit = parseImportAmount(get("debit", "withdrawal", "debitamount"));
+        const credit = parseImportAmount(get("credit", "deposit", "creditamount"));
+        const hasDebitCredit = Number.isFinite(debit) || Number.isFinite(credit);
+        let amount = parseImportAmount(get("amount", "transactionamount", "amountinr", "value", "total"));
+        let typeValue = get("type", "transactiontype", "kind").toLowerCase();
+
+        if (hasDebitCredit && !(Number.isFinite(amount) && amount !== 0)) {
+          if (Number.isFinite(credit) && credit > 0) {
+            amount = credit;
+            typeValue = "income";
+          } else if (Number.isFinite(debit) && debit > 0) {
+            amount = debit;
+            typeValue = "expense";
+          }
+        }
+
+        const date = parseImportDate(get("date", "transactiondate", "posteddate", "transdate"));
+        const amountAbs = Math.abs(amount);
+        if (!Number.isFinite(amountAbs) || amountAbs <= 0 || !date) {
+          skipped += 1;
+          continue;
+        }
+
+        let type = "expense";
+        if (["income", "credit", "deposit", "salary", "refund", "interest"].includes(typeValue)) {
+          type = "income";
+        } else if (["expense", "debit", "withdrawal", "payment", "purchase"].includes(typeValue)) {
+          type = "expense";
+        } else if (hasDebitCredit && Number.isFinite(credit) && credit > 0) {
+          type = "income";
+        }
+
+        const category = get("category", "cat", "subcategory") || "Uncategorized";
+        const description = get("description", "desc", "note", "merchant", "narration", "details") || category;
+        const rawAccountId = Number(get("accountid", "account"));
+        const accountId = Number.isInteger(rawAccountId) && accountsData.some(account => Number(account.id) === rawAccountId)
+          ? rawAccountId
+          : null;
 
         rows.push({
-          type: row.type === "income" ? "income" : "expense",
-          amount,
-          category,
-          description: row.description || row.desc || row.note || category,
-          date: normalizeDate(row.date),
-          account_id: row.account_id ? Number(row.account_id) : null
+          type,
+          amount: amountAbs,
+          category: category.slice(0, 50),
+          description: description.slice(0, 200),
+          date,
+          account_id: accountId
         });
       }
 
-      input.value = "";
       if (!rows.length) {
-        showToast("No valid rows found.", "error");
-        return;
+        throw new Error(`No valid transaction rows found. ${skipped} row(s) were skipped; check that your CSV has Amount and Date columns.`);
       }
 
       const result = await apiFetch("/transactions/import", {
@@ -1512,11 +1683,21 @@
         body: JSON.stringify(rows)
       });
 
-      showToast(`Imported ${result.imported || result.created?.length || 0} transaction(s).`);
+      const imported = Number(result.imported ?? result.created?.length ?? 0);
+      const failed = Number(result.failed || 0);
       await refreshAll();
+
+      if (imported > 0) {
+        const totalSkipped = skipped + failed;
+        showToast(`Imported ${imported} transaction(s)${totalSkipped ? `; skipped ${totalSkipped} invalid row(s)` : ""}.`);
+      } else {
+        const detail = result.errors?.[0]?.error || "The API did not accept any rows.";
+        showToast("No transactions imported: " + detail, "error");
+      }
     } catch (error) {
-      input.value = "";
       showToast("Import failed: " + error.message, "error");
+    } finally {
+      input.value = "";
     }
   }
 
