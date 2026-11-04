@@ -355,19 +355,27 @@ class AIService:
         should_search = intent in {"ipo_research", "market_research", "web_research"}
 
         if search_query and should_search:
-            try:
-                preferred_domains = self._preferred_domains(question)
-                researcher = get_web_researcher()
-                fetch_count = 2 if intent in {"ipo_research", "market_research"} else 2
-                web_results, web_pages = await researcher.search_and_fetch(
-                    search_query,
-                    max_results=5,
-                    fetch_count=fetch_count,
-                    timelimit="d" if self._is_fresh_query(question) else None,
-                    preferred_domains=preferred_domains,
-                )
-            except Exception:
-                web_results, web_pages = [], []
+            preferred_domains = self._preferred_domains(question)
+            researcher = get_web_researcher()
+            candidate_queries = (
+                search_query,
+                *self._research_query_variants(search_query, intent),
+            )
+            for candidate_query in candidate_queries:
+                try:
+                    candidate_results, candidate_pages = await researcher.search_and_fetch(
+                        candidate_query,
+                        max_results=8 if intent == "ipo_research" else 6,
+                        fetch_count=3 if intent == "ipo_research" else 2,
+                        timelimit=self._research_timelimit(question, intent),
+                        preferred_domains=preferred_domains,
+                    )
+                except Exception:
+                    continue
+
+                if candidate_results or candidate_pages:
+                    web_results, web_pages = candidate_results, candidate_pages
+                    break
 
         # Do not ask the model to guess when a current-information query
         # produced no evidence that passed entity/topic relevance checks.
@@ -430,13 +438,16 @@ class AIService:
         reply = response
 
         if web_results:
-            source_lines = ["\n\nSources (fresh web search):"]
-            for index, item in enumerate(web_results[:5], start=1):
+            source_lines = ["\\n\\n**Sources**"]
+            for item in web_results[:5]:
                 title = getattr(item, "title", "") or "Source"
                 url = getattr(item, "url", "") or ""
-                if url:
-                    source_lines.append(f"{index}. {title} — {url}")
-            reply += "\n".join(source_lines)
+                parsed_url = urlsplit(url)
+                if parsed_url.scheme in {"http", "https"} and parsed_url.netloc:
+                    label = title.replace("[", "(").replace("]", ")")
+                    source_lines.append(f"- [{label}]({url})")
+            if len(source_lines) > 1:
+                reply += "\\n".join(source_lines)
 
         return reply
 
@@ -448,11 +459,12 @@ class AIService:
             for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date", "ipo date")
         ):
             return (
+                "jio.com",
+                "ril.com",
                 "sebi.gov.in",
                 "nseindia.com",
                 "bseindia.com",
                 "relianceindustries.com",
-                "jio.com",
                 "reuters.com",
             )
         if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
@@ -494,6 +506,49 @@ class AIService:
                 "real time",
             )
         )
+
+    @staticmethod
+    def _research_query_variants(query: str, intent: str) -> tuple[str, ...]:
+        """Return a small set of targeted retries for IPO queries that lack evidence."""
+        if intent != "ipo_research":
+            return ()
+
+        lowered = query.lower()
+        year_match = re.search(r"\b20\d{2}\b", query)
+        year = year_match.group(0) if year_match else str(datetime.now().year)
+        if re.search(r"\b(jio|jpl)\b", lowered):
+            issuer = "Jio Platforms Limited"
+        else:
+            issuer = re.sub(r"(?i)\b(?:when|is|the|ipo|drhp|rhp|sebi)\b", " ", query)
+            issuer = re.sub(r"\s+", " ", issuer).strip(" ?.,")
+            if not issuer:
+                return ()
+
+        candidates = (
+            f"{issuer} IPO opening date closing date allotment listing date {year}",
+            f"{issuer} RHP prospectus public issue timeline {year}",
+        )
+        original = " ".join(query.lower().split())
+        return tuple(
+            candidate
+            for candidate in candidates
+            if " ".join(candidate.lower().split()) != original
+        )
+
+    @staticmethod
+    def _research_timelimit(question: str, intent: str) -> str | None:
+        """Use a week for explanatory market moves, but keep factual lookups daily."""
+        if not AIService._is_fresh_query(question):
+            return None
+        lowered = question.lower()
+        explanatory_move = intent == "market_research" and any(
+            term in lowered
+            for term in (
+                "why", "reason", "fall", "fell", "drop", "dropped",
+                "decline", "declined", "slump", "sell-off", "selloff",
+            )
+        )
+        return "w" if explanatory_move else "d"
 
     @staticmethod
     def _extract_web_search_query(question: str) -> str | None:
@@ -676,7 +731,9 @@ Rules:
 - Use supplied evidence as the source of truth.
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
-- For IPO/listing questions, prefer official SEBI, exchange, and company filings over commentary.
+- For stock-move explanations, check the quote's direction, change, and date before accepting the user's premise. If the quote shows a rise or a flat session, say so clearly; do not invent a reason for a fall that did not occur in that session.
+- When a recent article describes a move on an earlier trading date, name that date and keep it separate from today's quote. Distinguish reported drivers from speculation.
+- For IPO/listing questions, prefer official issuer, SEBI, NSE and BSE filings over commentary. Treat IPO, initial public offer/offering, DRHP, RHP, red herring prospectus, allotment and listing as related IPO terminology.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say it could not be verified; do not fill the gap with guesses.
