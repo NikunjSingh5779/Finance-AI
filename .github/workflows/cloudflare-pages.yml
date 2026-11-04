@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix/mobile-budget-ai-research
     paths:
       - "app/static/**"
       - "scripts/build-netlify.mjs"
@@ -56,7 +57,7 @@ jobs:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy netlify-dist --project-name=finance-ai --branch=main
+          command: pages deploy netlify-dist --project-name=finance-ai --branch=${{ github.ref_name }}
 
       - name: Explain skipped deployment when token is missing
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
