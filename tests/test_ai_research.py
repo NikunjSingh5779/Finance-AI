@@ -235,6 +235,7 @@ def test_market_price_search_query_is_current_not_historical():
 def test_market_explainer_question_is_not_forced_into_web_research():
     assert AIService._extract_web_search_query("What is Jio stock?") is None
 
+
 def test_duckduckgo_search_uses_google_news_rss_when_ddg_is_unavailable(monkeypatch):
     from app.providers.search.duckduckgo import DuckDuckGoSearcher, SearchResult
 
