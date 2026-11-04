@@ -88,6 +88,8 @@ AUTH_PUBLIC_PATHS = {
     "/auth/login",
     "/auth/refresh",
     "/auth/logout",
+    "/auth/google/start",
+    "/auth/google/exchange",
 }
 
 
