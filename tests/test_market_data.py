@@ -123,5 +123,6 @@ def test_current_quote_runs_in_worker_thread_and_uses_short_cache(monkeypatch):
     first, second = asyncio.run(fetch_twice())
 
     assert first == second
-    assert calls == [("AAPL", calls[0][1])]
+    assert len(calls) == 1
+    assert calls[0][0] == "AAPL"
     assert calls[0][1] != main_thread
