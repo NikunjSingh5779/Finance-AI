@@ -90,7 +90,6 @@ def _is_relevant_text(query: str, title: str, body: str, url: str = "") -> bool:
 
 def _score_result(result: SearchResult, query: str, preferred_domains: tuple[str, ...]) -> float:
     title_body = f"{result.title} {result.snippet}"
-    haystack = f"{title_body} {result.url}".lower()
     core = _query_core_tokens(query)
     score = float(sum(4 for token in core if token in _tokenize(title_body)))
     score += float(sum(1 for token in _tokenize(query) if token in _tokenize(title_body)))
