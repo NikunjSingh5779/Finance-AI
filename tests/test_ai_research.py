@@ -413,3 +413,111 @@ def test_failed_gold_spot_quote_returns_clear_unavailable_message(monkeypatch):
 
     assert "couldn't retrieve a fresh international gold spot quote" in reply
     assert "won't substitute a COMEX futures contract" in reply
+
+def test_finance_scope_accepts_broad_financial_topics():
+    questions = (
+        "Explain compound interest with an example",
+        "What is a Roth IRA and how does a 401(k) work?",
+        "How do I calculate NPV and IRR?",
+        "What is the difference between GST and income tax?",
+        "Explain how UPI payment settlement works",
+        "How does a hedge fund manage risk?",
+        "What is the current RBI repo rate?",
+        "How do I save money for retirement?",
+        "Explain financial statement analysis and EBITDA",
+        "What is the S&P 500?",
+    )
+    assert all(AIService._is_finance_related(question) for question in questions)
+
+
+def test_finance_scope_rejects_unrelated_questions():
+    questions = (
+        "Write a poem about the ocean",
+        "How do I install Python?",
+        "Suggest a gaming laptop",
+        "What is the capital of Japan?",
+    )
+    assert all(not AIService._is_finance_related(question) for question in questions)
+
+
+def test_short_followups_remain_in_a_finance_conversation():
+    history = [
+        {"role": "user", "content": "Explain compound interest with an example"},
+        {"role": "assistant", "content": "Compound interest earns interest on prior interest."},
+    ]
+    assert AIService._is_finance_related("Why?", history)
+    assert AIService._is_finance_related("Is it worth it?", history)
+    assert AIService._is_finance_related("Give me a calculation", history)
+    assert not AIService._is_finance_related(
+        "Write a poem about the ocean",
+        history,
+    )
+
+
+def test_short_followups_do_not_inherit_an_unrelated_conversation():
+    history = [
+        {"role": "user", "content": "How do I install Python?"},
+        {"role": "assistant", "content": "Use the official installer."},
+    ]
+    assert not AIService._is_finance_related("Why?", history)
+
+
+def test_market_symbol_detection_avoids_partial_word_matches():
+    assert AIService._market_type("How do I use the console?") is None
+    assert AIService._market_type("What is Bitcoin?") == "crypto"
+    assert AIService._market_type("What is gold?") == "commodity"
+
+
+def test_regulated_finance_questions_trigger_current_research():
+    question = "What is the GST rate on restaurant bills?"
+    assert AIService._query_intent(question) == "web_research"
+    assert AIService._extract_web_search_query(question) is not None
+
+
+def test_generic_finance_education_does_not_attach_private_account_context():
+    assert not AIService._needs_personal_context("Explain compound interest")
+    assert AIService._needs_personal_context("How should I invest my savings?")
+
+
+def test_unrelated_question_is_declined_without_calling_the_ai_provider():
+    class UnexpectedProvider:
+        def generate_response(self, prompt):
+            raise AssertionError("An unrelated request must not reach the AI provider.")
+
+    reply = asyncio.run(
+        AIService(provider=UnexpectedProvider()).get_financial_advice(
+            "Write a poem about the ocean",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "finance-related questions only" in reply.lower()
+
+
+def test_general_finance_question_uses_finance_education_prompt_without_private_data():
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "Compound interest is interest earned on both principal and accumulated interest."
+
+    provider = CapturingProvider()
+    reply = asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "Explain compound interest with an example",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
+                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
+                "budgets": [{"category": "Private", "limit_amt": 5000}],
+            },
+            conversation=[],
+        )
+    )
+
+    assert "Compound interest" in reply
+    assert "Query intent: finance_education" in provider.prompt
+    assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
+    assert "Private purchase" not in provider.prompt
+
