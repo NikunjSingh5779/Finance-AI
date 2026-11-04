@@ -121,6 +121,9 @@ class AIService:
             "google": "GOOGL",
             "alphabet": "GOOGL",
             "meta": "META",
+            "jio platforms": "JPL.NS",
+            "jio": "JPL.NS",
+            "jpl": "JPL.NS",
             "reliance": "RELIANCE.NS",
             "tcs": "TCS.NS",
             "infosys": "INFY.NS",
@@ -152,6 +155,21 @@ class AIService:
 
         market_type = AIService._market_type(question)
         if market_type:
+            explainer_prefixes = (
+                "what is ", "who is ", "tell me about ", "explain ",
+                "what does ", "how does ",
+            )
+            time_sensitive_terms = (
+                "price", "quote", "today", "yesterday", "current", "latest",
+                "now", "realtime", "real time", "target", "forecast",
+                "outlook", "buy", "sell", "why", "reason", "news",
+            )
+            if (
+                lowered.startswith(explainer_prefixes)
+                and not any(term in lowered for term in time_sensitive_terms)
+            ):
+                return "market_explainer"
+
             analytical_terms = (
                 "why", "reason", "analysis", "outlook", "forecast",
                 "target", "should i", "buy", "sell", "news", "fundamental",
@@ -232,26 +250,32 @@ class AIService:
         else:
             movement = "flat (0.00%)"
 
-        lines = [
-            "**Summary:** "
-            f"{symbol} is {price} {currency} as of "
-            f"{date_value or 'the latest available quote'}, {movement} "
-            "versus the previous close.",
-            "**Key points:**",
-        ]
+        clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
+        if clean_symbol == "JPL":
+            company = "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
+        else:
+            company = symbol
+        source = str(data.get("source") or "the available market-data provider")
+        quote_kind = str(data.get("quote_kind") or "latest available quote")
+        quote_date = date_value or "the latest available session"
+        response = (
+            f"According to {source}, {company} is quoted at {price} {currency} "
+            f"as of {quote_date}. The available quote shows the price {movement} "
+            "compared with the previous close."
+        )
+        details = []
         if previous_close is not None:
-            lines.append(f"- Previous close: {previous_close} {currency}.")
+            details.append(f"The previous close was {previous_close} {currency}.")
         if change is not None and change_pct is not None:
-            lines.append(f"- Change: {change:+.2f} {currency} ({change_pct:+.2f}%).")
-        lines.append(
-            f"- Source: {data.get('source', 'market data')}; "
-            f"quote type: {data.get('quote_kind', 'available quote')}."
+            details.append(
+                f"That is a change of {change:+.2f} {currency} "
+                f"({change_pct:+.2f}%)."
+            )
+        details.append(
+            f"This is the provider's {quote_kind.replace('_', ' ')}; it may be "
+            "delayed and should be checked against the exchange quote before a trade."
         )
-        lines.append(
-            "**Next step:** Ask for the reason for the move or a historical "
-            "comparison if you want deeper analysis."
-        )
-        return "\n".join(lines)
+        return response + " " + " ".join(details)
 
     async def _get_market_evidence(self, question: str) -> str:
         data = await self._get_market_data(question)
@@ -326,7 +350,7 @@ class AIService:
         market_data = None
         market_evidence = ""
 
-        if intent in {"market_fact", "market_research"}:
+        if intent in {"market_fact", "market_research", "market_explainer"}:
             market_data = await self._get_market_data(question)
             if intent == "market_fact" and market_data:
                 return self._market_fact_response(market_data)
@@ -351,7 +375,9 @@ class AIService:
         web_results: list[Any] = []
         web_pages: list[Any] = []
         search_query = self._extract_web_search_query(question)
-        should_search = intent in {"ipo_research", "market_research", "web_research"}
+        should_search = intent in {"ipo_research", "market_research", "web_research"} or (
+            intent == "market_fact" and market_data is None
+        )
 
         if search_query and should_search:
             preferred_domains = self._preferred_domains(question)
@@ -386,14 +412,25 @@ class AIService:
         ):
             if intent == "ipo_research":
                 return (
-                    "I couldn't verify this IPO timeline against an issuer, SEBI, NSE, or BSE filing. "
-                    "I have not included unrelated search results, and I won't guess the dates. "
-                    "I can check the RHP, allotment, or listing date next."
+                    "I couldn't retrieve enough matching, authoritative information to confirm the "
+                    "current IPO timeline. I don't want to give you an outdated date or imply that an "
+                    "issue is still upcoming when it may already have opened, closed, or listed. "
+                    "The reliable records are the issuer's RHP or prospectus and the relevant NSE/BSE "
+                    "listing notices. The search service is not returning usable matching pages right "
+                    "now, so this is a retrieval limitation rather than proof that no IPO exists."
+                )
+            if intent == "market_fact":
+                return (
+                    "I couldn't retrieve a verified current quote for that security just now. I don't "
+                    "want to give you an old or guessed price. This does not mean the company is "
+                    "unlisted; it means the live-quote and search sources did not return a usable "
+                    "price in this request. Check the exact ticker on NSE or BSE before trading."
                 )
             return (
-                "I couldn't verify this from sufficiently relevant sources. "
-                "I have not included unrelated search results. Try adding the "
-                "company, product, or date you want me to check."
+                "I couldn't retrieve enough matching, current sources to answer this reliably. "
+                "I have kept unrelated results out rather than filling the gaps with guesses. "
+                "This can happen when the public search provider is temporarily unavailable; it "
+                "doesn't by itself mean the company, product, or event has no information available."
             )
 
         providers = self._provider_candidates()
@@ -605,7 +642,16 @@ class AIService:
             "ipo date",
         )
 
-        if query is None and not any(signal in lowered for signal in web_signals):
+        market_price_question = (
+            AIService._market_type(text) is not None
+            and any(term in lowered for term in ("price", "quote"))
+            and any(term in lowered for term in ("stock", "share", "equity"))
+        )
+        if (
+            query is None
+            and not any(signal in lowered for signal in web_signals)
+            and not market_price_question
+        ):
             return None
 
         query = query or text
@@ -655,8 +701,9 @@ class AIService:
             )
         ):
             target_date = AIService._extract_date(query)
-            suffix = f" {target_date}" if target_date else ""
-            return f"{symbol} historical stock price{suffix}".strip()
+            if target_date:
+                return f"{symbol} historical stock price {target_date}"
+            return f"{symbol} stock price today latest"
 
         if market_type == "commodity" and symbol and any(
             term in query.lower() for term in ("price", "gold", "silver", "oil")
@@ -756,9 +803,13 @@ Rules:
 - Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
-- If relevant evidence is unavailable, clearly say it could not be verified; do not fill the gap with guesses.
-- Keep the answer under 120 words unless the user explicitly asks for detail.
-- Use **Summary:**, **Key points:**, and **Next step:** when useful.
+- If relevant evidence is unavailable, clearly say what could not be verified; do not fill the gap with guesses.
+- For market explainers, explain the company/security in plain language. Do not claim it is listed or unlisted, state a current ticker, or invent a price unless supplied market or web evidence confirms it.
+- Reply like a knowledgeable finance assistant in a natural conversation, not like a compressed report template.
+- Answer the question directly first, then explain the important context and why it matters.
+- Use complete sentences and short paragraphs. Use bullets for a genuine timeline, comparison, or several distinct points, not by default.
+- For explanatory questions, provide enough context to be useful (usually around 150–250 words); simple factual answers can be shorter.
+- Avoid forced headings such as Summary, Key points, and Next step unless they genuinely improve clarity.
 - Do not repeat the user's question.
 
 {personal_section}CONVERSATION HISTORY
