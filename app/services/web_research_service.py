@@ -52,16 +52,23 @@ def _query_core_tokens(query: str) -> set[str]:
         token
         for token in _tokenize(query)
         if token not in _RESEARCH_STOP_WORDS
-        and not re.fullmatch(r"20\\d{2}", token)
+        and not re.fullmatch(r"20\d{2}", token)
     }
 
 
 def _topic_requirements(query: str) -> tuple[set[str], ...]:
     lowered = query.lower()
-    if any(term in lowered for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date")):
+    if any(
+        term in lowered
+        for term in (
+            "ipo", "initial public", "drhp", "rhp", "red herring",
+            "prospectus", "sebi filing", "listing date", "public issue",
+        )
+    ):
         return ({
-            "ipo", "drhp", "prospectus", "listing", "listed", "sebi",
-            "allotment", "subscription", "public", "issue",
+            "ipo", "drhp", "rhp", "prospectus", "listing", "listed",
+            "sebi", "allotment", "subscription", "public", "issue",
+            "initial", "offer", "offering", "herring",
         },)
     return ()
 
