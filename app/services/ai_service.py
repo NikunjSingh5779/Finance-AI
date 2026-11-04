@@ -242,13 +242,19 @@ class AIService:
         change_pct = data.get("change_pct")
 
         if change is None or change_pct is None:
-            movement = "No prior-session comparison was available."
+            movement = "A previous-close comparison is not included in this quote."
         elif float(change) > 0:
-            movement = f"up {abs(float(change)):.2f} ({abs(float(change_pct)):.2f}%)"
+            movement = (
+                f"It is up {abs(float(change)):.2f} "
+                f"({abs(float(change_pct)):.2f}%) from the previous close."
+            )
         elif float(change) < 0:
-            movement = f"down {abs(float(change)):.2f} ({abs(float(change_pct)):.2f}%)"
+            movement = (
+                f"It is down {abs(float(change)):.2f} "
+                f"({abs(float(change_pct)):.2f}%) from the previous close."
+            )
         else:
-            movement = "flat (0.00%)"
+            movement = "It is unchanged from the previous close (0.00%)."
 
         clean_symbol = symbol.upper().replace(".NS", "").replace(".BO", "")
         if clean_symbol == "JPL":
@@ -260,8 +266,7 @@ class AIService:
         quote_date = date_value or "the latest available session"
         response = (
             f"According to {source}, {company} is quoted at {price} {currency} "
-            f"as of {quote_date}. The available quote shows the price {movement} "
-            "compared with the previous close."
+            f"as of {quote_date}. {movement}"
         )
         details = []
         if previous_close is not None:
