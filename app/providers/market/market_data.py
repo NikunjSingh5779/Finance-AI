@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -97,9 +98,17 @@ class MarketDataProvider:
                 response.raise_for_status()
                 payload = response.json()
 
+            if not isinstance(payload, dict):
+                return None
             price = float(payload.get("price") or 0)
             updated_raw = payload.get("updatedAt") or payload.get("updated_at")
-            if price <= 0 or not updated_raw:
+            response_symbol = str(payload.get("symbol") or symbol).upper()
+            if (
+                not math.isfinite(price)
+                or price <= 0
+                or not updated_raw
+                or response_symbol != symbol
+            ):
                 return None
 
             updated_at = datetime.fromisoformat(
