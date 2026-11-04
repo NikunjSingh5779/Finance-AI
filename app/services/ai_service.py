@@ -72,6 +72,87 @@ class AIService:
         return None
 
     @staticmethod
+    def _contains_financial_topic(text: str) -> bool:
+        """Recognize a broad range of personal, business, and market-finance topics."""
+        lowered = " ".join(text.lower().split())
+        patterns = (
+            r"\\b(finance|financial|money|monetary|cash flow|cashflow)\\b",
+            r"\\b(budget|budgeting|expense|expenses|spending|income|earnings|salary|wages|paycheck|savings|saving)\\b",
+            r"\\b(invest|investing|investment|investments|portfolio|asset allocation|wealth management|net worth|retirement|pension)\\b",
+            r"\\b(stock|stocks|share|shares|equity|equities|bond|bonds|mutual fund|mutual funds|etf|index fund|sip|dividend|brokerage|demat)\\b",
+            r"\\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold price|silver price|oil price)\\b",
+            r"\\b(bank|banking|bank account|savings account|fixed deposit|recurring deposit|\bfd\b|\brd\b|upi|payment|payments|transaction|transactions|credit card|debit card|credit score|credit history)\\b",
+            r"\\b(loan|loans|mortgage|emi|interest|compound interest|apr|apy|principal|repayment|lending|borrowing|debt|liability|liabilities)\\b",
+            r"\\b(tax|taxes|taxation|income tax|capital gains|gst|vat|tds|deduction|deductions|tax slab|tax return|itr|tax filing)\\b",
+            r"\\b(insurance|premium|premiums|policyholder|claim|claims|coverage|life cover|health cover)\\b",
+            r"\\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit)\\b",
+            r"\\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\\b",
+            r"\\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\\b",
+            r"\\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling)\\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in patterns)
+
+    @staticmethod
+    def _is_greeting_or_finance_help(question: str) -> bool:
+        lowered = re.sub(r"[^a-z ]", " ", question.lower())
+        lowered = " ".join(lowered.split())
+        greetings = {
+            "hi", "hello", "hey", "good morning", "good afternoon",
+            "good evening", "thanks", "thank you",
+        }
+        help_requests = {
+            "help", "help me", "what can you do", "what can financeai do",
+            "what can you help me with", "what topics can you answer",
+        }
+        return lowered in greetings or lowered in help_requests
+
+    @staticmethod
+    def _is_contextual_finance_follow_up(
+        question: str,
+        conversation: list[dict[str, str]] | None,
+    ) -> bool:
+        """Allow short follow-ups only when the immediately preceding user topic was finance."""
+        if not conversation:
+            return False
+
+        previous_user = next(
+            (
+                str(message.get("content", "")).strip()
+                for message in reversed(conversation)
+                if message.get("role") == "user" and message.get("content")
+            ),
+            "",
+        )
+        if not AIService._contains_financial_topic(previous_user):
+            return False
+
+        lowered = " ".join(question.lower().split())
+        if len(lowered.split()) > 12:
+            return False
+        follow_up_patterns = (
+            r"^(why|how|what|when|where|which|who)\\??$",
+            r"^(and|but)\\s+(then|what|how|why)\\??$",
+            r"^(what about|how about|tell me more about|explain more about|explain that|explain it)\\b",
+            r"^(can you|could you)\\s+(explain|elaborate|compare|calculate|clarify)\\b",
+            r"^(is|are|was|were|will|would|should|can|could|does|do)\\s+(it|that|this|they|those|these|one|the two)\\b",
+            r"\\b(it|that|this|they|them|those|these|the former|the latter)\\b",
+            r"^(give me|show me)\\s+(an?\\s+)?(example|calculation|breakdown|comparison)\\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in follow_up_patterns)
+
+    @staticmethod
+    def _is_finance_related(
+        question: str,
+        conversation: list[dict[str, str]] | None = None,
+    ) -> bool:
+        """Keep FinanceAI in scope while supporting natural conversational follow-ups."""
+        return (
+            AIService._contains_financial_topic(question)
+            or AIService._is_greeting_or_finance_help(question)
+            or AIService._is_contextual_finance_follow_up(question, conversation)
+        )
+
+    @staticmethod
     def _extract_date(question: str) -> str | None:
         text = question.strip().lower()
         patterns = (
@@ -195,17 +276,38 @@ class AIService:
             "latest", "today", "current", "now", "recent",
             "breaking", "news", "what happened",
         )
-        return "web_research" if any(term in lowered for term in fresh_terms) else "personal_finance"
+        if any(term in lowered for term in fresh_terms):
+            return "web_research"
+
+        # Tax rules, regulator guidance, and official policy/rate schedules
+        # change over time, so retrieve current evidence rather than relying
+        # on a model's training cutoff.
+        regulated_finance_terms = (
+            "gst", "income tax", "capital gains tax", "tax slab", "tax rate",
+            "tax deadline", "tax filing", "itr", "tds", "vat", "sebi", "rbi",
+            "repo rate", "policy rate", "fd rate", "interest rate", "insurance rule",
+            "insurance regulation", "contribution limit", "withdrawal limit",
+        )
+        if any(term in lowered for term in regulated_finance_terms):
+            return "web_research"
+
+        if AIService._needs_personal_context(question):
+            return "personal_finance"
+        return "finance_education"
 
     @staticmethod
     def _needs_personal_context(question: str) -> bool:
+        """Include private account data only when the user asks about their own finances."""
         lowered = question.lower()
-        personal_terms = (
-            "my", "me", "i ", "i'm", "i am", "budget", "transaction",
-            "expense", "spending", "saving", "income", "salary", "account",
-            "net worth", "cash flow", "financial health", "goal", "debt",
+        direct_reference = re.search(
+            r"\\b(my|mine|our|ours|we|i|i'm|i am)\\b",
+            lowered,
         )
-        return any(term in lowered for term in personal_terms)
+        explicit_personal_request = any(
+            phrase in lowered
+            for phrase in ("for me", "my own", "based on my", "based on our")
+        )
+        return bool(direct_reference or explicit_personal_request)
 
     @staticmethod
     def _market_currency(question: str) -> str:
@@ -473,6 +575,15 @@ class AIService:
         financial_context: dict[str, Any],
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
+        question = question.strip()
+        if not self._is_finance_related(question, conversation):
+            return (
+                "I'm FinanceAI, so I can help with finance-related questions only — "
+                "including personal finance, banking, credit and loans, insurance, "
+                "taxes, accounting, investing, financial markets, business finance, "
+                "and financial economics. Please ask me something in one of those areas."
+            )
+
         intent = self._query_intent(question)
         market_data = None
         market_evidence = ""
@@ -962,6 +1073,13 @@ Today is {date.today().isoformat()}.
 Query intent: {intent}.
 
 Rules:
+- You are a finance-domain assistant, not a general-purpose chatbot. Stay within personal finance, banking, lending, credit, insurance, tax, accounting, investing, securities, markets, fintech/payments, corporate finance, financial planning, and finance-related economics.
+- For an unrelated request, politely say you can help with finance topics only; do not perform the unrelated task.
+- Answer the full range of finance questions, not only questions about this app's budgets or transactions. Support definitions, how-it-works explanations, examples, comparisons, calculations, financial statement interpretation, risk/reward explanations, planning, and evidence-based research.
+- Do not assume every finance question is about the user's own accounts. Use private financial context only when the question explicitly asks about the user's or their household's finances.
+- For calculations, show the formula, assumptions, units, and result. Re-check arithmetic and distinguish estimates from exact figures.
+- For recommendations, explain trade-offs, material risks, and uncertainty; do not promise returns or present speculative outcomes as guaranteed.
+- For tax, legal, regulatory, banking-rate, insurance-rule, and other jurisdiction-dependent questions, identify the relevant country/region when known and use current authoritative sources. Ask for the jurisdiction when it materially changes the answer.
 - Use supplied evidence as the source of truth.
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
