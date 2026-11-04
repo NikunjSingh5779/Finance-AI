@@ -422,3 +422,77 @@ def test_transaction_csv_export(client):
     income_only = client.get("/transactions/export.csv?transaction_type=income")
     assert income_only.status_code == 200
     assert "Books" not in income_only.text
+
+
+
+def test_transaction_csv_import_batches_records_and_preserves_deduplication(client):
+    first = {
+        "type": "expense",
+        "amount": 125.5,
+        "description": "Monthly grocery run",
+        "category": "Groceries",
+        "date": "2026-10-01",
+    }
+    rows = [
+        {
+            **first,
+            "description": f"Purchase {index}",
+            "amount": index + 1,
+            "date": f"2026-10-{(index % 28) + 1:02d}",
+        }
+        for index in range(200)
+    ]
+    rows.append(first)
+
+    response = client.post("/transactions/import", json=rows)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["imported"] == 200
+    assert payload["duplicate_count"] == 1
+    assert payload["failed"] == 0
+    assert client.get("/transactions/count").json()["count"] == 200
+
+    repeated = client.post("/transactions/import", json=[first, first])
+    assert repeated.status_code == 201
+    assert repeated.json()["imported"] == 0
+    assert repeated.json()["duplicate_count"] == 2
+    assert repeated.json()["failed"] == 0
+
+
+def test_transaction_csv_import_keeps_account_validation_and_row_errors(client):
+    account = client.post(
+        "/accounts",
+        json={"name": "Import account", "balance": 0, "type": "checking"},
+    )
+    assert account.status_code == 201
+    account_id = account.json()["id"]
+
+    rows = [
+        {
+            "type": "expense",
+            "amount": 250,
+            "description": "Valid mapped payment",
+            "category": "Bills",
+            "date": "2026-10-10",
+            "account_id": account_id,
+        },
+        {
+            "type": "expense",
+            "amount": 100,
+            "description": "Invalid account payment",
+            "category": "Bills",
+            "date": "2026-10-11",
+            "account_id": 999999,
+        },
+    ]
+
+    response = client.post("/transactions/import", json=rows)
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["imported"] == 1
+    assert payload["failed"] == 1
+    assert payload["errors"][0]["index"] == 1
+    created = client.get("/transactions?skip=0&limit=10").json()
+    assert created[0]["account_id"] == account_id
