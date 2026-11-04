@@ -2459,7 +2459,7 @@
     const subtitle = document.createElement("div");
     subtitle.className = "planning-subtitle";
     subtitle.textContent = "Track what you are building, what you own, and how the month went.";
-    heroText.append(eyebrow, title, subtitle);
+    heroText.append(title, subtitle);
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "planning-refresh";
