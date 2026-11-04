@@ -11,6 +11,7 @@
   let transactionTypeFilter = "all";
   let budgetsData = [];
   let accountsData = [];
+  let pendingCSVImport = null;
   let summaryData = {};
   let summaryAll = {};
 
@@ -60,14 +61,16 @@
   function updateUserUI() {
     const user = authSession?.user || {};
     const metadata = user.user_metadata || {};
-    const name = metadata.name || user.email || "Finance User";
+    const name = metadata.full_name || metadata.name || user.email || "Finance User";
     const email = user.email || "Private workspace";
     const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "FA";
     const nameEl = $("user-name");
     const emailEl = $("user-email");
+    const menuEmail = $("profile-menu-email");
     const avatarEl = $("user-avatar");
     if (nameEl) nameEl.textContent = name;
     if (emailEl) emailEl.textContent = email;
+    if (menuEmail) menuEmail.textContent = email;
     if (avatarEl) avatarEl.textContent = initials;
   }
 
@@ -1680,6 +1683,165 @@
     }
   }
 
+  function csvElement(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  function buildCSVImportRows(records) {
+    const headers = records[0].map(header =>
+      String(header || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+    );
+    const rows = [];
+    let skipped = 0;
+
+    for (const values of records.slice(1)) {
+      const sourceRow = {};
+      headers.forEach((header, position) => {
+        sourceRow[header] = String(values[position] ?? "").trim();
+      });
+      const get = (...names) => {
+        for (const name of names) {
+          if (sourceRow[name] !== undefined && sourceRow[name] !== "") return sourceRow[name];
+        }
+        return "";
+      };
+
+      const debit = parseImportAmount(get("debit", "withdrawal", "debitamount"));
+      const credit = parseImportAmount(get("credit", "deposit", "creditamount"));
+      const hasDebitCredit = Number.isFinite(debit) || Number.isFinite(credit);
+      let amount = parseImportAmount(get("amount", "transactionamount", "amountinr", "value", "total"));
+      let typeValue = get("type", "transactiontype", "kind").toLowerCase();
+
+      if (hasDebitCredit && !(Number.isFinite(amount) && amount !== 0)) {
+        if (Number.isFinite(credit) && credit > 0) {
+          amount = credit;
+          typeValue = "income";
+        } else if (Number.isFinite(debit) && debit > 0) {
+          amount = debit;
+          typeValue = "expense";
+        }
+      }
+
+      const date = parseImportDate(get("date", "transactiondate", "posteddate", "transdate"));
+      const amountAbs = Math.abs(amount);
+      if (!Number.isFinite(amountAbs) || amountAbs <= 0 || !date) {
+        skipped += 1;
+        continue;
+      }
+
+      let type = "expense";
+      if (["income", "credit", "deposit", "salary", "refund", "interest"].includes(typeValue)) {
+        type = "income";
+      } else if (["expense", "debit", "withdrawal", "payment", "purchase"].includes(typeValue)) {
+        type = "expense";
+      } else if (hasDebitCredit && Number.isFinite(credit) && credit > 0) {
+        type = "income";
+      } else if (amount < 0) {
+        type = "expense";
+      }
+
+      const category = get("category", "cat", "subcategory") || "Uncategorized";
+      const description = get("description", "desc", "note", "merchant", "narration", "details") || category;
+      const rawAccount = get("accountid", "accountcode", "account", "wallet");
+      const numericAccount = /^\d+$/.test(rawAccount) ? Number(rawAccount) : null;
+      const existingAccount = numericAccount !== null
+        ? accountsData.find(account => Number(account.id) === numericAccount)
+        : null;
+
+      rows.push({
+        payload: {
+          type,
+          amount: amountAbs,
+          category: category.slice(0, 50),
+          description: description.slice(0, 200),
+          date,
+          account_id: existingAccount ? Number(existingAccount.id) : null
+        },
+        sourceAccount: rawAccount,
+      });
+    }
+
+    return {rows, skipped};
+  }
+
+  function renderCSVImportPreview(fileName, rows, skipped) {
+    const summary = $("csv-import-summary");
+    const mappingsSection = $("csv-account-mapping-section");
+    const mappings = $("csv-account-mappings");
+    const preview = $("csv-preview-rows");
+    const count = $("csv-preview-count");
+    const footnote = $("csv-import-footnote");
+    const confirm = $("csv-import-confirm");
+    if (!summary || !mappings || !preview || !count || !footnote || !confirm) return;
+
+    summary.replaceChildren();
+    [
+      ["File", fileName],
+      ["Valid rows", String(rows.length)],
+      ["Skipped", String(skipped)],
+    ].forEach(([label, value]) => {
+      const chip = csvElement("div", "csv-summary-chip");
+      chip.append(csvElement("span", "", label), csvElement("strong", "", value));
+      summary.appendChild(chip);
+    });
+
+    mappings.replaceChildren();
+    const sourceAccounts = [...new Set(rows.map(row => row.sourceAccount).filter(Boolean))];
+    mappingsSection.hidden = sourceAccounts.length === 0;
+    sourceAccounts.forEach(code => {
+      const row = csvElement("div", "csv-account-map-row");
+      row.appendChild(csvElement("span", "csv-account-code", code));
+      const select = csvElement("select");
+      select.dataset.sourceAccount = code;
+      const none = csvElement("option", "", "Leave unassigned");
+      none.value = "";
+      select.appendChild(none);
+      accountsData.forEach(account => {
+        const option = csvElement("option", "", `${account.name} (${account.type || "account"})`);
+        option.value = String(account.id);
+        if (/^\d+$/.test(code) && Number(code) === Number(account.id)) option.selected = true;
+        select.appendChild(option);
+      });
+      row.appendChild(select);
+      mappings.appendChild(row);
+    });
+
+    preview.replaceChildren();
+    rows.slice(0, 10).forEach(({payload, sourceAccount}) => {
+      const row = csvElement("tr");
+      row.appendChild(csvElement("td", "", payload.date));
+      row.appendChild(csvElement("td", "", payload.description));
+      row.appendChild(csvElement("td", "", payload.category));
+      row.appendChild(csvElement("td", "", payload.type));
+      const amount = csvElement(
+        "td",
+        `numeric ${payload.type === "income" ? "amount-income" : "amount-expense"}`,
+        (payload.type === "income" ? "+" : "−") + fmtDec(payload.amount),
+      );
+      row.appendChild(amount);
+      row.appendChild(csvElement("td", "", sourceAccount || "—"));
+      preview.appendChild(row);
+    });
+    count.textContent = `Showing ${Math.min(10, rows.length)} of ${rows.length}`;
+    footnote.textContent = skipped
+      ? `${skipped} row(s) could not be read and will not be imported. Exact matching transactions already in your account will be skipped as duplicates.`
+      : "Exact matching transactions already in your account will be skipped as duplicates. Account codes without a mapping will be imported as unassigned.";
+    confirm.textContent = `Import ${rows.length} transaction${rows.length === 1 ? "" : "s"}`;
+    confirm.disabled = rows.length === 0;
+  }
+
+  function closeCSVImport() {
+    const modal = $("modal-csv-import");
+    if (modal) {
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+    }
+    pendingCSVImport = null;
+  }
+
   async function importCSV(input) {
     const file = input.files?.[0];
     if (!file) return;
@@ -1689,99 +1851,72 @@
       if (records.length < 2) {
         throw new Error("CSV must contain a header row and at least one data row.");
       }
-
-      const headers = records[0].map(header =>
-        String(header || "").toLowerCase().replace(/[^a-z0-9]/g, "")
-      );
-      const rows = [];
-      let skipped = 0;
-
-      for (const values of records.slice(1)) {
-        const sourceRow = {};
-        headers.forEach((header, position) => {
-          sourceRow[header] = String(values[position] ?? "").trim();
-        });
-        const get = (...names) => {
-          for (const name of names) {
-            if (sourceRow[name] !== undefined && sourceRow[name] !== "") return sourceRow[name];
-          }
-          return "";
-        };
-
-        const debit = parseImportAmount(get("debit", "withdrawal", "debitamount"));
-        const credit = parseImportAmount(get("credit", "deposit", "creditamount"));
-        const hasDebitCredit = Number.isFinite(debit) || Number.isFinite(credit);
-        let amount = parseImportAmount(get("amount", "transactionamount", "amountinr", "value", "total"));
-        let typeValue = get("type", "transactiontype", "kind").toLowerCase();
-
-        if (hasDebitCredit && !(Number.isFinite(amount) && amount !== 0)) {
-          if (Number.isFinite(credit) && credit > 0) {
-            amount = credit;
-            typeValue = "income";
-          } else if (Number.isFinite(debit) && debit > 0) {
-            amount = debit;
-            typeValue = "expense";
-          }
-        }
-
-        const date = parseImportDate(get("date", "transactiondate", "posteddate", "transdate"));
-        const amountAbs = Math.abs(amount);
-        if (!Number.isFinite(amountAbs) || amountAbs <= 0 || !date) {
-          skipped += 1;
-          continue;
-        }
-
-        let type = "expense";
-        if (["income", "credit", "deposit", "salary", "refund", "interest"].includes(typeValue)) {
-          type = "income";
-        } else if (["expense", "debit", "withdrawal", "payment", "purchase"].includes(typeValue)) {
-          type = "expense";
-        } else if (hasDebitCredit && Number.isFinite(credit) && credit > 0) {
-          type = "income";
-        }
-
-        const category = get("category", "cat", "subcategory") || "Uncategorized";
-        const description = get("description", "desc", "note", "merchant", "narration", "details") || category;
-        const rawAccountId = Number(get("accountid", "account"));
-        const accountId = Number.isInteger(rawAccountId) && accountsData.some(account => Number(account.id) === rawAccountId)
-          ? rawAccountId
-          : null;
-
-        rows.push({
-          type,
-          amount: amountAbs,
-          category: category.slice(0, 50),
-          description: description.slice(0, 200),
-          date,
-          account_id: accountId
-        });
-      }
-
+      const {rows, skipped} = buildCSVImportRows(records);
       if (!rows.length) {
-        throw new Error(`No valid transaction rows found. ${skipped} row(s) were skipped; check that your CSV has Amount and Date columns.`);
+        throw new Error(`No valid rows found. ${skipped} row(s) were skipped. Check that the CSV contains Amount and Date columns.`);
       }
+
+      pendingCSVImport = {rows, skipped, fileName: file.name};
+      renderCSVImportPreview(file.name, rows, skipped);
+      $("modal-csv-import")?.classList.add("open");
+      $("modal-csv-import")?.setAttribute("aria-hidden", "false");
+    } catch (error) {
+      showToast("Could not read CSV: " + error.message, "error");
+    } finally {
+      input.value = "";
+    }
+  }
+
+  async function confirmCSVImport() {
+    if (!pendingCSVImport?.rows?.length) return;
+    const button = $("csv-import-confirm");
+    const originalText = button?.textContent || "Import transactions";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Importing…";
+    }
+
+    try {
+      const mappings = {};
+      document.querySelectorAll("#csv-account-mappings select[data-source-account]").forEach(select => {
+        mappings[select.dataset.sourceAccount] = select.value ? Number(select.value) : null;
+      });
+
+      const payload = pendingCSVImport.rows.map(({payload: row, sourceAccount}) => ({
+        ...row,
+        account_id: sourceAccount
+          ? (mappings[sourceAccount] ?? row.account_id ?? null)
+          : row.account_id,
+      }));
 
       const result = await apiFetch("/transactions/import", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(rows)
+        body: JSON.stringify(payload)
       });
-
-      const imported = Number(result.imported ?? result.created?.length ?? 0);
-      const failed = Number(result.failed || 0);
       await refreshAll();
 
-      if (imported > 0) {
-        const totalSkipped = skipped + failed;
-        showToast(`Imported ${imported} transaction(s)${totalSkipped ? `; skipped ${totalSkipped} invalid row(s)` : ""}.`);
-      } else {
-        const detail = result.errors?.[0]?.error || "The API did not accept any rows.";
-        showToast("No transactions imported: " + detail, "error");
+      const imported = Number(result.imported || 0);
+      const duplicates = Number(result.duplicate_count || result.duplicates?.length || 0);
+      const failed = Number(result.failed || 0);
+      const invalid = Number(pendingCSVImport.skipped || 0);
+      closeCSVImport();
+
+      const parts = [`Imported ${imported}`];
+      if (duplicates) parts.push(`skipped ${duplicates} duplicate${duplicates === 1 ? "" : "s"}`);
+      if (invalid + failed) parts.push(`skipped ${invalid + failed} invalid/failed row(s)`);
+      showToast(parts.join(" · ") + ".", failed ? "error" : "success");
+
+      if (failed && result.errors?.[0]?.error) {
+        showToast("First import error: " + result.errors[0].error, "error");
       }
     } catch (error) {
       showToast("Import failed: " + error.message, "error");
     } finally {
-      input.value = "";
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
     }
   }
 
@@ -1942,9 +2077,35 @@
       hour < 17 ? "Good afternoon" : "Good evening";
   }
 
-  function toggleTheme() {
-    const light = document.body.classList.toggle("light");
+  function applyTheme(theme) {
+    const light = theme === "light";
+    document.body.classList.toggle("light", light);
     localStorage.setItem("theme", light ? "light" : "dark");
+    const label = $("profile-theme-label");
+    const value = $("profile-theme-value");
+    const icon = $("profile-theme-icon");
+    const button = $("profile-theme-toggle");
+    if (label) label.textContent = light ? "Switch to dark mode" : "Switch to light mode";
+    if (value) value.textContent = light ? "Light" : "Dark";
+    if (icon) icon.textContent = light ? "☾" : "☀";
+    if (button) button.setAttribute("aria-pressed", String(light));
+  }
+
+  function toggleTheme() {
+    applyTheme(document.body.classList.contains("light") ? "dark" : "light");
+  }
+
+  function toggleProfileMenu(forceOpen) {
+    const menu = $("profile-menu");
+    const trigger = $("profile-trigger");
+    if (!menu || !trigger) return;
+    const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : menu.hidden;
+    menu.hidden = !shouldOpen;
+    trigger.setAttribute("aria-expanded", String(shouldOpen));
+  }
+
+  function closeProfileMenu() {
+    toggleProfileMenu(false);
   }
 
   function toggleSidebar() {
@@ -2491,8 +2652,8 @@
   function init() {
     setGreeting();
     syncTopbarRangeButtons();
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === "light") document.body.classList.add("light");
+    const savedTheme = localStorage.getItem("theme") || "dark";
+    applyTheme(savedTheme);
 
     createInsightsPage();
     createPlanningPage();
@@ -2530,6 +2691,31 @@
     });
     $("modal-account")?.addEventListener("click", event => {
       if (event.target === $("modal-account")) closeAccountModal();
+    });
+    $("modal-csv-import")?.addEventListener("click", event => {
+      if (event.target === $("modal-csv-import")) closeCSVImport();
+    });
+    $("csv-import-close")?.addEventListener("click", closeCSVImport);
+    $("csv-import-cancel")?.addEventListener("click", closeCSVImport);
+    $("csv-import-confirm")?.addEventListener("click", confirmCSVImport);
+
+    $("profile-trigger")?.addEventListener("click", () => toggleProfileMenu());
+    $("profile-add-account")?.addEventListener("click", () => {
+      closeProfileMenu();
+      openAccountModal();
+    });
+    $("profile-theme-toggle")?.addEventListener("click", () => {
+      toggleTheme();
+      updateUserUI();
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest(".profile-wrap")) closeProfileMenu();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        closeProfileMenu();
+        closeCSVImport();
+      }
     });
     $("search-input")?.addEventListener("input", renderTransactions);
     document.querySelector(".transaction-filter-row")?.addEventListener("click", event => {
