@@ -1677,3 +1677,11 @@ body { overflow-x:hidden; }
   }
 }
 
+.wealth-trend-empty {
+  margin-top: 14px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--border);
+  color: var(--text3);
+  font-size: 11px;
+  line-height: 1.55;
+}
