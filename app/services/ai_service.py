@@ -76,19 +76,19 @@ class AIService:
         """Recognize a broad range of personal, business, and market-finance topics."""
         lowered = " ".join(text.lower().split())
         patterns = (
-            r"\\b(finance|financial|money|monetary|cash flow|cashflow)\\b",
-            r"\\b(budget|budgeting|expense|expenses|spending|income|earnings|salary|wages|paycheck|savings|saving)\\b",
-            r"\\b(invest|investing|investment|investments|portfolio|asset allocation|wealth management|net worth|retirement|pension)\\b",
-            r"\\b(stock|stocks|share|shares|equity|equities|bond|bonds|mutual fund|mutual funds|etf|index fund|sip|dividend|brokerage|demat)\\b",
-            r"\\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold price|silver price|oil price)\\b",
-            r"\\b(bank|banking|bank account|savings account|fixed deposit|recurring deposit|\bfd\b|\brd\b|upi|payment|payments|transaction|transactions|credit card|debit card|credit score|credit history)\\b",
-            r"\\b(loan|loans|mortgage|emi|interest|compound interest|apr|apy|principal|repayment|lending|borrowing|debt|liability|liabilities)\\b",
-            r"\\b(tax|taxes|taxation|income tax|capital gains|gst|vat|tds|deduction|deductions|tax slab|tax return|itr|tax filing)\\b",
-            r"\\b(insurance|premium|premiums|policyholder|claim|claims|coverage|life cover|health cover)\\b",
-            r"\\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit)\\b",
-            r"\\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\\b",
-            r"\\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\\b",
-            r"\\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling)\\b",
+            r"\b(finance|financial|money|monetary|cash flow|cashflow)\b",
+            r"\b(budget|budgeting|expense|expenses|spending|income|earnings|salary|wages|paycheck|savings|saving)\b",
+            r"\b(invest|investing|investment|investments|portfolio|asset allocation|wealth management|net worth|retirement|pension)\b",
+            r"\b(stock|stocks|share|shares|equity|equities|bond|bonds|mutual fund|mutual funds|etf|index fund|sip|dividend|brokerage|demat)\b",
+            r"\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold price|silver price|oil price)\b",
+            r"\b(bank|banking|bank account|savings account|fixed deposit|recurring deposit|\bfd\b|\brd\b|upi|payment|payments|transaction|transactions|credit card|debit card|credit score|credit history)\b",
+            r"\b(loan|loans|mortgage|emi|interest|compound interest|apr|apy|principal|repayment|lending|borrowing|debt|liability|liabilities)\b",
+            r"\b(tax|taxes|taxation|income tax|capital gains|gst|vat|tds|deduction|deductions|tax slab|tax return|itr|tax filing)\b",
+            r"\b(insurance|premium|premiums|policyholder|claim|claims|coverage|life cover|health cover)\b",
+            r"\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit)\b",
+            r"\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\b",
+            r"\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\b",
+            r"\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling)\b",
         )
         return any(re.search(pattern, lowered) for pattern in patterns)
 
@@ -130,13 +130,13 @@ class AIService:
         if len(lowered.split()) > 12:
             return False
         follow_up_patterns = (
-            r"^(why|how|what|when|where|which|who)\\??$",
-            r"^(and|but)\\s+(then|what|how|why)\\??$",
-            r"^(what about|how about|tell me more about|explain more about|explain that|explain it)\\b",
-            r"^(can you|could you)\\s+(explain|elaborate|compare|calculate|clarify)\\b",
-            r"^(is|are|was|were|will|would|should|can|could|does|do)\\s+(it|that|this|they|those|these|one|the two)\\b",
-            r"\\b(it|that|this|they|them|those|these|the former|the latter)\\b",
-            r"^(give me|show me)\\s+(an?\\s+)?(example|calculation|breakdown|comparison)\\b",
+            r"^(why|how|what|when|where|which|who)\??$",
+            r"^(and|but)\s+(then|what|how|why)\??$",
+            r"^(what about|how about|tell me more about|explain more about|explain that|explain it)\b",
+            r"^(can you|could you)\s+(explain|elaborate|compare|calculate|clarify)\b",
+            r"^(is|are|was|were|will|would|should|can|could|does|do)\s+(it|that|this|they|those|these|one|the two)\b",
+            r"\b(it|that|this|they|them|those|these|the former|the latter)\b",
+            r"^(give me|show me)\s+(an?\s+)?(example|calculation|breakdown|comparison)\b",
         )
         return any(re.search(pattern, lowered) for pattern in follow_up_patterns)
 
