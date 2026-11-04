@@ -428,6 +428,10 @@ def test_finance_scope_accepts_broad_financial_topics():
         "What is the S&P 500?",
     )
     assert all(AIService._is_finance_related(question) for question in questions)
+    assert AIService._is_finance_related("What is a call option?")
+    assert AIService._is_finance_related("How does currency exchange work?")
+    assert AIService._is_finance_related("What is a 401(k)?")
+    assert AIService._is_finance_related("What finance topics can you help me with?")
 
 
 def test_finance_scope_rejects_unrelated_questions():
