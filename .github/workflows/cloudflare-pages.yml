@@ -1,0 +1,64 @@
+name: Deploy FinanceAI to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/static/**"
+      - "scripts/build-netlify.mjs"
+      - ".github/workflows/cloudflare-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Build and deploy static frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Build FinanceAI static frontend
+        run: node scripts/build-netlify.mjs
+        env:
+          FINANCEAI_API_URL: https://finance-ai-u9bo.onrender.com
+
+      - name: Verify static output
+        shell: bash
+        run: |
+          test -f netlify-dist/index.html
+          test -f netlify-dist/app.js
+          test -f netlify-dist/style.css
+          test -f netlify-dist/_headers
+          if grep -q 'const API = window.FINANCEAI_API_URL' netlify-dist/app.js; then
+            echo "The Render API URL was not injected into app.js."
+            exit 1
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: pages deploy netlify-dist --project-name=finance-ai --branch=main
+
+      - name: Explain skipped deployment when token is missing
+        if: ${{ env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' }}
+        run: |
+          echo "::notice::Build passed, but deployment was skipped because CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not configured in GitHub Actions secrets."
