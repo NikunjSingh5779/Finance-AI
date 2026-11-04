@@ -2490,17 +2490,24 @@
       const v = document.createElement("div"); v.className = "wealth-metric-value " + type; v.textContent = fmtDec(value);
       metric.append(l,v); summary.appendChild(metric);
     });
-    const trendWrap = document.createElement("div");
-    trendWrap.className = "wealth-trend-wrap";
-    const trendTitle = document.createElement("div");
-    trendTitle.className = "report-list-title";
-    trendTitle.textContent = "Net worth trend";
-    const canvas = document.createElement("canvas");
-    canvas.id = "net-worth-chart";
-    canvas.height = 90;
-    canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "Net worth trend for the last twelve months");
-    trendWrap.append(trendTitle, canvas);
+    let trendSection;
+    if (netWorthHistory.length) {
+      trendSection = document.createElement("div");
+      trendSection.className = "wealth-trend-wrap";
+      const trendTitle = document.createElement("div");
+      trendTitle.className = "report-list-title";
+      trendTitle.textContent = "Net worth trend";
+      const canvas = document.createElement("canvas");
+      canvas.id = "net-worth-chart";
+      canvas.height = 90;
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", "Net worth trend for the last twelve months");
+      trendSection.append(trendTitle, canvas);
+    } else {
+      trendSection = document.createElement("div");
+      trendSection.className = "wealth-trend-empty";
+      trendSection.textContent = "Your net worth trend will appear after you add financial accounts and record balances over time.";
+    }
 
     const breakdown = document.createElement("div"); breakdown.className = "wealth-breakdown";
     [...(netWorthData.assets || []), ...(netWorthData.liabilities || [])].forEach(item => {
@@ -2539,7 +2546,7 @@
       });
     }
 
-    card.append(header,summary,trendWrap,breakdown);
+    card.append(header,summary,trendSection,breakdown);
   }
 
   function renderGoals() {
