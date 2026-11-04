@@ -34,6 +34,29 @@ class TransactionRepository:
         ).fetchone()
         return int(row["count"] or 0)
 
+    def is_import_duplicate(self, transaction: TransactionCreate) -> bool:
+        """Match exact import fingerprints to prevent accidental re-imports."""
+        row = self.conn.execute(
+            """
+            SELECT id
+            FROM transactions
+            WHERE type = ?
+              AND amount = ?
+              AND description = ?
+              AND category = ?
+              AND date = ?
+            LIMIT 1
+            """,
+            (
+                transaction.type,
+                transaction.amount,
+                transaction.description,
+                transaction.category,
+                transaction.date,
+            ),
+        ).fetchone()
+        return row is not None
+
     def get(self, transaction_id: int) -> Optional[TransactionOut]:
         row = self.conn.execute(
             "SELECT * FROM transactions WHERE id = ?",
