@@ -638,10 +638,21 @@ class AIService:
             flags=re.IGNORECASE,
         )
 
+        lowered_query = query.lower()
+        explanatory_move_terms = (
+            "why", "reason", "analysis", "fall", "fell", "dropped",
+            "drop", "decline", "declined", "slump", "sell-off", "selloff",
+        )
+        is_explanatory_move = any(
+            term in lowered_query for term in explanatory_move_terms
+        )
         market_type = AIService._market_type(query)
         symbol = AIService._market_symbol(query, market_type or "")
-        if market_type == "stock" and symbol and any(
-            term in query.lower() for term in ("price", "share", "stock", "close", "quote")
+        if (
+            not is_explanatory_move
+            and market_type == "stock"
+            and symbol
+            and any(term in lowered_query for term in ("price", "share", "stock", "close", "quote"))
         ):
             target_date = AIService._extract_date(query)
             suffix = f" {target_date}" if target_date else ""
@@ -740,6 +751,7 @@ Rules:
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
 - For stock moves, compare direction and date with the structured quote before accepting the premise.
+- For IPO timelines, compare each evidenced event date with today and state whether the issue is open, closed, allotted or listed.
 - Date earlier-session coverage separately from today's quote; label reported causes versus speculation.
 - Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
 - Only use web pages and search results that clearly match the named entity and requested topic.
