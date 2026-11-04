@@ -5,7 +5,11 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.core.database import get_db
-from app.schemas.transaction import TransactionCreate, TransactionOut, TransactionUpdate
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionOut,
+    TransactionUpdate,
+)
 from app.repositories.transaction_repository import TransactionRepository
 from app.services.transaction_service import TransactionService
 
@@ -140,7 +144,9 @@ def import_transactions(txns: list[TransactionCreate]):
     if len(txns) > max_import_rows:
         raise HTTPException(
             status_code=413,
-            detail=f"Import is limited to {max_import_rows:,} rows per request.",
+            detail=(
+                f"Import is limited to {max_import_rows:,} rows per request."
+            ),
         )
 
     conn = get_db()
@@ -156,7 +162,9 @@ def import_transactions(txns: list[TransactionCreate]):
             duplicate_start = len(duplicates)
             error_start = len(errors)
 
-            existing_fingerprints = repository.find_existing_import_fingerprints(batch)
+            existing_fingerprints = (
+                repository.find_existing_import_fingerprints(batch)
+            )
             account_ids = [
                 transaction.account_id
                 for transaction in batch
@@ -170,7 +178,10 @@ def import_transactions(txns: list[TransactionCreate]):
                 index = batch_start + offset
                 fingerprint = repository.import_fingerprint(txn)
 
-                if fingerprint in existing_fingerprints or fingerprint in seen_in_batch:
+                if (
+                    fingerprint in existing_fingerprints
+                    or fingerprint in seen_in_batch
+                ):
                     duplicates.append({
                         "index": index,
                         "description": txn.description,
@@ -178,10 +189,15 @@ def import_transactions(txns: list[TransactionCreate]):
                     })
                     continue
 
-                if txn.account_id is not None and txn.account_id not in valid_account_ids:
+                if (
+                    txn.account_id is not None
+                    and txn.account_id not in valid_account_ids
+                ):
                     errors.append({
                         "index": index,
-                        "error": f"Account with id {txn.account_id} does not exist",
+                        "error": (
+                            f"Account with id {txn.account_id} does not exist"
+                        ),
                         "transaction": txn.model_dump(),
                     })
                     continue
@@ -194,7 +210,9 @@ def import_transactions(txns: list[TransactionCreate]):
 
             try:
                 created_rows = repository.create_many_for_import(accepted)
-                created.extend(transaction.model_dump() for transaction in created_rows)
+                created.extend(
+                    transaction.model_dump() for transaction in created_rows
+                )
             except Exception:
                 # A database constraint/trigger can still reject a whole
                 # statement. Fall back to the legacy row-by-row path for this
@@ -213,7 +231,9 @@ def import_transactions(txns: list[TransactionCreate]):
                                 "date": txn.date,
                             })
                             continue
-                        created.append(service.create_transaction(txn).model_dump())
+                        created.append(
+                            service.create_transaction(txn).model_dump()
+                        )
                     except Exception as exc:
                         conn.rollback()
                         errors.append({
