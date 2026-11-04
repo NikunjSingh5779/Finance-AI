@@ -86,6 +86,10 @@ def test_query_intent_routes_common_questions():
     assert AIService._query_intent("what is the current google stock price and change") == "market_fact"
     assert AIService._query_intent("why did google stock fall today") == "market_research"
     assert AIService._query_intent("when is the Jio IPO") == "ipo_research"
+    assert AIService._query_intent("what is Jio stock") == "market_explainer"
+    assert AIService._query_intent("what is Jio stock price") == "market_fact"
+    assert AIService._market_symbol("what is Jio stock price", "stock") == "JPL.NS"
+    assert AIService._extract_web_search_query("what is Jio stock price") == "JPL.NS stock price today latest"
     assert AIService._query_intent("how much did I spend on food") == "personal_finance"
 
 
@@ -155,7 +159,7 @@ def test_ipo_research_retries_a_broader_company_query(monkeypatch):
     assert "Sources" in reply
 
 
-def test_market_fact_response_is_deterministic():
+def test_market_fact_response_uses_a_full_conversational_answer():
     reply = AIService._market_fact_response(
         {
             "symbol": "GOOGL",
@@ -169,6 +173,77 @@ def test_market_fact_response_is_deterministic():
             "quote_kind": "latest_available_quote",
         }
     )
-    assert "GOOGL is 280.03 USD" in reply
+    assert "GOOGL is quoted at 280.03 USD" in reply
     assert "down 4.47 (1.57%)" in reply
-    assert "Change: -4.47 USD (-1.57%)." in reply
+    assert "The previous close was 284.5 USD." in reply
+    assert "change of -4.47 USD (-1.57%)" in reply
+    assert "**Summary:**" not in reply
+
+
+def test_market_explainer_reaches_the_model_without_search(monkeypatch):
+    class FakeProvider:
+        def __init__(self):
+            self.prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "Jio Platforms is the digital-services company behind Jio."
+
+    async def no_market_data(question):
+        return None
+
+    provider = FakeProvider()
+    service = AIService(provider=provider)
+    monkeypatch.setattr(service, "_get_market_data", no_market_data)
+
+    reply = asyncio.run(
+        service.get_financial_advice(
+            "What is Jio stock?",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "Jio Platforms" in reply
+    assert "natural conversation" in provider.prompt
+    assert "Do not claim it is listed or unlisted" in provider.prompt
+
+
+def test_market_price_search_query_is_current_not_historical():
+    assert AIService._extract_web_search_query(
+        "What is Jio stock price?"
+    ) == "JPL.NS stock price today latest"
+
+
+def test_market_explainer_question_is_not_forced_into_web_research():
+    assert AIService._extract_web_search_query("What is Jio stock?") is None
+
+def test_duckduckgo_search_uses_google_news_rss_when_ddg_is_unavailable(monkeypatch):
+    from app.providers.search.duckduckgo import DuckDuckGoSearcher, SearchResult
+
+    searcher = DuckDuckGoSearcher()
+    calls = []
+
+    async def no_results(*args, **kwargs):
+        return []
+
+    async def rss_results(query, max_results=10):
+        calls.append((query, max_results))
+        return [
+            SearchResult(
+                "Jio Platforms IPO listing details",
+                "https://example.com/jio-listing",
+                "Jio Platforms listed on October 28, 2026.",
+                source="google_news",
+            )
+        ]
+
+    monkeypatch.setattr(searcher, "_search_library", no_results)
+    monkeypatch.setattr(searcher, "_search_httpx", no_results)
+    monkeypatch.setattr(searcher, "_search_google_news_rss", rss_results)
+
+    results = asyncio.run(searcher.search("Jio Platforms IPO listing", max_results=5))
+
+    assert len(results) == 1
+    assert results[0].source == "google_news"
+    assert calls == [("Jio Platforms IPO listing", 5)]
