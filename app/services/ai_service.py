@@ -1176,7 +1176,7 @@ class AIService:
             else "the current reporting period"
         )
 
-        recent_text = "\\n".join(
+        recent_text = "\n".join(
             f"- {item.get('date')}: {item.get('description')} | "
             f"{item.get('category')} | {item.get('type')} | "
             f"₹{item.get('amount')}"
@@ -1217,16 +1217,16 @@ class AIService:
                     f"- {category}: ₹{spent:.2f} spent; "
                     f"monthly budget {budget_value}; budget used {usage}"
                 )
-        category_spending_text = "\\n".join(category_lines) or (
+        category_spending_text = "\n".join(category_lines) or (
             "- No category spending totals available"
         )
 
-        budget_text = "\\n".join(
+        budget_text = "\n".join(
             f"- {item.get('category')}: ₹{item.get('limit_amt')}/month"
             for item in budgets
         ) or "- No budgets configured"
 
-        history_text = "\\n".join(
+        history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
             for message in (conversation or [])[-4:]
