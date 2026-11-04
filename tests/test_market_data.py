@@ -206,6 +206,8 @@ def test_intraday_change_uses_official_daily_close_not_previous_extended_hours_b
 
 
 def test_gold_spot_failure_does_not_fall_back_to_comex_futures(monkeypatch):
+    from app.services.ai_service import AIService
+
     class FakeMarketProvider:
         def __init__(self):
             self.spot_calls = []
