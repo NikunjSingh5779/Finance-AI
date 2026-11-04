@@ -1,10 +1,12 @@
 """Application service for AI-assisted financial advice."""
 
 import asyncio
-from datetime import datetime
-from typing import Any
 import re
-from datetime import date
+from typing import Any
+from urllib.parse import urlsplit
+
+from datetime import date, datetime
+
 
 from app.providers.market.market_data import get_market_provider
 from app.services.web_research_service import get_web_researcher
@@ -385,6 +387,12 @@ class AIService:
             and not web_pages
             and not market_evidence
         ):
+            if intent == "ipo_research":
+                return (
+                    "I couldn't verify this IPO timeline against an issuer, SEBI, NSE, or BSE filing. "
+                    "I have not included unrelated search results, and I won't guess the dates. "
+                    "I can check the RHP, allotment, or listing date next."
+                )
             return (
                 "I couldn't verify this from sufficiently relevant sources. "
                 "I have not included unrelated search results. Try adding the "
@@ -731,9 +739,9 @@ Rules:
 - Use supplied evidence as the source of truth.
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
-- For stock-move explanations, check the quote's direction, change, and date before accepting the user's premise. If the quote shows a rise or a flat session, say so clearly; do not invent a reason for a fall that did not occur in that session.
-- When a recent article describes a move on an earlier trading date, name that date and keep it separate from today's quote. Distinguish reported drivers from speculation.
-- For IPO/listing questions, prefer official issuer, SEBI, NSE and BSE filings over commentary. Treat IPO, initial public offer/offering, DRHP, RHP, red herring prospectus, allotment and listing as related IPO terminology.
+- For stock moves, compare direction and date with the structured quote before accepting the premise.
+- When coverage describes an earlier session, state its date separately from today's quote and distinguish reported causes from speculation.
+- For IPO dates, prefer issuer, SEBI, NSE and BSE filings; treat IPO, DRHP, RHP, prospectus, allotment and listing as related terms.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say it could not be verified; do not fill the gap with guesses.
