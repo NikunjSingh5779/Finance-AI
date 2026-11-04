@@ -233,7 +233,7 @@ class AIService:
                 term in lowered
                 for term in ("future", "futures", "comex", "contract")
             )
-            if re.search(r"\\bgold\\b", lowered) and not futures_request:
+            if re.search(r"\bgold\b", lowered) and not futures_request:
                 if target_date not in (None, today):
                     # Historical spot data is not supplied by the current quote feed.
                     return None
@@ -487,7 +487,7 @@ class AIService:
                     term in lowered
                     for term in ("future", "futures", "comex", "contract")
                 )
-                if re.search(r"\\bgold\\b", lowered) and not futures_request:
+                if re.search(r"\bgold\b", lowered) and not futures_request:
                     target_date = self._extract_date(question)
                     if target_date and target_date != date.today().isoformat():
                         return (
