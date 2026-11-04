@@ -135,16 +135,32 @@ def delete_transaction(txn_id: int):
 
 @router.post("/import", status_code=201)
 def import_transactions(txns: list[TransactionCreate]):
+    if len(txns) > 1000:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=413, detail="Import is limited to 1,000 rows per request.")
+
     conn = get_db()
     try:
         service = _service(conn)
         created = []
         errors = []
+        duplicates = []
 
         for index, txn in enumerate(txns):
             try:
+                if service.repository.is_import_duplicate(txn):
+                    duplicates.append({
+                        "index": index,
+                        "description": txn.description,
+                        "date": txn.date,
+                    })
+                    continue
                 created.append(service.create_transaction(txn).model_dump())
             except Exception as exc:
+                # A failed PostgreSQL statement aborts its transaction. Roll it
+                # back before processing the next row; the session-scoped
+                # authenticated role/claims remain attached to this connection.
+                conn.rollback()
                 errors.append({
                     "index": index,
                     "error": str(exc),
@@ -154,7 +170,9 @@ def import_transactions(txns: list[TransactionCreate]):
         return {
             "created": created,
             "errors": errors,
+            "duplicates": duplicates,
             "imported": len(created),
+            "duplicate_count": len(duplicates),
             "failed": len(errors),
         }
     finally:
