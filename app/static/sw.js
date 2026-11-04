@@ -3,7 +3,7 @@
  * Authentication, financial API responses and personal data are never cached.
  */
 const CACHE_PREFIX = "financeai-shell-";
-const CACHE_NAME = CACHE_PREFIX + "v2";
+const CACHE_NAME = CACHE_PREFIX + "v3";
 const SHELL_URLS = [
   "/",
   "/static/offline.html",
@@ -96,13 +96,14 @@ self.addEventListener("fetch", event => {
     const cache = await caches.open(CACHE_NAME);
     const cacheKey = url.pathname;
     const cached = await cache.match(cacheKey);
-    const network = fetch(request).then(async response => {
+    try {
+      const response = await fetch(request);
       if (response.ok && response.type === "basic") {
         await cache.put(cacheKey, response.clone());
       }
       return response;
-    }).catch(() => null);
-    event.waitUntil(network.then(() => undefined));
-    return cached || await network || new Response("", {status: 504});
+    } catch (_) {
+      return cached || new Response("", {status: 504});
+    }
   })());
 });
