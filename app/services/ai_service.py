@@ -54,24 +54,110 @@ class AIService:
     def _contains_financial_topic(text: str) -> bool:
         """Recognize a broad range of personal, business, and market-finance topics."""
         lowered = " ".join(text.lower().split())
-        patterns = (
-            r"\b(finance|financial|money|monetary|cash flow|cashflow)\b",
-            r"\b(budget|budgeting|expense|expenses|spending|income|earnings|salary|wages|paycheck|savings|saving)\b",
-            r"\b(invest|investing|investment|investments|portfolio|asset allocation|wealth management|net worth|retirement|pension)\b",
-            r"\b(stock|stocks|share|shares|equity|equities|bond|bonds|mutual fund|mutual funds|etf|index fund|sip|dividend|brokerage|demat)\b",
-            r"\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold|silver|gold price|silver price|oil price)\b",
-            r"\b(bank|banking|bank account|savings account|fixed deposit|recurring deposit|\bfd\b|\brd\b|upi|payment|payments|transaction|transactions|credit card|debit card|credit score|credit history)\b",
-            r"\b(loan|loans|mortgage|emi|interest|compound interest|apr|apy|principal|repayment|lending|borrowing|debt|liability|liabilities)\b",
-            r"\b(tax|taxes|taxation|income tax|capital gains|gst|vat|tds|deduction|deductions|tax slab|tax return|itr|tax filing)\b",
-            r"\b(insurance|premium|premiums|policyholder|claim|claims|coverage|life cover|health cover)\b",
-            r"\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial statement|financial statements|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit|market cap|market capitalization|pe ratio|p/e ratio|price to earnings)\b",
-            r"\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\b",
-            r"\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\b",
-            r"\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling|estate planning|inheritance planning|trust fund|student loan|student loans|buy now pay later|bnpl|overdraft|remittance|remittances)\b",
-            r"\b(fund|funds|hedge fund|hedge funds|options|option trading|risk management|financial risk|risk adjusted|discounted cash flow|net present value|internal rate of return|return on investment|return on equity|return on assets|weighted average cost of capital|free cash flow|price to book|book value|capm|wacc|dcf|npv|irr|roi|roe|roa|cagr|eps|fcf|gaap|ifrs|reconciliation|accounts payable|accounts receivable|working paper|financial planning|financial advisor|financial adviser|wealth planning|estate tax|inheritance tax|annuity|annuities|microfinance|remittance)\b",
-            r"\b(ira|401k|401\(k\)|403b|403\(b\)|529 plan|529|hsa|fsa|retirement account|current account|checking account|term deposit|money market account|saving money|save money|payment gateway|payment processor|open banking|fintech|aml|kyc|anti money laundering|money laundering|financial crime|fraud prevention|actuarial|actuary|settlement|clearing|margin trading|leverage|short selling|short position|long position|liquidity|market maker|order book|market index|stock index|s&p 500|dow jones|ftse|dax|hang seng|treasury bill|t bill|commercial paper|certificate of deposit|cds|microfinance)\b",
+        finance_term_groups = (
+            (
+                "finance", "financial", "money", "monetary", "cash flow", "cashflow",
+                "budget", "budgeting", "expense", "expenses", "spending", "income",
+                "earnings", "salary", "wages", "paycheck", "savings", "saving",
+                "saving money", "save money",
+            ),
+            (
+                "invest", "investing", "investment", "investments", "portfolio",
+                "asset allocation", "wealth management", "net worth", "retirement",
+                "pension", "mutual fund", "mutual funds", "fund", "funds", "hedge fund",
+                "hedge funds", "index fund", "sip", "dividend", "brokerage",
+                "financial planning", "wealth planning", "financial advisor",
+                "financial adviser", "estate planning", "inheritance planning",
+                "trust fund", "annuity", "annuities",
+            ),
+            (
+                "stock", "stocks", "share", "shares", "equity", "equities", "bond",
+                "bonds", "etf", "ticker", "ipo", "initial public offering", "sebi",
+                "rbi", "nse", "bse", "nasdaq", "nyse", "nifty", "sensex",
+                "capital market", "financial market", "stock market", "money market",
+                "market cap", "market capitalization", "market index", "stock index",
+                "s&p 500", "dow jones", "ftse", "dax", "hang seng", "securities",
+                "derivative", "derivatives", "futures", "options", "option trading",
+                "hedging", "arbitrage", "settlement", "clearing", "margin trading",
+                "leverage", "short selling", "short position", "long position",
+                "liquidity", "market maker", "order book", "yield", "treasury",
+            ),
+            (
+                "crypto", "cryptocurrency", "bitcoin", "ethereum", "forex",
+                "foreign exchange", "currency exchange", "exchange rate",
+                "commodity", "commodities", "gold", "silver", "oil price",
+            ),
+            (
+                "bank", "banking", "bank account", "savings account", "current account",
+                "checking account", "fixed deposit", "recurring deposit", "term deposit",
+                "fd", "rd", "upi", "payment", "payments", "payment gateway",
+                "payment processor", "transaction", "transactions", "credit card",
+                "debit card", "credit score", "credit history", "overdraft",
+                "money market account", "open banking", "fintech", "remittance",
+                "remittances",
+            ),
+            (
+                "loan", "loans", "student loan", "student loans", "mortgage", "emi",
+                "interest", "compound interest", "apr", "apy", "principal",
+                "repayment", "lending", "borrowing", "debt", "liability", "liabilities",
+                "buy now pay later", "bnpl",
+            ),
+            (
+                "tax", "taxes", "taxation", "income tax", "capital gains", "gst", "vat",
+                "tds", "deduction", "deductions", "tax slab", "tax return", "itr",
+                "tax filing", "estate tax", "inheritance tax",
+            ),
+            (
+                "insurance", "premium", "premiums", "policyholder", "claim", "claims",
+                "coverage", "life cover", "health cover", "irdai",
+            ),
+            (
+                "accounting", "bookkeeping", "balance sheet", "income statement",
+                "profit and loss", "p&l", "revenue", "profit", "profitability", "margin",
+                "cash flow statement", "financial statement", "financial statements",
+                "financial ratio", "valuation", "ebitda", "working capital",
+                "depreciation", "amortization", "audit", "reconciliation",
+                "accounts payable", "accounts receivable", "working paper",
+            ),
+            (
+                "pe ratio", "p/e ratio", "price to earnings", "price to book",
+                "book value", "capm", "wacc", "dcf", "npv", "irr", "roi", "roe",
+                "roa", "cagr", "eps", "fcf", "gaap", "ifrs", "discounted cash flow",
+                "net present value", "internal rate of return", "return on investment",
+                "return on equity", "return on assets",
+                "weighted average cost of capital", "free cash flow",
+            ),
+            (
+                "risk management", "financial risk", "risk adjusted", "venture capital",
+                "private equity", "merger", "acquisition", "m&a", "corporate finance",
+                "business finance", "financial model", "financial modelling",
+                "financial modeling", "microfinance", "actuarial", "actuary",
+                "startup funding",
+            ),
+            (
+                "ira", "401k", "401(k)", "403b", "403(b)", "529 plan", "529", "hsa",
+                "fsa", "retirement account", "certificate of deposit",
+                "treasury bill", "t bill", "commercial paper", "cds",
+            ),
+            (
+                "aml", "kyc", "anti money laundering", "money laundering",
+                "financial crime", "fraud prevention",
+            ),
+            (
+                "inflation", "deflation", "recession", "gdp", "monetary policy",
+                "fiscal policy", "macroeconomics", "economic growth", "economy",
+                "economics", "central bank", "repo rate", "policy rate",
+            ),
         )
-        return any(re.search(pattern, lowered) for pattern in patterns)
+        return any(
+            re.search(
+                r"(?<![a-z0-9])(?:"
+                + "|".join(re.escape(term) for term in group)
+                + r")(?![a-z0-9])",
+                lowered,
+            )
+            for group in finance_term_groups
+        )
 
     @staticmethod
     def _is_greeting_or_finance_help(question: str) -> bool:
@@ -1107,13 +1193,27 @@ Today is {date.today().isoformat()}.
 Query intent: {intent}.
 
 Rules:
-- You are a finance-domain assistant, not a general-purpose chatbot. Stay within personal finance, banking, lending, credit, insurance, tax, accounting, investing, securities, markets, fintech/payments, corporate finance, financial planning, and finance-related economics.
-- For an unrelated request, politely say you can help with finance topics only; do not perform the unrelated task.
-- Answer the full range of finance questions, not only questions about this app's budgets or transactions. Support definitions, how-it-works explanations, examples, comparisons, calculations, financial statement interpretation, risk/reward explanations, planning, and evidence-based research.
-- Do not assume every finance question is about the user's own accounts. Use private financial context only when the question explicitly asks about the user's or their household's finances.
-- For calculations, show the formula, assumptions, units, and result. Re-check arithmetic and distinguish estimates from exact figures.
-- For recommendations, explain trade-offs, material risks, and uncertainty; do not promise returns or present speculative outcomes as guaranteed.
-- For tax, legal, regulatory, banking-rate, insurance-rule, and other jurisdiction-dependent questions, identify the relevant country/region when known and use current authoritative sources. Ask for the jurisdiction when it materially changes the answer.
+- You are a finance-domain assistant, not a general-purpose chatbot.
+  Stay within personal finance, banking, lending, credit, insurance, tax,
+  accounting, investing, securities, markets, fintech/payments, corporate
+  finance, financial planning, and finance-related economics.
+- For an unrelated request, politely say you can help with finance topics only;
+  do not perform the unrelated task.
+- Answer the full range of finance questions, not only questions about this
+  app's budgets or transactions. Support definitions, explanations, examples,
+  comparisons, calculations, statement interpretation, risk analysis, planning,
+  and evidence-based research.
+- Do not assume every finance question is about the user's own accounts.
+  Use private financial context only when the question explicitly asks about
+  the user's or their household's finances.
+- For calculations, show the formula, assumptions, units, and result.
+  Re-check arithmetic and distinguish estimates from exact figures.
+- For recommendations, explain trade-offs, material risks, and uncertainty.
+  Never promise returns or present speculative outcomes as guaranteed.
+- For tax, legal, regulatory, banking-rate, insurance-rule, and other
+  jurisdiction-dependent questions, identify the relevant country/region
+  when known and use current authoritative sources. Ask for the jurisdiction
+  when it materially changes the answer.
 - Use supplied evidence as the source of truth.
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
