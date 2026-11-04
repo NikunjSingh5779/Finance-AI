@@ -10,7 +10,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
-from .base import AIProvider
+from .base import (
+    AIProvider,
+    expanded_output_token_limit,
+    get_output_token_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,46 +68,8 @@ class OmniRouteProvider(AIProvider):
     def responses_url(self) -> str:
         return f"{self.base_url}/responses"
 
-    def generate_response(self, prompt: str) -> str:
-        if not self.combo_name:
-            raise RuntimeError(
-                "OMNIROUTE_COMBO_NAME (or OMNIROUTE_MODEL) must contain "
-                "the exact OmniRoute combo name"
-            )
-
-        # FinanceAI is intentionally concise. Low reasoning plus a smaller
-        # output budget reduces latency while preserving enough room for the
-        # compact Summary/Key points/Next step response format.
-        reasoning_effort = os.getenv(
-            "OMNIROUTE_REASONING_EFFORT", "low"
-        ).strip().lower()
-
-        payload = {
-            "model": self.combo_name,
-            "input": prompt,
-            "stream": False,
-            "max_output_tokens": 512,
-        }
-        if reasoning_effort in {"none", "minimal", "low", "medium", "high", "max"}:
-            payload["reasoning"] = {"effort": reasoning_effort}
-
-        response = self.session.post(
-            self.responses_url,
-            json=payload,
-            timeout=45,
-        )
-
-        if not response.ok:
-            raise RuntimeError(
-                f"OmniRoute returned HTTP {response.status_code}: "
-                f"{response.text[:500]}"
-            )
-
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise RuntimeError("OmniRoute returned invalid JSON") from exc
-
+    @staticmethod
+    def _extract_output_text(data: dict) -> str:
         output_text = data.get("output_text")
         if isinstance(output_text, str) and output_text.strip():
             return output_text.strip()
@@ -114,13 +80,78 @@ class OmniRouteProvider(AIProvider):
                 text = content.get("text")
                 if isinstance(text, str) and text.strip():
                     chunks.append(text.strip())
+        return "\n".join(chunks).strip()
 
-        if chunks:
-            return "\n".join(chunks)
+    def generate_response(self, prompt: str) -> str:
+        if not self.combo_name:
+            raise RuntimeError(
+                "OMNIROUTE_COMBO_NAME (or OMNIROUTE_MODEL) must contain "
+                "the exact OmniRoute combo name"
+            )
 
-        raise RuntimeError(
-            "OmniRoute returned a Responses payload without usable output"
-        )
+        reasoning_effort = os.getenv(
+            "OMNIROUTE_REASONING_EFFORT", "low"
+        ).strip().lower()
+        token_budget = get_output_token_limit("OMNIROUTE_MAX_OUTPUT_TOKENS")
+
+        for attempt in range(2):
+            payload = {
+                "model": self.combo_name,
+                "input": prompt,
+                "stream": False,
+                "max_output_tokens": token_budget,
+            }
+            if reasoning_effort in {"none", "minimal", "low", "medium", "high", "max"}:
+                payload["reasoning"] = {"effort": reasoning_effort}
+
+            response = self.session.post(
+                self.responses_url,
+                json=payload,
+                timeout=60,
+            )
+            if not response.ok:
+                raise RuntimeError(
+                    f"OmniRoute returned HTTP {response.status_code}: "
+                    f"{response.text[:500]}"
+                )
+
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise RuntimeError("OmniRoute returned invalid JSON") from exc
+
+            output_text = self._extract_output_text(data)
+            status = str(data.get("status") or "").lower()
+            incomplete_reason = (
+                (data.get("incomplete_details") or {}).get("reason")
+            )
+            reached_output_limit = (
+                status == "incomplete"
+                and incomplete_reason == "max_output_tokens"
+            )
+
+            if reached_output_limit:
+                retry_budget = expanded_output_token_limit(token_budget)
+                if attempt == 0 and retry_budget > token_budget:
+                    logger.warning(
+                        "OmniRoute response reached %s output tokens; retrying with %s",
+                        token_budget,
+                        retry_budget,
+                    )
+                    token_budget = retry_budget
+                    continue
+                raise RuntimeError(
+                    f"OmniRoute response exceeded the {token_budget}-token output limit after retry"
+                )
+
+            if output_text:
+                return output_text
+
+            raise RuntimeError(
+                "OmniRoute returned a Responses payload without usable output"
+            )
+
+        raise RuntimeError("OmniRoute could not produce a complete response")
 
     def is_available(self) -> bool:
         # Availability is configuration-based here. Some OmniRoute deployments
