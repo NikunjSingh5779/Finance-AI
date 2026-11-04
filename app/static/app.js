@@ -589,18 +589,6 @@
     monthButton?.setAttribute("aria-pressed", String(monthSelected));
     allButton?.setAttribute("aria-pressed", String(allSelected));
   }
-  function getIcon(category) {
-    const map = {
-      "housing": "🏠", "food": "🍔", "food & drink": "🍔",
-      "transport": "🚗", "shopping": "🛍", "entertainment": "🎮",
-      "utilities": "⚡", "travel": "✈", "trip": "✈",
-      "subscriptions": "📱", "health": "💊", "salary": "💼",
-      "freelance": "💻", "investments": "📈", "games": "🎮",
-      "emis": "🏦", "projects": "📁", "other": "📦"
-    };
-    return map[String(category || "").trim().toLowerCase()] || "💳";
-  }
-
   function hashColor(value) {
     const colors = [
       "239,68,68", "245,158,11", "59,130,246",
@@ -1119,7 +1107,7 @@
       icon.style.background = txn.type === "income"
         ? "rgba(34,197,94,.1)"
         : `rgba(${hashColor(txn.category)},.1)`;
-      icon.textContent = getIcon(txn.category);
+      setUiIcon(icon, "transaction");
 
       const info = document.createElement("div");
       info.className = "txn-info";
@@ -1176,11 +1164,14 @@
       actions.className = "account-actions";
 
       const edit = document.createElement("button");
+      edit.type = "button";
       edit.className = "edit-btn";
-      edit.textContent = "✏️";
+      edit.setAttribute("aria-label", "Edit account");
+      setUiIcon(edit, "edit");
       edit.addEventListener("click", () => editAccount(account.id));
 
       const del = document.createElement("button");
+      del.type = "button";
       del.className = "del-btn";
       del.textContent = "Delete";
       del.addEventListener("click", () => deleteAccount(account.id));
@@ -2644,8 +2635,10 @@
       const footer=document.createElement("div"); footer.className="goal-footer";
       const plan=document.createElement("span"); plan.textContent=goal.monthly_required ? fmtDec(goal.monthly_required)+"/month needed" : (goal.status==="completed" ? "Goal completed" : "Set a target date for a monthly plan");
       const actions=document.createElement("div");
-      const update=document.createElement("button"); update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
-      const remove=document.createElement("button"); remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
+      const update=document.createElement("button");
+      update.type = "button"; update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
+      const remove=document.createElement("button");
+      remove.type = "button"; remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
       actions.append(update,remove); footer.append(plan,actions);
       item.append(top,pr,bar,footer); list.appendChild(item);
     });
