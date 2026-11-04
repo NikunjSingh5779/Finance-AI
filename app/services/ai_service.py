@@ -373,17 +373,36 @@ class AIService:
 
     @staticmethod
     def _needs_personal_context(question: str) -> bool:
-        """Include private account data only when the user asks about their own finances."""
+        """Attach account data only for clear personal-finance or transaction questions."""
         lowered = question.lower()
-        direct_reference = re.search(
-            r"\b(my|mine|our|ours|we|i|i'm|i am)\b",
+        owned_financial_data = (
+            "finance", "finances", "money", "cash", "budget", "expense",
+            "expenses", "spending", "income", "salary", "savings", "balance",
+            "account", "accounts", "transaction", "transactions", "net worth",
+            "cash flow", "financial health", "goal", "goals", "debt", "loan",
+            "credit card", "insurance policy", "tax return", "portfolio",
+            "investment account",
+        )
+        ownership_reference = re.search(
+            r"\b(my|mine|our|ours)\b",
             lowered,
         )
-        explicit_personal_request = any(
-            phrase in lowered
-            for phrase in ("for me", "my own", "based on my", "based on our")
+        owned_data_reference = ownership_reference and re.search(
+            r"\b(?:"
+            + "|".join(re.escape(term) for term in owned_financial_data)
+            + r")\b",
+            lowered[ownership_reference.start():],
         )
-        return bool(direct_reference or explicit_personal_request)
+        personal_money_movement = re.search(
+            r"\b(i|we)\b.{0,45}\b(spent|spend|spending|paid|received|earned|"
+            r"deposited|withdrew|transferred)\b",
+            lowered,
+        )
+        direct_question = any(
+            phrase in lowered
+            for phrase in ("for my own finances", "based on my finances", "based on our finances")
+        )
+        return bool(owned_data_reference or personal_money_movement or direct_question)
 
     @staticmethod
     def _market_currency(question: str) -> str:
