@@ -61,11 +61,15 @@ origins = [
     ).split(",")
     if origin.strip()
 ]
+DEFAULT_CORS_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|"
+    r"192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|"
+    r"^https://[a-z0-9][a-z0-9-]*\.netlify\.app$|"
+    r"^https://([a-z0-9-]+\.)?finance-ai-61h\.pages\.dev$"
+)
 origin_regex = os.getenv(
     "CORS_ORIGIN_REGEX",
-    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|"
-    r"192\.168\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|"
-    r"^https://[a-z0-9][a-z0-9-]*\\.netlify\\.app$",
+    DEFAULT_CORS_ORIGIN_REGEX,
 ).strip() or None
 
 app.add_middleware(
