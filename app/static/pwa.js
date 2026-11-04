@@ -6,16 +6,20 @@
   const makeBanner = ({id, message, actionLabel, onAction, dismissLabel = "Dismiss"}) => {
     let banner = document.getElementById(id);
     if (banner) return banner;
+
     banner = document.createElement("section");
     banner.id = id;
     banner.className = "pwa-banner";
     banner.setAttribute("role", "status");
     banner.setAttribute("aria-live", "polite");
+
     const text = document.createElement("p");
     text.className = "pwa-banner-message";
     text.textContent = message;
+
     const actions = document.createElement("div");
     actions.className = "pwa-banner-actions";
+
     if (actionLabel && onAction) {
       const action = document.createElement("button");
       action.type = "button";
@@ -24,6 +28,7 @@
       action.addEventListener("click", onAction);
       actions.appendChild(action);
     }
+
     const dismiss = document.createElement("button");
     dismiss.type = "button";
     dismiss.className = "pwa-dismiss";
@@ -31,6 +36,7 @@
     dismiss.setAttribute("aria-label", dismissLabel);
     dismiss.addEventListener("click", () => banner.remove());
     actions.appendChild(dismiss);
+
     banner.append(text, actions);
     document.body.appendChild(banner);
     return banner;
@@ -53,25 +59,32 @@
   updateConnectivity();
 
   let deferredInstallPrompt = null;
-  const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches ||
     window.navigator.standalone === true;
-  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent) &&
-    !window.MSStream;
+  const userAgent = window.navigator.userAgent || "";
+  const isIOS = /iphone|ipad|ipod/i.test(userAgent) ||
+    (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
     deferredInstallPrompt = event;
     if (isStandalone) return;
+
     makeBanner({
       id: "pwa-install-prompt",
       message: "Install FinanceAI for quick access from your home screen.",
       actionLabel: "Install",
       onAction: async () => {
         if (!deferredInstallPrompt) return;
-        deferredInstallPrompt.prompt();
-        await deferredInstallPrompt.userChoice;
-        deferredInstallPrompt = null;
-        document.getElementById("pwa-install-prompt")?.remove();
+        try {
+          await deferredInstallPrompt.prompt();
+          await deferredInstallPrompt.userChoice;
+        } catch (error) {
+          console.warn("FinanceAI install prompt was not completed:", error);
+        } finally {
+          deferredInstallPrompt = null;
+          document.getElementById("pwa-install-prompt")?.remove();
+        }
       }
     });
   });
@@ -88,9 +101,12 @@
     document.getElementById("pwa-install-prompt")?.remove();
   });
 
+  let reloadAfterUpdate = false;
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshing) return;
+    // The first install also triggers controllerchange. Reload only after
+    // the user explicitly accepts an available update.
+    if (!reloadAfterUpdate || refreshing) return;
     refreshing = true;
     window.location.reload();
   });
@@ -108,7 +124,11 @@
           id: "pwa-update-prompt",
           message: "A new FinanceAI version is ready.",
           actionLabel: "Update now",
-          onAction: () => registration.waiting?.postMessage({type: "SKIP_WAITING"})
+          onAction: () => {
+            if (!registration.waiting) return;
+            reloadAfterUpdate = true;
+            registration.waiting.postMessage({type: "SKIP_WAITING"});
+          }
         });
       };
 
@@ -120,6 +140,7 @@
           if (worker.state === "installed") showUpdate();
         });
       });
+
       await registration.update();
     } catch (error) {
       console.warn("FinanceAI PWA registration failed:", error);

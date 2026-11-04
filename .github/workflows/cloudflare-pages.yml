@@ -46,6 +46,17 @@ jobs:
           test -f netlify-dist/app.js
           test -f netlify-dist/style.css
           test -f netlify-dist/_headers
+          test -s netlify-dist/manifest.webmanifest
+          test -s netlify-dist/sw.js
+          test -s netlify-dist/pwa.js
+          test -s netlify-dist/offline.html
+          test -s netlify-dist/icons/icon-192.png
+          test -s netlify-dist/icons/icon-512.png
+          test -s netlify-dist/icons/icon-maskable.png
+          test -s netlify-dist/icons/apple-touch-icon.png
+          node --check netlify-dist/pwa.js
+          node --check netlify-dist/sw.js
+          node -e "JSON.parse(require('node:fs').readFileSync('netlify-dist/manifest.webmanifest', 'utf8'))"
           if grep -q 'const API = window.FINANCEAI_API_URL' netlify-dist/app.js; then
             echo "The Render API URL was not injected into app.js."
             exit 1

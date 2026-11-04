@@ -27,6 +27,13 @@ app = app.replace(
 fs.writeFileSync(indexPath, index, "utf8");
 fs.writeFileSync(appPath, app, "utf8");
 
+// The FastAPI app serves assets from /static; Cloudflare Pages flattens
+// app/static into the site root. Rewrite the service worker's allowlist too.
+const serviceWorkerPath = path.join(output, "sw.js");
+let serviceWorker = fs.readFileSync(serviceWorkerPath, "utf8");
+serviceWorker = serviceWorker.replaceAll('"/static/', '"/');
+fs.writeFileSync(serviceWorkerPath, serviceWorker, "utf8");
+
 // Netlify reads security headers from netlify.toml. Cloudflare Pages uses
 // a static _headers file, so emit the equivalent rules into the build output.
 const headersPath = path.join(output, "_headers");
@@ -38,6 +45,9 @@ fs.writeFileSync(
     "  Referrer-Policy: strict-origin-when-cross-origin",
     "  X-Frame-Options: SAMEORIGIN",
     "  Permissions-Policy: camera=(), microphone=()",
+    "",
+    "/sw.js",
+    "  Cache-Control: no-cache",
     "",
   ].join("\n"),
   "utf8"
