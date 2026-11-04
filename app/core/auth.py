@@ -218,3 +218,62 @@ async def sign_out(access_token: str) -> None:
         "/logout",
         access_token=access_token,
     )
+
+async def start_google_oauth(redirect_to: str, code_challenge: str) -> str:
+    """Return the provider authorization URL for a browser PKCE flow."""
+    params = {
+        "provider": "google",
+        "redirect_to": redirect_to,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "s256",
+    }
+    headers = {"apikey": _publishable_key()}
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(15.0, connect=5.0),
+        follow_redirects=False,
+        headers=headers,
+    ) as client:
+        response = await client.get(
+            f"{_supabase_url()}/auth/v1/authorize",
+            params=params,
+        )
+
+    location = response.headers.get("location")
+    if response.is_redirect and location:
+        return location
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+
+    message = (
+        body.get("msg")
+        or body.get("message")
+        or body.get("error_description")
+        or body.get("error")
+        or "Google sign-in could not be started"
+    )
+    if response.status_code in {400, 404}:
+        message = (
+            "Google sign-in is not enabled in Supabase yet. Configure the Google "
+            "provider in Authentication → Sign In / Providers."
+        )
+    raise AuthProviderError(str(message))
+
+
+async def exchange_google_oauth_code(
+    auth_code: str,
+    code_verifier: str,
+) -> dict[str, Any]:
+    """Exchange a Supabase PKCE authorization code for a user session."""
+    return await _supabase_request(
+        "POST",
+        "/token?grant_type=pkce",
+        payload={
+            "auth_code": auth_code,
+            "code_verifier": code_verifier,
+        },
+    )
+
