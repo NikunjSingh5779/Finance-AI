@@ -10,7 +10,9 @@ and the ARES KronosPredictorAgent data pipeline.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -34,6 +36,17 @@ class MarketDataProvider:
 
     def __init__(self) -> None:
         self._available: bool | None = None  # None = not checked yet
+        self._price_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    def _cached_price(self, key: str, ttl_seconds: float) -> dict[str, Any] | None:
+        cached = self._price_cache.get(key)
+        if cached and time.monotonic() - cached[0] < ttl_seconds:
+            return dict(cached[1])
+        return None
+
+    def _store_price(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
+        self._price_cache[key] = (time.monotonic(), dict(value))
+        return dict(value)
 
     @property
     def available(self) -> bool:
@@ -46,68 +59,269 @@ class MarketDataProvider:
                 self._available = False
         return self._available
 
-    async def get_current_price(self, symbol: str) -> dict[str, Any] | None:
-        """Get current price data for a symbol.
+    async def get_spot_price(
+        self,
+        symbol: str = "XAU",
+        currency: str = "INR",
+    ) -> dict[str, Any] | None:
+        """Fetch a keyless precious-metal spot quote with its source timestamp.
 
-        Returns price, change, volume, and basic info.
+        Gold API refreshes its live price about every 30 seconds. Cache just
+        under that interval and reject timestamps older than five minutes.
+        Values for metals are quoted per troy ounce.
         """
+        import httpx
+
+        symbol = symbol.upper().strip()
+        currency = currency.upper().strip()
+        if symbol not in {"XAU", "XAG", "XPT", "XPD"}:
+            return None
+        if not re.fullmatch(r"[A-Z]{3}", currency):
+            return None
+
+        cache_key = f"spot:{symbol}:{currency}"
+        cached = self._cached_price(cache_key, 25.0)
+        if cached:
+            return cached
+
+        url = f"https://api.gold-api.com/price/{symbol}/{currency}"
+        try:
+            timeout = httpx.Timeout(4.5, connect=2.0)
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=True,
+                headers={"User-Agent": "FinanceAI/2.2 (+market-data)"},
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                payload = response.json()
+
+            price = float(payload.get("price") or 0)
+            updated_raw = payload.get("updatedAt") or payload.get("updated_at")
+            if price <= 0 or not updated_raw:
+                return None
+
+            updated_at = datetime.fromisoformat(
+                str(updated_raw).replace("Z", "+00:00")
+            )
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            updated_at = updated_at.astimezone(timezone.utc)
+            age_seconds = max(
+                0.0,
+                (datetime.now(timezone.utc) - updated_at).total_seconds(),
+            )
+            if age_seconds > 300:
+                logger.warning(
+                    "Rejecting stale %s spot price (%s seconds old)",
+                    symbol,
+                    int(age_seconds),
+                )
+                return None
+
+            quote_currency = str(payload.get("currency") or currency).upper()
+            result = {
+                "symbol": symbol,
+                "name": payload.get("name") or {
+                    "XAU": "Gold",
+                    "XAG": "Silver",
+                    "XPT": "Platinum",
+                    "XPD": "Palladium",
+                }.get(symbol, symbol),
+                "price": round(price, 4),
+                "currency": quote_currency,
+                "currency_symbol": payload.get("currencySymbol"),
+                "exchange_rate": payload.get("exchangeRate"),
+                "source": "Gold API",
+                "quote_kind": "spot",
+                "unit": "troy_ounce",
+                "market_timestamp": updated_at.isoformat(),
+                "updated_at": updated_at.isoformat(),
+                "updated_at_readable": payload.get("updatedAtReadable"),
+                "freshness_seconds": int(age_seconds),
+            }
+            if symbol == "XAU":
+                result["price_per_10g"] = round(
+                    price * 10 / 31.1034768,
+                    2,
+                )
+            return self._store_price(cache_key, result)
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+            logger.warning("Spot price lookup failed for %s/%s: %s", symbol, currency, exc)
+            return None
+
+    async def get_current_price(self, symbol: str) -> dict[str, Any] | None:
+        """Get a timestamped recent quote, falling back to the latest daily close.
+
+        Yahoo Finance intraday bars are not guaranteed to be exchange real-time.
+        Their actual bar timestamp is preserved, and old bars are never labelled
+        as current prices.
+        """
+        symbol = symbol.upper().strip()
         if not self.available:
             return None
 
+        cache_key = f"quote:{symbol}"
+        cached = self._cached_price(cache_key, 10.0)
+        if cached:
+            return cached
+
         try:
-            import yfinance as yf
-
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period="5d")
-
-            if data.empty:
-                logger.warning(f"No price data for {symbol}")
-                return None
-
-            latest = data.iloc[-1]
-            previous_close = float(data.iloc[-2]["Close"]) if len(data) > 1 else None
-
-            # Prefer yfinance's latest available quote when present; otherwise
-            # fall back to the latest daily close. This is not a guaranteed
-            # exchange-grade real-time/tick feed.
-            price = float(latest["Close"])
-            quote_kind = "latest_daily_close"
-            try:
-                fast_info = ticker.fast_info
-                fast_price = fast_info.get("last_price")
-                if fast_price is not None:
-                    price = float(fast_price)
-                    quote_kind = "latest_available_quote"
-            except Exception:
-                pass
-
-            change = price - previous_close if previous_close is not None else 0.0
-            change_pct = (
-                change / previous_close * 100
-                if previous_close not in (None, 0)
-                else 0.0
+            result = await asyncio.wait_for(
+                asyncio.to_thread(self._get_current_price_sync, symbol),
+                timeout=14.0,
             )
-
-            return {
-                "symbol": symbol.upper(),
-                "price": round(price, 2),
-                "last_daily_close": round(float(latest["Close"]), 2),
-                "previous_close": round(previous_close, 2) if previous_close is not None else None,
-                "open": round(float(latest["Open"]), 2),
-                "high": round(float(latest["High"]), 2),
-                "low": round(float(latest["Low"]), 2),
-                "volume": int(latest["Volume"]),
-                "change": round(float(change), 2),
-                "change_pct": round(float(change_pct), 2),
-                "currency": "INR" if symbol.upper().endswith((".NS", ".BO")) else "USD",
-                "source": "yfinance",
-                "quote_kind": quote_kind,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to fetch price for {symbol}: {e}")
+        except asyncio.TimeoutError:
+            logger.warning("Market quote lookup timed out for %s", symbol)
             return None
+        except Exception as exc:
+            logger.error("Failed to fetch price for %s: %s", symbol, exc)
+            return None
+
+        return self._store_price(cache_key, result) if result else None
+
+    @staticmethod
+    def _get_current_price_sync(symbol: str) -> dict[str, Any] | None:
+        """Blocking yfinance work, intended to run in a worker thread."""
+        import yfinance as yf
+
+        ticker = yf.Ticker(symbol)
+        intraday = None
+        try:
+            intraday = ticker.history(
+                period="5d",
+                interval="5m",
+                prepost=True,
+                auto_adjust=False,
+                timeout=6,
+            )
+        except Exception as exc:
+            logger.debug("Intraday quote unavailable for %s: %s", symbol, exc)
+
+        now = datetime.now(timezone.utc)
+        if intraday is not None and not intraday.empty:
+            latest = intraday.iloc[-1]
+            raw_index = intraday.index[-1]
+            market_time = (
+                raw_index.to_pydatetime()
+                if hasattr(raw_index, "to_pydatetime")
+                else raw_index
+            )
+            if market_time.tzinfo is None:
+                market_time = market_time.replace(tzinfo=timezone.utc)
+            market_time = market_time.astimezone(timezone.utc)
+            age_seconds = max(0.0, (now - market_time).total_seconds())
+
+            if age_seconds <= 20 * 60:
+                latest_date = market_time.date()
+                previous_rows = [
+                    row
+                    for index, row in intraday.iloc[:-1].iterrows()
+                    if (
+                        index.date()
+                        if hasattr(index, "date")
+                        else date.fromisoformat(str(index)[:10])
+                    ) < latest_date
+                ]
+                previous_close = (
+                    float(previous_rows[-1]["Close"])
+                    if previous_rows
+                    else None
+                )
+                price = float(latest["Close"])
+                change = price - previous_close if previous_close else None
+                change_pct = (
+                    change / previous_close * 100
+                    if change is not None and previous_close
+                    else None
+                )
+                return {
+                    "symbol": symbol,
+                    "price": round(price, 4),
+                    "last_daily_close": (
+                        round(previous_close, 4)
+                        if previous_close is not None
+                        else None
+                    ),
+                    "previous_close": (
+                        round(previous_close, 4)
+                        if previous_close is not None
+                        else None
+                    ),
+                    "open": round(float(latest["Open"]), 4),
+                    "high": round(float(latest["High"]), 4),
+                    "low": round(float(latest["Low"]), 4),
+                    "volume": int(latest["Volume"]),
+                    "change": round(change, 4) if change is not None else None,
+                    "change_pct": round(change_pct, 4) if change_pct is not None else None,
+                    "currency": (
+                        "INR"
+                        if symbol.endswith((".NS", ".BO"))
+                        else "USD"
+                    ),
+                    "source": "Yahoo Finance",
+                    "quote_kind": "latest_intraday_bar",
+                    "market_timestamp": market_time.isoformat(),
+                    "timestamp": market_time.isoformat(),
+                    "freshness_seconds": int(age_seconds),
+                }
+
+        # If the intraday feed is closed or stale, report a dated daily close.
+        try:
+            daily = ticker.history(
+                period="5d",
+                interval="1d",
+                auto_adjust=False,
+                timeout=6,
+            )
+        except Exception as exc:
+            logger.debug("Daily-close fallback unavailable for %s: %s", symbol, exc)
+            daily = None
+
+        if daily is None or daily.empty:
+            return None
+
+        latest = daily.iloc[-1]
+        previous_close = (
+            float(daily.iloc[-2]["Close"])
+            if len(daily) > 1
+            else None
+        )
+        price = float(latest["Close"])
+        change = price - previous_close if previous_close is not None else None
+        change_pct = (
+            change / previous_close * 100
+            if change is not None and previous_close
+            else None
+        )
+        raw_index = daily.index[-1]
+        market_date = (
+            raw_index.date()
+            if hasattr(raw_index, "date")
+            else date.fromisoformat(str(raw_index)[:10])
+        )
+        return {
+            "symbol": symbol,
+            "price": round(price, 4),
+            "last_daily_close": round(price, 4),
+            "previous_close": (
+                round(previous_close, 4)
+                if previous_close is not None
+                else None
+            ),
+            "open": round(float(latest["Open"]), 4),
+            "high": round(float(latest["High"]), 4),
+            "low": round(float(latest["Low"]), 4),
+            "volume": int(latest["Volume"]),
+            "change": round(change, 4) if change is not None else None,
+            "change_pct": round(change_pct, 4) if change_pct is not None else None,
+            "currency": "INR" if symbol.endswith((".NS", ".BO")) else "USD",
+            "source": "Yahoo Finance",
+            "quote_kind": "latest_daily_close",
+            "date": market_date.isoformat(),
+            "market_timestamp": market_date.isoformat(),
+            "timestamp": market_date.isoformat(),
+        }
 
     async def get_price_on_date(
         self,
