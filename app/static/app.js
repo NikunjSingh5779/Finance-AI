@@ -2199,7 +2199,8 @@
     typing.id = "typing";
     const typingBubble = document.createElement("div");
     typingBubble.className = "chat-bubble ai";
-    const isMarketQuestion = /\b(gold|silver|crude oil|bitcoin|crypto|stock|share|quote|market price|forex)\b/i.test(message);
+    const marketTerms = /\b(gold|silver|crude oil|bitcoin|crypto|stock|share|quote|market price|forex)\b/i;
+    const isMarketQuestion = marketTerms.test(message);
     typingBubble.textContent = isMarketQuestion
       ? "Checking the latest available market quote..."
       : "I'm analyzing your finances... 📊";
