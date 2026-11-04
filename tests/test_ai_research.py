@@ -414,6 +414,7 @@ def test_failed_gold_spot_quote_returns_clear_unavailable_message(monkeypatch):
     assert "couldn't retrieve a fresh international gold spot quote" in reply
     assert "won't substitute a COMEX futures contract" in reply
 
+
 def test_finance_scope_accepts_broad_financial_topics():
     questions = (
         "Explain compound interest with an example",
