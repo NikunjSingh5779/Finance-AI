@@ -206,12 +206,23 @@ def test_market_explainer_reaches_the_model_without_search(monkeypatch):
             self.prompt = prompt
             return "Jio Platforms is the digital-services company behind Jio."
 
-    async def no_market_data(question):
-        return None
+    class EmptyResearcher:
+        async def search_and_fetch(self, query, **kwargs):
+            assert "Jio" in query
+            assert "listing status" in query
+            return [], []
 
     provider = FakeProvider()
     service = AIService(provider=provider)
-    monkeypatch.setattr(service, "_get_market_data", no_market_data)
+
+    async def unexpected_market_lookup(question):
+        raise AssertionError("A general company explainer must not request a live quote.")
+
+    monkeypatch.setattr(service, "_get_market_data", unexpected_market_lookup)
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: EmptyResearcher(),
+    )
 
     reply = asyncio.run(
         service.get_financial_advice(
@@ -232,8 +243,12 @@ def test_market_price_search_query_is_current_not_historical():
     ) == "JPL.NS stock price today latest"
 
 
-def test_market_explainer_question_is_not_forced_into_web_research():
-    assert AIService._extract_web_search_query("What is Jio stock?") is None
+def test_market_explainer_question_searches_company_listing_context():
+    query = AIService._extract_web_search_query("What is Jio stock?")
+    assert query is not None
+    assert "Jio" in query
+    assert "listing status" in query
+    assert "historical stock price" not in query
 
 
 def test_duckduckgo_search_uses_google_news_rss_when_ddg_is_unavailable(monkeypatch):
