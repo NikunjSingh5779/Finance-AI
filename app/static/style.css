@@ -1823,10 +1823,19 @@ body { overflow-x:clip; }
   align-items: center;
   width: 100%;
   min-width: 0;
+  margin: 1px 0;
   border: 0;
   background: transparent;
   text-align: left;
   font-family: var(--font-ui);
+}
+.nav-item:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.nav-item.active {
+  background: var(--green-bg);
+  color: var(--green);
 }
 .nav-icon {
   display: inline-flex;
