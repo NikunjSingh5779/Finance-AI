@@ -24,7 +24,6 @@ def test_local_root_keeps_serving_static_frontend(monkeypatch):
     assert "FinanceAI" in response.body.decode("utf-8")
 
 
-
 def test_service_worker_is_served_with_root_scope():
     response = serve_service_worker()
 
