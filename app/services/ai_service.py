@@ -225,20 +225,22 @@ class AIService:
         target_date = self._extract_date(question)
 
         # Ordinary gold-price questions mean international spot gold, not a
-        # COMEX futures contract. Keep futures requests on their explicit ticker.
-        if market_type == "commodity" and target_date in (None, today):
+        # COMEX futures contract. Never silently substitute futures or an old
+        # daily close when the dedicated spot feed is unavailable.
+        if market_type == "commodity":
             lowered = question.lower()
             futures_request = any(
                 term in lowered
                 for term in ("future", "futures", "comex", "contract")
             )
-            if "gold" in lowered and not futures_request:
-                spot = await provider.get_spot_price(
+            if re.search(r"\\bgold\\b", lowered) and not futures_request:
+                if target_date not in (None, today):
+                    # Historical spot data is not supplied by the current quote feed.
+                    return None
+                return await provider.get_spot_price(
                     "XAU",
                     currency=self._market_currency(question),
                 )
-                if spot:
-                    return spot
 
         symbol = self._market_symbol(question, market_type)
         if not symbol:
@@ -479,6 +481,26 @@ class AIService:
             market_data = await self._get_market_data(question)
             if intent == "market_fact" and market_data:
                 return self._market_fact_response(market_data)
+            if intent == "market_fact" and market_data is None:
+                lowered = question.lower()
+                futures_request = any(
+                    term in lowered
+                    for term in ("future", "futures", "comex", "contract")
+                )
+                if re.search(r"\\bgold\\b", lowered) and not futures_request:
+                    target_date = self._extract_date(question)
+                    if target_date and target_date != date.today().isoformat():
+                        return (
+                            "I couldn't verify a historical international gold spot price "
+                            "for that date. I won't substitute a COMEX futures price because "
+                            "it is a different instrument."
+                        )
+                    return (
+                        "I couldn't retrieve a fresh international gold spot quote just now. "
+                        "I won't substitute a COMEX futures contract or an older closing price. "
+                        "Please try again shortly. Local 22K/24K retail rates can also differ "
+                        "by city, taxes and making charges."
+                    )
             if market_data:
                 market_evidence = (
                     "STRUCTURED MARKET EVIDENCE\n"
