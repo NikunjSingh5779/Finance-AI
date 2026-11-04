@@ -44,30 +44,15 @@ class AIService:
             for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")
         ):
             return "crypto"
-        if any(
-            term in lowered
-            for term in (
-                "stock",
-                "share",
-                "equity",
-                "ticker",
-                "closing price",
-                "share price",
-                "stock price",
-                "price",
-                "up",
-                "down",
-                "increase",
-                "decrease",
-                "change",
-                "gain",
-                "drop",
-                "fall",
-                "fell",
-                "moved",
-                "return",
-            )
-        ):
+        stock_context = (
+            "stock", "shares", "share price", "equity", "equities", "ticker",
+            "closing price", "stock price", "stock market", "market cap",
+            "market capitalization", "dividend", "earnings per share", "pe ratio",
+            "p/e ratio", "nse", "bse", "nasdaq", "nyse", "nifty", "sensex",
+        )
+        if any(term in lowered for term in stock_context):
+            return "stock"
+        if AIService._market_symbol(question, "stock"):
             return "stock"
         return None
 
@@ -80,15 +65,15 @@ class AIService:
             r"\b(budget|budgeting|expense|expenses|spending|income|earnings|salary|wages|paycheck|savings|saving)\b",
             r"\b(invest|investing|investment|investments|portfolio|asset allocation|wealth management|net worth|retirement|pension)\b",
             r"\b(stock|stocks|share|shares|equity|equities|bond|bonds|mutual fund|mutual funds|etf|index fund|sip|dividend|brokerage|demat)\b",
-            r"\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold price|silver price|oil price)\b",
+            r"\b(crypto|cryptocurrency|bitcoin|ethereum|forex|foreign exchange|currency exchange|exchange rate|commodity|commodities|gold|silver|gold price|silver price|oil price)\b",
             r"\b(bank|banking|bank account|savings account|fixed deposit|recurring deposit|\bfd\b|\brd\b|upi|payment|payments|transaction|transactions|credit card|debit card|credit score|credit history)\b",
             r"\b(loan|loans|mortgage|emi|interest|compound interest|apr|apy|principal|repayment|lending|borrowing|debt|liability|liabilities)\b",
             r"\b(tax|taxes|taxation|income tax|capital gains|gst|vat|tds|deduction|deductions|tax slab|tax return|itr|tax filing)\b",
             r"\b(insurance|premium|premiums|policyholder|claim|claims|coverage|life cover|health cover)\b",
-            r"\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit)\b",
+            r"\b(accounting|bookkeeping|balance sheet|income statement|profit and loss|p&l|revenue|profit|profitability|margin|cash flow statement|financial statement|financial statements|financial ratio|valuation|ebitda|working capital|depreciation|amortization|audit|market cap|market capitalization|pe ratio|p/e ratio|price to earnings)\b",
             r"\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\b",
             r"\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\b",
-            r"\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling)\b",
+            r"\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling|estate planning|inheritance planning|trust fund|student loan|student loans|buy now pay later|bnpl|overdraft|remittance|remittances)\b",
         )
         return any(re.search(pattern, lowered) for pattern in patterns)
 
@@ -300,7 +285,7 @@ class AIService:
         """Include private account data only when the user asks about their own finances."""
         lowered = question.lower()
         direct_reference = re.search(
-            r"\\b(my|mine|our|ours|we|i|i'm|i am)\\b",
+            r"\b(my|mine|our|ours|we|i|i'm|i am)\b",
             lowered,
         )
         explicit_personal_request = any(
@@ -755,6 +740,46 @@ class AIService:
     @staticmethod
     def _preferred_domains(question: str) -> tuple[str, ...]:
         lowered = question.lower()
+        if any(term in lowered for term in ("gst", "tds", "itr", "income tax india", "indian tax")):
+            return (
+                "incometax.gov.in",
+                "incometaxindia.gov.in",
+                "gst.gov.in",
+                "cbic.gov.in",
+                "rbi.org.in",
+                "sebi.gov.in",
+            )
+        if any(term in lowered for term in ("irs", "us tax", "u.s. tax", "federal reserve")):
+            return (
+                "irs.gov",
+                "treasury.gov",
+                "federalreserve.gov",
+                "sec.gov",
+                "finra.org",
+            )
+        if any(term in lowered for term in ("sebi", "nse", "bse", "rbi", "repo rate", "indian bank")):
+            return (
+                "sebi.gov.in",
+                "rbi.org.in",
+                "nseindia.com",
+                "bseindia.com",
+                "financialservices.gov.in",
+                "reuters.com",
+            )
+        if any(term in lowered for term in ("insurance", "irdai", "policy premium")):
+            return (
+                "irdai.gov.in",
+                "rbi.org.in",
+                "reuters.com",
+            )
+        if any(term in lowered for term in ("tax", "capital gains", "deduction")):
+            return (
+                "incometax.gov.in",
+                "irs.gov",
+                "gov.uk",
+                "oecd.org",
+                "reuters.com",
+            )
         if any(term in lowered for term in ("jio", "jpl")):
             return (
                 "nseindia.com",
@@ -909,6 +934,13 @@ class AIService:
             "listing date",
             "ipo date",
         )
+        current_finance_topics = (
+            "gst", "income tax", "capital gains tax", "tax slab", "tax rate",
+            "tax deadline", "tax filing", "itr", "tds", "vat", "sebi", "rbi",
+            "repo rate", "policy rate", "fd rate", "interest rate",
+            "insurance regulation", "insurance rule", "contribution limit",
+            "withdrawal limit", "exchange rate",
+        )
 
         market_price_question = (
             AIService._market_type(text) is not None
@@ -921,6 +953,7 @@ class AIService:
         if (
             query is None
             and not any(signal in lowered for signal in web_signals)
+            and not any(term in lowered for term in current_finance_topics)
             and not market_price_question
             and not market_explainer_question
         ):
