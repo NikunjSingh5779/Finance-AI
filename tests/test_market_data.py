@@ -204,7 +204,6 @@ def test_intraday_change_uses_official_daily_close_not_previous_extended_hours_b
     assert intraday_options["prepost"] is False
 
 
-
 def test_gold_spot_failure_does_not_fall_back_to_comex_futures(monkeypatch):
     from app.services.ai_service import AIService
 
