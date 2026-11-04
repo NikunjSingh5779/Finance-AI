@@ -19,6 +19,16 @@ def test_general_fresh_question_triggers_web_search():
     assert "RBI repo rate" in query
 
 
+def test_explanatory_stock_move_query_keeps_its_news_intent():
+    query = AIService._extract_web_search_query(
+        "Why did Google stock fall today?"
+    )
+    assert query is not None
+    assert "why" in query.lower()
+    assert "fall" in query.lower()
+    assert "historical stock price" not in query.lower()
+
+
 def test_ipo_question_triggers_official_research():
     query = AIService._extract_web_search_query("tell me about the Jio IPO")
     assert query is not None
