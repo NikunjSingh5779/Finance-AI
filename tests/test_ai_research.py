@@ -381,7 +381,6 @@ def test_google_news_rss_parser_extracts_publisher_and_date():
     assert results[0].source == "google_news"
 
 
-
 def test_failed_gold_spot_quote_returns_clear_unavailable_message(monkeypatch):
     class FakeMarketProvider:
         async def get_spot_price(self, symbol, currency="INR"):
