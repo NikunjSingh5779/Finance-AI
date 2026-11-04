@@ -126,3 +126,74 @@ def test_current_quote_runs_in_worker_thread_and_uses_short_cache(monkeypatch):
     assert len(calls) == 1
     assert calls[0][0] == "AAPL"
     assert calls[0][1] != main_thread
+
+
+def test_intraday_change_uses_official_daily_close_not_previous_extended_hours_bar(
+    monkeypatch,
+):
+    import pandas as pd
+    import yfinance as yf
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    previous_day = today - timedelta(days=1)
+    intraday_index = pd.to_datetime(
+        [
+            datetime.combine(
+                previous_day,
+                datetime.min.time(),
+                tzinfo=timezone.utc,
+            ).replace(hour=21),
+            now - timedelta(minutes=5),
+        ],
+        utc=True,
+    )
+    intraday = pd.DataFrame(
+        {
+            "Open": [104.0, 100.0],
+            "High": [106.0, 102.0],
+            "Low": [103.0, 99.0],
+            "Close": [105.0, 101.0],
+            "Volume": [1000, 2000],
+        },
+        index=intraday_index,
+    )
+    daily_index = pd.to_datetime(
+        [
+            datetime.combine(
+                previous_day,
+                datetime.min.time(),
+                tzinfo=timezone.utc,
+            ),
+            datetime.combine(
+                today,
+                datetime.min.time(),
+                tzinfo=timezone.utc,
+            ),
+        ],
+        utc=True,
+    )
+    daily = pd.DataFrame(
+        {
+            "Open": [98.0, 100.0],
+            "High": [100.0, 102.0],
+            "Low": [97.0, 99.0],
+            "Close": [99.0, 101.0],
+            "Volume": [10000, 20000],
+        },
+        index=daily_index,
+    )
+
+    class FakeTicker:
+        def history(self, period, interval, **kwargs):
+            return intraday if interval == "5m" else daily
+
+    monkeypatch.setattr(yf, "Ticker", lambda symbol: FakeTicker())
+    result = MarketDataProvider._get_current_price_sync("AAPL")
+
+    assert result is not None
+    assert result["quote_kind"] == "latest_intraday_bar"
+    assert result["price"] == 101.0
+    assert result["previous_close"] == 99.0
+    assert result["change"] == 2.0
+    assert round(result["change_pct"], 2) == 2.02
