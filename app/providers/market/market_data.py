@@ -208,13 +208,18 @@ class MarketDataProvider:
                 if hasattr(raw_index, "to_pydatetime")
                 else raw_index
             )
+            session_date = (
+                raw_index.date()
+                if hasattr(raw_index, "date")
+                else date.fromisoformat(str(raw_index)[:10])
+            )
             if market_time.tzinfo is None:
                 market_time = market_time.replace(tzinfo=timezone.utc)
             market_time = market_time.astimezone(timezone.utc)
             age_seconds = max(0.0, (now - market_time).total_seconds())
 
             if age_seconds <= 20 * 60:
-                latest_date = market_time.date()
+                latest_date = session_date
                 previous_rows = [
                     row
                     for index, row in intraday.iloc[:-1].iterrows()
@@ -230,7 +235,11 @@ class MarketDataProvider:
                     else None
                 )
                 price = float(latest["Close"])
-                change = price - previous_close if previous_close else None
+                change = (
+                    price - previous_close
+                    if previous_close is not None
+                    else None
+                )
                 change_pct = (
                     change / previous_close * 100
                     if change is not None and previous_close
