@@ -369,6 +369,20 @@ class AIService:
             except Exception:
                 web_results, web_pages = [], []
 
+        # Do not ask the model to guess when a current-information query
+        # produced no evidence that passed entity/topic relevance checks.
+        if (
+            should_search
+            and not web_results
+            and not web_pages
+            and not market_evidence
+        ):
+            return (
+                "I couldn't verify this from sufficiently relevant sources. "
+                "I have not included unrelated search results. Try adding the "
+                "company, product, or date you want me to check."
+            )
+
         providers = self._provider_candidates()
         if not providers:
             raise ProviderUnavailableError(
@@ -663,7 +677,9 @@ Rules:
 - Never invent current prices, dates, IPO status, transactions, balances, or news.
 - For market facts, prefer structured market evidence over web snippets.
 - For IPO/listing questions, prefer official SEBI, exchange, and company filings over commentary.
-- For current-information questions with no usable web evidence, say that verification failed.
+- Only use web pages and search results that clearly match the named entity and requested topic.
+- Never repeat, cite, or append a source that does not support the user's exact question.
+- If relevant evidence is unavailable, clearly say it could not be verified; do not fill the gap with guesses.
 - Keep the answer under 120 words unless the user explicitly asks for detail.
 - Use **Summary:**, **Key points:**, and **Next step:** when useful.
 - Do not repeat the user's question.
