@@ -189,13 +189,16 @@ def _connect_postgres() -> Any:
     )
     user_id = get_current_user_id()
     if user_id:
-        conn.execute("SET LOCAL ROLE authenticated")
+        # This connection is created per request and closed by the controller.
+        # Session-scoped settings survive repository commits (imports commit rows
+        # individually) while remaining isolated to this connection.
+        conn.execute("SET ROLE authenticated")
         conn.execute(
-            "SELECT set_config('request.jwt.claim.sub', %s, true)",
+            "SELECT set_config('request.jwt.claim.sub', %s, false)",
             (user_id,),
         )
         conn.execute(
-            "SELECT set_config('request.jwt.claims', %s, true)",
+            "SELECT set_config('request.jwt.claims', %s, false)",
             ('{"role":"authenticated","sub":"' + user_id + '"}',),
         )
     return conn
