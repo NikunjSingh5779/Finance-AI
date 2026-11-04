@@ -159,7 +159,7 @@ def test_ipo_research_retries_a_broader_company_query(monkeypatch):
     assert "Sources" in reply
 
 
-def test_market_fact_response_uses_a_full_conversational_answer():
+def test_market_fact_response_uses_a_clean_quote_layout():
     reply = AIService._market_fact_response(
         {
             "symbol": "GOOGL",
@@ -168,16 +168,17 @@ def test_market_fact_response_uses_a_full_conversational_answer():
             "change": -4.47,
             "change_pct": -1.57,
             "currency": "USD",
-            "date": "2026-11-04",
-            "source": "test",
-            "quote_kind": "latest_available_quote",
+            "source": "Yahoo Finance",
+            "quote_kind": "latest_intraday_bar",
+            "market_timestamp": "2026-11-04T09:00:00+00:00",
         }
     )
-    assert "GOOGL is quoted at 280.03 USD" in reply
-    assert "It is down 4.47 (1.57%) from the previous close." in reply
-    assert "The previous close was 284.5 USD." in reply
-    assert "change of -4.47 USD (-1.57%)" in reply
-    assert "**Summary:**" not in reply
+    assert "**GOOGL: $280.03**" in reply
+    assert "Down $4.47 (1.57%) versus the previous close of $284.50." in reply
+    assert "04 Nov 2026, 02:30 PM IST" in reply
+    assert reply.count("$4.47") == 1
+    assert "That is a change" not in reply
+    assert "Previous close was" not in reply
 
     jio_reply = AIService._market_fact_response(
         {
@@ -187,14 +188,73 @@ def test_market_fact_response_uses_a_full_conversational_answer():
             "change": -19.0,
             "change_pct": -1.32,
             "currency": "INR",
-            "date": "2026-11-04",
-            "source": "test",
-            "quote_kind": "latest_available_quote",
+            "source": "Yahoo Finance",
+            "quote_kind": "latest_intraday_bar",
+            "market_timestamp": "2026-11-04T09:00:00+00:00",
         }
     )
-    assert "Jio Platforms Limited" in jio_reply
-    assert "NSE: JPL; BSE: 545004" in jio_reply
-    assert "1418.0 INR" in jio_reply
+    assert "Jio Platforms Limited (NSE: JPL; BSE: 545004)" in jio_reply
+    assert "**Jio Platforms Limited (NSE: JPL; BSE: 545004): ₹1,418.00**" in jio_reply
+
+
+def test_gold_spot_response_is_india_friendly_and_not_repetitive():
+    reply = AIService._market_fact_response(
+        {
+            "symbol": "XAU",
+            "price": 200000.0,
+            "price_per_10g": 64301.54,
+            "currency": "INR",
+            "source": "Gold API",
+            "quote_kind": "spot",
+            "market_timestamp": "2026-11-04T17:30:00+00:00",
+        }
+    )
+
+    assert "**Gold spot (24K equivalent): ₹64,301.54 per 10 g**" in reply
+    assert "₹200,000.00 per troy ounce" in reply
+    assert "04 Nov 2026, 11:00 PM IST" in reply
+    assert "not a local jeweller's retail rate" in reply
+    assert "previous close" not in reply.lower()
+    assert "GC=F" not in reply
+
+
+def test_gold_currency_defaults_to_inr_but_respects_explicit_usd():
+    assert AIService._market_currency("gold price") == "INR"
+    assert AIService._market_currency("gold price in India") == "INR"
+    assert AIService._market_currency("gold price in USD") == "USD"
+    assert AIService._market_currency("gold price in dollars") == "USD"
+
+
+def test_gold_questions_use_spot_feed_and_futures_questions_use_yahoo(monkeypatch):
+    class FakeMarketProvider:
+        def __init__(self):
+            self.spot_calls = []
+            self.quote_calls = []
+
+        async def get_spot_price(self, symbol, currency="INR"):
+            self.spot_calls.append((symbol, currency))
+            return {"symbol": symbol, "currency": currency, "quote_kind": "spot"}
+
+        async def get_current_price(self, symbol):
+            self.quote_calls.append(symbol)
+            return {"symbol": symbol, "quote_kind": "latest_intraday_bar"}
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    provider = FakeMarketProvider()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: provider,
+    )
+
+    gold = asyncio.run(AIService()._get_market_data("what is the gold price"))
+    futures = asyncio.run(AIService()._get_market_data("what is gold futures price"))
+
+    assert gold["quote_kind"] == "spot"
+    assert provider.spot_calls == [("XAU", "INR")]
+    assert futures["symbol"] == "GC=F"
+    assert provider.quote_calls == ["GC=F"]
 
 
 def test_market_explainer_reaches_the_model_without_search(monkeypatch):
