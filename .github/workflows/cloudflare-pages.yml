@@ -1,4 +1,4 @@
-name: Deploy FinanceAI to Cloudflare Pages
+name: Deploy FinanceAI to Cloudflare Pages (Free)
 
 on:
   push:
