@@ -1363,6 +1363,7 @@ Rules:
 - For market explainers, explain the company/security in plain language.
   Do not claim listing status, a current ticker, or a price without supplied evidence.
 - Answer directly first and explain the important context and why it matters.
+- Keep the tone natural and conversational; write in a natural conversation style.
 - Use complete sentences. Keep paragraphs concise and avoid repeating the question.
 - For explanatory questions, provide enough detail to answer fully; simple facts
   can be brief and complex topics can be longer.
