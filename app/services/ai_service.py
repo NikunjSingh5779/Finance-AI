@@ -32,17 +32,12 @@ class AIService:
         return get_ai_providers()
 
     @staticmethod
+    @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
-        if any(
-            term in lowered
-            for term in ("gold", "silver", "crude oil", "oil price", "commodity")
-        ):
+        if re.search(r"\b(gold|silver|crude oil|oil price|commodity|commodities)\b", lowered):
             return "commodity"
-        if any(
-            term in lowered
-            for term in ("bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol")
-        ):
+        if re.search(r"\b(bitcoin|btc|ethereum|eth|crypto|cryptocurrency|solana|sol)\b", lowered):
             return "crypto"
         stock_context = (
             "stock", "shares", "share price", "equity", "equities", "ticker",
@@ -56,7 +51,6 @@ class AIService:
             return "stock"
         return None
 
-    @staticmethod
     def _contains_financial_topic(text: str) -> bool:
         """Recognize a broad range of personal, business, and market-finance topics."""
         lowered = " ".join(text.lower().split())
@@ -74,6 +68,7 @@ class AIService:
             r"\b(ipo|initial public offering|sebi|rbi|central bank|repo rate|policy rate|interest rate|yield|treasury|securities|capital market|financial market|stock market|money market|derivative|derivatives|futures|options trading|hedging|arbitrage)\b",
             r"\b(inflation|deflation|recession|gdp|monetary policy|fiscal policy|macroeconomics|economic growth|economy|economics)\b",
             r"\b(startup funding|venture capital|private equity|merger|acquisition|m&a|corporate finance|business finance|financial model|financial modelling|financial modeling|estate planning|inheritance planning|trust fund|student loan|student loans|buy now pay later|bnpl|overdraft|remittance|remittances)\b",
+            r"\b(fund|funds|hedge fund|hedge funds|options|option trading|risk management|financial risk|risk adjusted|discounted cash flow|net present value|internal rate of return|return on investment|return on equity|return on assets|weighted average cost of capital|free cash flow|price to book|book value|capm|wacc|dcf|npv|irr|roi|roe|roa|cagr|eps|fcf|gaap|ifrs|reconciliation|accounts payable|accounts receivable|working paper|financial planning|financial advisor|financial adviser|wealth planning|estate tax|inheritance tax|annuity|annuities|microfinance|remittance)\b",
         )
         return any(re.search(pattern, lowered) for pattern in patterns)
 
@@ -92,11 +87,12 @@ class AIService:
         return lowered in greetings or lowered in help_requests
 
     @staticmethod
+    @staticmethod
     def _is_contextual_finance_follow_up(
         question: str,
         conversation: list[dict[str, str]] | None,
     ) -> bool:
-        """Allow short follow-ups only when the immediately preceding user topic was finance."""
+        """Keep brief follow-ups in scope only when the prior user topic was financial."""
         if not conversation:
             return False
 
@@ -112,20 +108,23 @@ class AIService:
             return False
 
         lowered = " ".join(question.lower().split())
-        if len(lowered.split()) > 12:
+        if not lowered or len(lowered.split()) > 12:
             return False
+
         follow_up_patterns = (
             r"^(why|how|what|when|where|which|who)\??$",
-            r"^(and|but)\s+(then|what|how|why)\??$",
-            r"^(what about|how about|tell me more about|explain more about|explain that|explain it)\b",
-            r"^(can you|could you)\s+(explain|elaborate|compare|calculate|clarify)\b",
+            r"^(and then|and what|and how|but why|but how|what next)\??$",
+            r"^(what about|how about)\b",
+            r"^(tell me more|elaborate|clarify|explain more|explain it|explain that)\b",
+            r"^(can you|could you|please)\s+(explain|elaborate|compare|calculate|clarify|expand)\b",
             r"^(is|are|was|were|will|would|should|can|could|does|do)\s+(it|that|this|they|those|these|one|the two)\b",
-            r"\b(it|that|this|they|them|those|these|the former|the latter)\b",
             r"^(give me|show me)\s+(an?\s+)?(example|calculation|breakdown|comparison)\b",
+            r"^(explain|compare|calculate|expand on)\s+(it|that|this)\b",
+            r"^(why is that|how so|what do you mean|in simple terms|pros and cons)\b",
+            r"^(is it worth it|is that good|is this safe|what are the risks)\??$",
         )
         return any(re.search(pattern, lowered) for pattern in follow_up_patterns)
 
-    @staticmethod
     def _is_finance_related(
         question: str,
         conversation: list[dict[str, str]] | None = None,
@@ -206,7 +205,8 @@ class AIService:
             "oil": "CL=F",
         }
         for alias, symbol in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
-            if alias in lowered:
+            pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+            if re.search(pattern, lowered):
                 return symbol
         return None
 
