@@ -219,6 +219,7 @@ async def sign_out(access_token: str) -> None:
         access_token=access_token,
     )
 
+
 async def start_google_oauth(redirect_to: str, code_challenge: str) -> str:
     """Return the provider authorization URL for a browser PKCE flow."""
     params = {
@@ -276,4 +277,3 @@ async def exchange_google_oauth_code(
             "code_verifier": code_verifier,
         },
     )
-
