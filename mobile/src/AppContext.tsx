@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AuthScreen } from "./AuthScreen";
-import { FinanceApi, type AuthSession } from "./api";
+import { ApiError, FinanceApi, type AuthSession } from "./api";
 import { colors } from "./theme";
 
 const SESSION_KEY = "financeai.auth.session";
