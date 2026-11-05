@@ -145,6 +145,27 @@ async def google_oauth_start(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/google/native/start")
+async def google_native_oauth_start(
+    request: GoogleOAuthStartRequest,
+    raw_request: Request,
+) -> dict:
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+    redirect_to = os.getenv(
+        "MOBILE_AUTH_REDIRECT_URL",
+        "financeai://auth/callback",
+    ).strip()
+    parsed = urlsplit(redirect_to)
+    if parsed.scheme != "financeai" or not parsed.netloc:
+        raise HTTPException(status_code=500, detail="Native Google sign-in redirect is not configured.")
+    try:
+        url = await start_google_oauth(redirect_to, request.code_challenge)
+        return {"url": url}
+    except AuthProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/google/exchange")
 async def google_oauth_exchange(
     request: GoogleOAuthExchangeRequest,
