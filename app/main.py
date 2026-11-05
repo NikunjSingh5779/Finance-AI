@@ -107,6 +107,7 @@ AUTH_PUBLIC_PATHS = {
     "/openapi.json",
     "/auth/config",
     "/auth/signup",
+    "/auth/signup/native",
     "/auth/login",
     "/auth/refresh",
     "/auth/logout",
