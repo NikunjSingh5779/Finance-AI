@@ -193,6 +193,16 @@ export default function AIScreen() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Header title="Assistant" />
+      <View style={styles.chatToolbar}>
+        <Pressable onPress={() => void openHistory()} style={styles.historyButton} accessibilityRole="button">
+          <Icon name="calendar" size={16} color={colors.primary} />
+          <Text style={styles.historyButtonText}>History</Text>
+        </Pressable>
+        <Pressable onPress={() => void startNewChat()} style={styles.newChatButton} accessibilityRole="button">
+          <Icon name="plus" size={16} color={colors.onAccent} />
+          <Text style={styles.newChatButtonText}>New chat</Text>
+        </Pressable>
+      </View>
 
       {providerReady === false ? (
         <View style={styles.unavailableWrap}>
