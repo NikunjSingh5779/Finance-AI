@@ -319,6 +319,28 @@ export default function AIScreen() {
           </Pressable>
         </View>
       </View>
+      <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={() => setHistoryOpen(false)}>
+        <View style={styles.historyBackdrop}>
+          <View style={styles.historySheet}>
+            <View style={styles.historySheetHeader}>
+              <Text style={styles.historyTitle}>Saved conversations</Text>
+              <Pressable onPress={() => setHistoryOpen(false)}><Icon name="close" size={22} color={colors.muted} /></Pressable>
+            </View>
+            {historyLoading ? <ActivityIndicator color={colors.primary} /> : null}
+            <ScrollView>
+              {historyItems.map((item) => (
+                <View key={item.id} style={styles.historyItem}>
+                  <Pressable style={styles.historyItemMain} onPress={() => void resumeConversation(item)}>
+                    <Text style={styles.historyItemTitle}>{item.title}</Text>
+                    <Text style={styles.historyItemPreview} numberOfLines={1}>{item.last_message || "No messages yet"}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => removeConversation(item)}><Icon name="trash" size={18} color={colors.danger} /></Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
