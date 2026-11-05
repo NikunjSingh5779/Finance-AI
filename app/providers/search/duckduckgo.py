@@ -284,7 +284,7 @@ class DuckDuckGoSearcher:
                     "gl": "IN",
                     "ceid": "IN:en",
                 },
-                timeout=8.0,
+                timeout=5.5,
             )
             response.raise_for_status()
             root = ElementTree.fromstring(response.content)
