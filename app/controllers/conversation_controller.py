@@ -19,6 +19,7 @@ class RenameConversation(BaseModel):
 class NewMessage(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
 
+
 @router.get("")
 def list_conversations(request: Request, limit: int = 100):
     user_id = user_id_from_request(request)
@@ -28,6 +29,7 @@ def list_conversations(request: Request, limit: int = 100):
     finally:
         conn.close()
 
+
 @router.post("", status_code=201)
 def create_conversation(body: NewConversation, request: Request):
     user_id = user_id_from_request(request)
@@ -36,6 +38,7 @@ def create_conversation(body: NewConversation, request: Request):
         return {"conversation": ConversationRepository(conn).create(user_id, body.title)}
     finally:
         conn.close()
+
 
 @router.get("/{conversation_id}")
 def get_conversation(conversation_id: int, request: Request):
@@ -50,6 +53,7 @@ def get_conversation(conversation_id: int, request: Request):
     finally:
         conn.close()
 
+
 @router.patch("/{conversation_id}")
 def rename_conversation(conversation_id: int, body: RenameConversation, request: Request):
     user_id = user_id_from_request(request)
@@ -61,6 +65,7 @@ def rename_conversation(conversation_id: int, body: RenameConversation, request:
         return {"conversation": conversation}
     finally:
         conn.close()
+
 
 @router.delete("/{conversation_id}")
 def delete_conversation(conversation_id: int, request: Request):
