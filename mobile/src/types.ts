@@ -26,6 +26,22 @@ export interface Transaction {
   created: string;
 }
 
+export interface RecurringItem {
+  id: number;
+  name: string;
+  amount: number;
+  type: TransactionType;
+  category: string;
+  frequency: "weekly" | "monthly" | "yearly";
+  next_due_date: string;
+  schedule_day: number;
+  schedule_month?: number | null;
+  account_id?: number | null;
+  is_active: boolean;
+  last_recorded_due_date?: string | null;
+  created: string | null;
+}
+
 export interface Budget {
   id: number;
   category: string;

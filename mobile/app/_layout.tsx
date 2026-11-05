@@ -54,6 +54,7 @@ export default function RootLayout() {
             <Stack.Screen name="transactions" />
             <Stack.Screen name="budgets" />
             <Stack.Screen name="planning" />
+            <Stack.Screen name="recurring" />
             <Stack.Screen name="insights" />
             <Stack.Screen name="ai" />
             <Stack.Screen name="settings" />
