@@ -198,13 +198,13 @@ export default function AIScreen() {
             value={question}
             onChangeText={setQuestion}
             onSubmitEditing={() => void sendPrompt()}
-            placeholder="Ask about your finances…"
+            placeholder="Ask FinanceAI anything — money, travel, tech…"
             placeholderTextColor={colors.muted}
             editable={!sending}
             style={styles.input}
             maxLength={1000}
             returnKeyType="send"
-            accessibilityLabel="Ask about your finances"
+            accessibilityLabel="Ask FinanceAI a question"
           />
         </View>
         <View style={styles.composerActions}>
