@@ -2658,6 +2658,19 @@
     });
   }
 
+  async function openAIHistory() {
+    const panel = $("ai-history-panel");
+    if (!panel) return;
+    panel.hidden = false;
+    try {
+      const result = await apiFetch("/api/conversations");
+      aiHistoryItems = result.items || [];
+      renderAIHistory(aiHistoryItems);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not load chat history.", "error");
+    }
+  }
+
   function appendSavedChatMessage(role, content) {
     const chat = $("chat-msgs");
     if (!chat) return;
