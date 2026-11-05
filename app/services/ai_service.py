@@ -1122,12 +1122,9 @@ class AIService:
                 year = re.search(r"\b20\d{2}\b", ipo_research_text)
                 year_text = year.group(0) if year else str(datetime.now().year)
                 ipo_query = (
-                    "Jio Platforms Limited IPO opening date closing date allotment "
-                    "listing date issue price price band RHP prospectus SEBI NSE BSE "
+                    "Jio Platforms Limited IPO RHP SEBI listing status issue price "
                     + year_text
                 )
-                if AIService._is_current_price_request(ipo_research_text):
-                    ipo_query += " current NSE share price JPL exchange quote"
                 return ipo_query
 
         travel_question = AIService._is_travel_planning_query(text)
