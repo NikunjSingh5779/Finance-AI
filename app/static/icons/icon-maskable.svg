@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FinanceAI maskable">
-  <rect width="512" height="512" fill="#000000"/>
-  <image href="financeai-logo.png" x="16" y="16" width="480" height="480" preserveAspectRatio="xMidYMid meet"/>
+  <rect width="512" height="512" fill="#002314"/>
+  <path d="M126 310 218 230l62 31 105-111" fill="none" stroke="#f3fff8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M336 150h49v49" fill="none" stroke="#f3fff8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="132" y="322" width="60" height="86" rx="14" fill="#00d75a"/>
+  <rect x="220" y="286" width="60" height="122" rx="14" fill="#00d75a"/>
+  <rect x="308" y="248" width="60" height="160" rx="14" fill="#00d75a"/>
+  <path d="M104 430c95-49 209-49 304 0" fill="none" stroke="#00f078" stroke-width="12" stroke-linecap="round"/>
 </svg>
