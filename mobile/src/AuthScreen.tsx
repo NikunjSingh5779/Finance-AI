@@ -30,10 +30,10 @@ export function AuthScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const passwordMode = signupMode || passwordResetMode;
 
   const submit = async () => {
     const cleanEmail = email.trim().toLowerCase();
-    const passwordMode = signupMode || passwordResetMode;
 
     if (forgotMode) {
       if (!cleanEmail) {
@@ -57,8 +57,8 @@ export function AuthScreen({
     if (passwordMode) {
       if (
         password.length < 8
-        || !/\\d/.test(password)
-        || !/[^A-Za-z0-9\\s]/.test(password)
+        || !/\d/.test(password)
+        || !/[^A-Za-z0-9\s]/.test(password)
       ) {
         setError("Use at least 8 characters, including one number and one special character.");
         return;
