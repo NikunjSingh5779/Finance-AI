@@ -710,3 +710,138 @@ def test_personal_finance_report_format_does_not_leak_into_general_finance_educa
     assert "FINANCE EDUCATION / RESEARCH RESPONSE FORMAT" in provider.prompt
     assert "PERSONAL FINANCIAL OVERVIEW RESPONSE FORMAT" not in provider.prompt
     assert "Private purchase" not in provider.prompt
+
+def test_combined_jio_ipo_and_current_price_keeps_both_research_intents():
+    question = "When is Jio IPO and what is its price now?"
+    query = AIService._extract_web_search_query(question)
+
+    assert AIService._query_intent(question) == "ipo_research"
+    assert "Jio Platforms Limited IPO" in query
+    assert "listing date" in query.lower()
+    assert "price band" in query.lower()
+    assert "current NSE share price" in query
+    assert AIService._is_current_price_request(question)
+    assert not AIService._is_current_price_request("What is the Jio IPO price band?")
+
+
+def test_jio_ipo_research_retries_current_exchange_quote_query():
+    variants = AIService._research_query_variants(
+        "Jio Platforms Limited IPO listing issue price current NSE share price JPL 2026",
+        "ipo_research",
+    )
+
+    assert any("current NSE BSE share price" in query for query in variants)
+
+
+def test_ipo_mixed_question_uses_structured_share_quote_when_available(monkeypatch):
+    class FakeMarketProvider:
+        async def get_current_price(self, symbol):
+            assert symbol == "JPL.NS"
+            return {
+                "symbol": symbol,
+                "price": 1424.90,
+                "previous_close": 1421.70,
+                "change": 3.20,
+                "change_pct": 0.23,
+                "currency": "INR",
+                "source": "Yahoo Finance",
+                "quote_kind": "latest_intraday_bar",
+                "market_timestamp": "2026-11-06T04:40:12+00:00",
+            }
+
+        async def get_price_on_date(self, symbol, target_date):
+            return None
+
+    class EmptyResearcher:
+        async def search_and_fetch(self, query, **kwargs):
+            return [], []
+
+    monkeypatch.setattr(
+        "app.services.ai_service.get_market_provider",
+        lambda: FakeMarketProvider(),
+    )
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: EmptyResearcher(),
+    )
+
+    reply = asyncio.run(
+        AIService(provider=object()).get_financial_advice(
+            "When is Jio IPO and what is its price now?",
+            financial_context={},
+            conversation=[],
+        )
+    )
+
+    assert "Jio Platforms Limited" in reply
+    assert "₹1,424.90" in reply
+    assert "traded share price, not the IPO issue price" in reply
+
+
+def test_duckduckgo_search_uses_bing_news_rss_when_other_search_sources_fail(monkeypatch):
+    from app.providers.search.duckduckgo import DuckDuckGoSearcher, SearchResult
+
+    searcher = DuckDuckGoSearcher()
+    calls = []
+
+    async def no_results(*args, **kwargs):
+        return []
+
+    async def bing_results(query, max_results=10):
+        calls.append((query, max_results))
+        return [
+            SearchResult(
+                "Jio Platforms IPO listing status",
+                "https://www.sebi.gov.in/filings/public-issues/oct-2026/jio-platforms-limited-rhp.html",
+                "SEBI RHP filing and listing details.",
+                source="bing_news",
+            )
+        ]
+
+    monkeypatch.setattr(searcher, "_search_library", no_results)
+    monkeypatch.setattr(searcher, "_search_httpx", no_results)
+    monkeypatch.setattr(searcher, "_search_google_news_rss", no_results)
+    monkeypatch.setattr(searcher, "_search_bing_news_rss", bing_results)
+
+    results = asyncio.run(searcher.search("Jio Platforms IPO", max_results=5))
+
+    assert len(results) == 1
+    assert results[0].source == "bing_news"
+    assert calls == [("Jio Platforms IPO", 5)]
+
+
+def test_bing_news_rss_parser_unwraps_tracking_link_and_extracts_source():
+    from app.providers.search.duckduckgo import DuckDuckGoSearcher
+
+    payload = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <rss><channel><item>
+      <title>Jio Platforms IPO listed on NSE</title>
+      <link>https://www.bing.com/news/apiclick.aspx?url=https%3A%2F%2Fwww.nseindia.com%2Fissue%2FJPL</link>
+      <description>Jio Platforms Limited listing details.</description>
+      <pubDate>Thu, 05 Nov 2026 10:00:00 GMT</pubDate>
+      <News:Source xmlns:News="urn:news">NSE India</News:Source>
+    </item></channel></rss>"""
+
+    class FakeResponse:
+        content = payload
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        async def get(self, url, *, params, timeout):
+            assert url == "https://www.bing.com/news/search"
+            assert params["setmkt"] == "en-IN"
+            assert params["format"] == "RSS"
+            return FakeResponse()
+
+    searcher = DuckDuckGoSearcher()
+    searcher._client = FakeClient()
+    results = asyncio.run(searcher._search_bing_news_rss("Jio Platforms IPO", 3))
+
+    assert len(results) == 1
+    assert results[0].url == "https://www.nseindia.com/issue/JPL"
+    assert results[0].source == "bing_news"
+    assert "NSE India" in results[0].snippet
+    assert "Thu, 05 Nov 2026" in results[0].snippet
+
