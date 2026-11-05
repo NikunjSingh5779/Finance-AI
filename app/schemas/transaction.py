@@ -80,6 +80,7 @@ class TransactionUpdate(BaseModel):
 
 class TransactionOut(TransactionBase):
     id: int
+    recurring_item_id: Optional[int] = None
     created: str | None
 
     @field_validator("created", mode="before")
