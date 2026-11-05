@@ -3390,6 +3390,7 @@
     deleteAllTransactions,
     addBudget,
     deleteBudget,
+    createRecurringItem,
     openAccountModal,
     closeAccountModal,
     saveAccount,
