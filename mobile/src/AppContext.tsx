@@ -262,7 +262,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     password: string,
     name: string,
   ) => {
-    const next = await api.signup(email, password, name);
+    const next = Platform.OS === "web"
+      ? await api.signup(email, password, name)
+      : await api.signupNative(email, password, name);
     if (!next.access_token || !next.refresh_token) return true;
     await persistSession(next);
     return false;
