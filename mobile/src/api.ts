@@ -167,6 +167,17 @@ export class FinanceApi {
     );
   }
 
+  signupNative(email: string, password: string, name?: string) {
+    return this.request<AuthSession & { requires_email_confirmation?: boolean }>(
+      "/auth/signup/native",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+      },
+      false,
+    );
+  }
+
   signup(email: string, password: string, name?: string) {
     return this.request<AuthSession & { requires_email_confirmation?: boolean }>(
       "/auth/signup",
