@@ -19,6 +19,7 @@
   <script src="/static/pwa.js" defer></script>
 </head>
 <body>
+<button class="pwa-install-fab" id="pwa-install-button" type="button" hidden aria-label="Install FinanceAI"><span aria-hidden="true">⇩</span><span>Install FinanceAI</span></button>
 <div id="auth-screen" class="auth-screen" hidden>
   <div class="auth-card">
     <div class="auth-brand"><div class="logo-icon" aria-hidden="true"><img src="/static/icons/financeai-logo.png?v=20261105-brand" alt=""></div><div><div class="logo-text">FinanceAI</div><div class="logo-sub">Personal Finance</div></div></div>
@@ -135,10 +136,6 @@
     </nav>
 
     <div class="sidebar-user">
-      <button class="pwa-install-nav" id="pwa-install-button" type="button" hidden aria-label="Install FinanceAI">
-        <span class="pwa-install-nav-icon" aria-hidden="true">⇩</span>
-        <span class="pwa-install-nav-label">Install app</span>
-      </button>
       <div class="profile-wrap">
         <button class="user-row" id="profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="profile-menu">
           <span class="avatar" id="user-avatar">FA</span>
