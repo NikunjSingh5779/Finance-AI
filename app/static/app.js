@@ -23,6 +23,7 @@
 
   const API = window.FINANCEAI_API_URL || "";
   let authSession = null;
+  let authRefreshPromise = null;
   let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
