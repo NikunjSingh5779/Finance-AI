@@ -107,15 +107,12 @@ AUTH_PUBLIC_PATHS = {
     "/openapi.json",
     "/auth/config",
     "/auth/signup",
-    "/auth/signup/native",
     "/auth/login",
     "/auth/refresh",
     "/auth/logout",
     "/auth/google/start",
-    "/auth/google/native/start",
     "/auth/google/exchange",
     "/auth/password/recovery",
-    "/auth/password/recovery/native",
     "/auth/email/verify",
 }
 
