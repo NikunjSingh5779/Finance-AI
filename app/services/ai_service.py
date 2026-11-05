@@ -1275,12 +1275,15 @@ class AIService:
 
         history_messages = (conversation or [])[-4:]
         if intent in {"general_knowledge", "general_research"}:
-            # Do not carry private financial history into unrelated answers.
-            history_messages = [
-                message for message in history_messages
-                if not self._contains_financial_topic(str(message.get("content", "")))
-                and not self._needs_personal_context(str(message.get("content", "")))
-            ]
+            # A prior assistant reply can repeat private figures without finance
+            # keywords, so discard the recent history if any turn is financial.
+            financial_history = any(
+                self._contains_financial_topic(str(message.get("content", "")))
+                or self._needs_personal_context(str(message.get("content", "")))
+                for message in history_messages
+            )
+            if financial_history:
+                history_messages = []
         history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
