@@ -533,6 +533,65 @@ def test_train_travel_question_uses_general_research_and_current_rail_search():
     assert "himachaltourism.gov.in" in AIService._preferred_domains(question)
 
 
+def test_travel_request_uses_current_research_without_private_finance_data(monkeypatch):
+    class FakeResearcher:
+        def __init__(self):
+            self.queries = []
+
+        async def search_and_fetch(self, query, **kwargs):
+            self.queries.append(query)
+            return [
+                SearchResult(
+                    "IRCTC Delhi to Kalka train information",
+                    "https://www.irctc.co.in/",
+                    "Official railway booking and train information.",
+                )
+            ], []
+
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return (
+                "A Delhi-to-Himachal trip can fit a 50k budget. "
+                "The exact duration depends on stay and travel style."
+            )
+
+    researcher = FakeResearcher()
+    provider = CapturingProvider()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: researcher,
+    )
+
+    reply = asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "How can I travel from Delhi to Himachal by train in 50k, "
+            "and how many days can I travel?",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
+                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
+                "budgets": [{"category": "Private", "limit_amt": 5000}],
+            },
+            conversation=[
+                {"role": "user", "content": "How much did I spend on groceries?"},
+                {"role": "assistant", "content": "You spent ₹5,000 on groceries."},
+            ],
+        )
+    )
+
+    assert researcher.queries
+    assert "Delhi to Himachal" in researcher.queries[0]
+    assert "Query intent: general_research" in provider.prompt
+    assert "IRCTC Delhi to Kalka train information" in provider.prompt
+    assert "Private purchase" not in provider.prompt
+    assert "₹5,000" not in provider.prompt
+    assert "50k budget" in provider.prompt.lower()
+    assert "how many days" in provider.prompt.lower()
+    assert "50k budget" in reply.lower()
+
+
 def test_travel_budget_question_does_not_attach_personal_account_context():
     question = "Plan a Himachal trip by train with a 50k budget."
     assert AIService._query_intent(question) == "general_research"
