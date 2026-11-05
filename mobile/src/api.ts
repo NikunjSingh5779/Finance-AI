@@ -228,6 +228,20 @@ export class FinanceApi {
     );
   }
 
+  googleNativeStart(codeChallenge: string) {
+    return this.request<{ url: string }>("/auth/google/native/start", {
+      method: "POST",
+      body: JSON.stringify({ code_challenge: codeChallenge }),
+    }, false);
+  }
+
+  googleExchange(authCode: string, codeVerifier: string) {
+    return this.request<AuthSession>("/auth/google/exchange", {
+      method: "POST",
+      body: JSON.stringify({ auth_code: authCode, code_verifier: codeVerifier }),
+    }, false);
+  }
+
   passwordRecovery(email: string) {
     return this.request<{ success: boolean; message: string }>(
       "/auth/password/recovery",
