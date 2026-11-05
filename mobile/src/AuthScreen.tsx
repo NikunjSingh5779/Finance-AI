@@ -25,6 +25,14 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
       setError(signupMode ? "Enter your name, email and password." : "Enter your email and password.");
       return;
     }
+    if (signupMode && (
+      password.length < 8
+      || !/\\d/.test(password)
+      || !/[^A-Za-z0-9\\s]/.test(password)
+    )) {
+      setError("Use at least 8 characters, including one number and one special character.");
+      return;
+    }
     setBusy(true);
     setError("");
     setMessage("");
@@ -101,6 +109,20 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
             <Icon name="eye" size={19} color={colors.muted} />
           </Pressable>
         </View>
+
+        {signupMode ? (
+          <View style={styles.passwordRules}>
+            <Text style={[styles.passwordRule, password.length >= 8 && styles.passwordRuleMet]}>
+              {password.length >= 8 ? "✓" : "○"} At least 8 characters
+            </Text>
+            <Text style={[styles.passwordRule, /\\d/.test(password) && styles.passwordRuleMet]}>
+              {/\\d/.test(password) ? "✓" : "○"} At least one number
+            </Text>
+            <Text style={[styles.passwordRule, /[^A-Za-z0-9\\s]/.test(password) && styles.passwordRuleMet]}>
+              {/[^A-Za-z0-9\\s]/.test(password) ? "✓" : "○"} At least one special character
+            </Text>
+          </View>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
