@@ -1,10 +1,21 @@
 # FinanceAI
 
-AI-assisted personal finance management built with FastAPI, SQLite, vanilla JavaScript, and optional free/local AI providers.
+A PWA-first, AI-assisted personal finance workspace built with FastAPI, vanilla JavaScript, Supabase Auth and Supabase PostgreSQL.
 
 [![CI](https://github.com/NikunjSingh5779/Finance-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/NikunjSingh5779/Finance-AI/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+## Product delivery
+
+FinanceAI is delivered exclusively as a **Progressive Web App (PWA)**. There is no native Android/iOS application, APK, AAB, Expo project, or EAS build pipeline in this repository.
+
+- Desktop: open FinanceAI in a browser.
+- Android: open the website in Chrome and choose **Install app** or **Add to Home screen**.
+- iPhone/iPad: open the website in Safari, tap **Share**, then **Add to Home Screen**.
+- Updates: production releases are deployed to Cloudflare Pages; installed PWAs receive the updated app shell without an APK rebuild.
+
+Production PWA: https://finance-ai-61h.pages.dev
 
 ## Features
 
@@ -12,239 +23,119 @@ AI-assisted personal finance management built with FastAPI, SQLite, vanilla Java
 - Checking, savings, credit, cash, and investment accounts with computed current balances.
 - Budget create/update/delete, utilization status, and pacing projections.
 - Cash-flow summaries, category analysis, savings rate, and period comparisons.
-- Next-month total-expense forecasting from monthly history.
-- Financial Health Score with explainable components.
-- Recurring-expense detection and unusual-spending detection.
-- Managed recurring bills and income schedules with explicit, duplicate-safe payment recording.
-- Server-side AI financial context with provider fallback.
-- Market prices, history, fundamentals, news, and optional experimental forecasting.
-- CSV transaction import.
-- Responsive dark/light dashboard.
-- Native Expo / React Native Android and iOS client under mobile/.
+- Next-month expense forecasting and explainable Financial Health Score.
+- Recurring bills and income schedules with explicit, duplicate-safe payment recording.
+- Per-user AI conversation history: opening the assistant starts a fresh chat; saved conversations can be searched and reopened.
+- AI financial advice, general research, and travel planning through server-side providers.
+- Market prices, history, fundamentals, and news.
+- CSV transaction import/export.
+- Responsive dark/light interface with installable PWA support and a privacy-safe offline shell.
 
 ## Architecture
 
-~~~text
-Browser
-  |
-FastAPI Controllers
-  |
-Services
- / Repositories  Providers
-   |            |
- SQLite       AI / Market / Search
-~~~
+```text
+Browser / Installed PWA
+        |
+Cloudflare Pages (static PWA)
+        |
+FastAPI API on Render
+        |
+Supabase Auth + PostgreSQL (RLS)
+        |
+AI / Market / Search providers
+```
 
-Controllers handle HTTP only. Services contain business rules. Repositories own SQLite persistence. Providers own external integrations. AI financial context is rebuilt from the server-side database.
+The PWA contains no provider credentials. Authentication, finance data access, AI context, and database operations remain server-side.
 
 ## Project structure
 
-~~~text
+```text
 app/
   controllers/
   core/
   models/
   providers/
-    ai/
-    market/
-    search/
   repositories/
   schemas/
   services/
-  static/
-  utils/
+  static/             # PWA UI, manifest, service worker and icons
   main.py
-mobile/
-  app/
-  src/
-  app.json
-  eas.json
+scripts/
+  build-netlify.mjs   # static build used by Cloudflare Pages
+  financeai.ps1
+  run.ps1
+  setup.ps1
+supabase/migrations/
 tests/
-~~~
+```
 
-## Quick start
+## Local development
 
-~~~bash
-git clone https://github.com/NikunjSingh5779/Finance-AI
-cd Finance-AI
+Requirements: Python 3.12+ and Node.js 22+ (Node is used for PWA syntax/build checks).
+
+PowerShell:
+
+```powershell
+.\scripts\setup.ps1
+.\scripts\run.ps1
+```
+
+Or start the API directly:
+
+```bash
 python -m pip install -r requirements.txt
-cp .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-~~~
+```
 
-Open http://127.0.0.1:8000
+Open http://127.0.0.1:8000. API documentation is available at http://127.0.0.1:8000/docs.
 
-Swagger: http://127.0.0.1:8000/docs
+## PWA build
+
+```bash
+node scripts/build-netlify.mjs
+```
+
+The build writes the static site to `netlify-dist/`. The Cloudflare Pages workflow builds this directory and deploys it to the `finance-ai` Pages project. It injects the public `FINANCEAI_API_URL` value at build time.
+
+## Authentication and data isolation
+
+- Supabase Auth handles email/password verification and Google OAuth for the web.
+- Passwords require at least 8 characters, one number, and one special character.
+- PWA sessions persist across browser restarts and refresh access tokens safely.
+- Each authenticated user's finance data and AI conversations are isolated by PostgreSQL row-level security.
+- The service worker caches only public static assets; it does not cache auth responses or financial API data.
+
+See [docs/MULTIUSER_DEPLOYMENT.md](docs/MULTIUSER_DEPLOYMENT.md) and [docs/FINANCEAI_V3.md](docs/FINANCEAI_V3.md).
 
 ## AI providers
 
-AI is optional. The current implementation supports:
-
-- OmniRoute
-- OpenCode Zen
-- OpenRouter
-
-Example configuration:
-
-~~~text
-OMNIROUTE_API_KEY=...
-OMNIROUTE_BASE_URL=http://127.0.0.1:20128
-OMNIROUTE_MODEL=auto
-
-OPENCODE_ZEN_API_KEY=...
-OPENCODE_BASE_URL=https://opencode.ai/zen/v1
-OPENCODE_MODEL=mimo-v2.5-free
-
-OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=openrouter/free
-~~~
-
-Claude/OpenAI-specific credentials are not part of the current provider implementation.
-
-## Important API endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | /health | Health check |
-| GET/POST | /accounts | Account list/create |
-| GET/PUT/DELETE | /accounts/{id} | Account lifecycle |
-| GET/POST | /transactions | Transaction list/create |
-| GET/PUT/DELETE | /transactions/{id} | Transaction lifecycle |
-| POST | /transactions/import | Bulk import |
-| GET | /transactions/export.csv | CSV export with optional type filter |
-| GET/POST | /budgets | Budget list/create/upsert |
-| GET/PUT/DELETE | /budgets/{category} | Budget lifecycle |
-| GET | /budgets/{category}/status | Budget pacing |
-| GET | /summary?period=1m | Financial summary |
-| GET | /predict-expense | Next-month expense estimate |
-| POST | /ai/advice | AI financial advice |
-| GET | /ai/providers | Provider status |
-| GET | /api/insights/dashboard | Health + recurring + anomaly overview |
-| GET | /api/insights/health | Financial Health Score |
-| GET | /api/insights/recurring | Recurring expenses |
-| GET | /api/insights/anomalies | Unusual spending |
-| GET/POST | /goals | Financial goal list/create |
-| GET/PUT/DELETE | /goals/{id} | Financial goal lifecycle |
-| GET/POST | /recurring | List/create recurring schedules |
-| GET/PUT/DELETE | /recurring/{id} | View, update, pause or delete a schedule |
-| POST | /recurring/{id}/record | Record one due occurrence as a transaction |
-| GET | /api/net-worth | Current assets, liabilities, and net worth |
-| GET | /api/reports/monthly | Deterministic monthly report |
-| GET | /api/market/{symbol} | Market data |
-| GET | /api/market/{symbol}/history | OHLCV history |
-| GET | /api/market/{symbol}/predict | Experimental forecast |
-
-## Planning and wealth
-
-The Planning & Wealth page combines three capabilities:
-
-- **Financial goals** — create targets, track saved amounts, set target dates, and calculate the monthly amount required to reach the target.
-- **Net worth** — derives assets and liabilities from current account balances. Credit accounts are treated as liabilities.
-- **Monthly report** — summarizes a selected month, compares it with the previous month, highlights major spending categories, and shows budget/recurring signals.
-
-## Financial insights
-
-The Financial Insights page provides a transparent 0–100 score based on savings, budgeting, expense consistency, and estimated cash buffer. It also identifies likely recurring monthly expenses and unusually large expenses relative to a category's history.
-
-These signals are analytical estimates, not investment advice or guaranteed predictions.
-
-## Data and safety
-
-- SQLite uses foreign keys, WAL mode, busy timeout, and indexes for transaction queries.
-- Existing databases are migrated in place; initialization does not intentionally reset user data.
-- Invalid and non-finite financial inputs are rejected.
-- Accounts with linked transactions cannot be deleted accidentally.
-- AI calls are rate-limited per client IP.
-- The active frontend runtime renders user-controlled strings through DOM APIs rather than raw HTML templating.
+AI is optional. The current implementation supports OmniRoute, OpenCode Zen, and OpenRouter-compatible providers. Configure provider credentials only on the backend (for example, in Render environment variables). Never put AI provider keys or database credentials in PWA build variables.
 
 ## Testing
 
-~~~bash
+```bash
 pytest -q
-flake8 .
-~~~
+flake8 app tests
+node --check app/static/app.js
+node --check app/static/pwa.js
+node --check app/static/sw.js
+node scripts/build-netlify.mjs
+```
 
 ## Docker
 
-~~~bash
+```bash
 docker build -t financeai .
 docker run --rm -p 8000:8000 --env-file .env financeai
-~~~
+```
 
-## Limitations
+## Security
 
-Expense forecasting and market forecasting are estimates based on historical data. Market predictions are experimental and must not be treated as guaranteed outcomes.
+- Production should use `AUTH_REQUIRED=true` and Supabase PostgreSQL.
+- Do not run a public multi-user deployment with SQLite as the shared database.
+- Keep secrets in Render/Supabase secret settings, never in static PWA assets.
+- Service-worker caching is allowlisted to public app-shell files only.
 
 ## License
 
-MIT — see LICENSE.
-
-
-## Native mobile app
-
-FinanceAI includes a native Expo / React Native client in the mobile directory. It uses the same FastAPI backend as the web dashboard, so financial calculations, SQLite persistence, analytics, forecasting, market providers, and AI provider secrets remain server-side.
-
-Mobile screens include:
-
-- Home: monthly balance, income, expenses, savings rate, financial health, expense estimate, spending categories, recent activity, accounts and net worth.
-- Transactions: search/filter, add and delete transactions.
-- Planning: goals, budgets, current net worth, 12-month net-worth history and monthly reports.
-- Insights: financial health score, recurring-expense detection and unusual-spending detection.
-- AI: conversational assistant through the existing server-side AI context.
-- Settings: backend URL configuration and connectivity test.
-
-Mobile quick start:
-
-~~~bash
-cd mobile
-npm install
-npx expo install --fix
-npm run typecheck
-npx expo start
-~~~
-
-For an Android emulator use http://10.0.2.2:8000. For a physical phone, run FastAPI on a reachable interface and use the PC LAN IP. The complete mobile build and release guide is in mobile/README.md.
-
-The project targets the Expo SDK 57 line, which is the current stable Expo SDK and uses React Native 0.86 with React 19.2.3. Expo's package alignment command is included so the installed dependency versions can be synchronized with the SDK during setup. 
-
-For public release, the current backend must first be upgraded from a personal single-database service to a multi-user production service with authentication/authorization, per-user data isolation, HTTPS, hosted persistence, secure secret management, privacy/account-deletion flows, backups and monitoring.
-
-
-## Netlify
-
-A Netlify site already exists for this project:
-
-- Primary site: https://finance-ai-z0z6.netlify.app
-- Netlify project: https://app.netlify.com/projects/finance-ai-z0z6
-
-The Netlify project currently has no confirmed published deploy in the Netlify project record. Publish the latest repository yourself with the CLI or connect the site to this GitHub repository.
-
-Netlify build configuration is already in netlify.toml:
-
-    Build command: node scripts/build-netlify.mjs
-    Publish directory: netlify-dist
-
-The build script injects the public FINANCEAI_API_URL environment variable into the static frontend at build time. For a production frontend, configure this in Netlify:
-
-    FINANCEAI_API_URL=https://YOUR-PRODUCTION-API.example.com
-
-Do not put AI provider keys or database credentials in Netlify frontend variables.
-
-CLI deployment:
-
-    npm install --global netlify-cli
-    netlify login
-    netlify link
-    node scripts/build-netlify.mjs
-    netlify deploy --prod --dir=netlify-dist
-
-A Git-connected Netlify project can instead build automatically from pushes to main. Production deploys replace the primary site version. 
-
-
-## FinanceAI V2 · recurring payments
-
-FinanceAI V2 adds a recurring schedule manager to the web dashboard and native mobile app. Create weekly, monthly or yearly expense/income schedules, optionally associate them with one of the user's own accounts, and pause/resume them when needed.
-
-A scheduled occurrence is **not** automatically written to the ledger. Select **Mark paid / received** to create its transaction. The backend advances the schedule and writes the transaction atomically, and rejects stale/duplicate occurrences. Monthly schedules preserve their original day across shorter months (for example, January 31 → February 28 → March 31). Schedules with payment history cannot be deleted; pause them instead.
-
-For hosted Postgres deployments, apply `supabase/migrations/20261105_recurring_payments.sql`. SQLite development databases create the table and transaction link through the normal idempotent initialization migration.
+MIT — see [LICENSE](LICENSE).
