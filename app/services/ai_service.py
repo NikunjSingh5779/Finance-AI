@@ -1123,7 +1123,7 @@ class AIService:
                 year = re.search(r"\b20\d{2}\b", ipo_research_text)
                 year_text = year.group(0) if year else str(datetime.now().year)
                 ipo_query = (
-                    "Jio IPO Jio Platforms Limited IPO RHP SEBI listing status issue price "
+                    "Jio IPO Jio Platforms Limited IPO DRHP RHP SEBI listing status issue price "
                     + year_text
                 )
                 return ipo_query
