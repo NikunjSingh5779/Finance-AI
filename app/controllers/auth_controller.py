@@ -319,6 +319,32 @@ async def password_recovery(
     return {"success": True, "message": "If that email is registered, a recovery link has been sent."}
 
 
+@router.post("/password/recovery/native")
+async def password_recovery_native(
+    request: PasswordRecoveryRequest,
+    raw_request: Request,
+) -> dict:
+    check_rate_limit(raw_request.client.host if raw_request.client else "unknown")
+    redirect_to = os.getenv(
+        "MOBILE_AUTH_REDIRECT_URL",
+        "financeai://auth/callback",
+    ).strip()
+    parsed = urlsplit(redirect_to)
+    if parsed.scheme != "financeai" or not parsed.netloc:
+        raise HTTPException(
+            status_code=500,
+            detail="Native password recovery redirect is not configured.",
+        )
+    try:
+        await request_password_reset(request.email, redirect_to)
+    except AuthProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "success": True,
+        "message": "If that email is registered, a password recovery link has been sent.",
+    }
+
+
 @router.post("/email/verify")
 async def verify_email(request: VerifyEmailRequest, raw_request: Request) -> dict:
     check_rate_limit(raw_request.client.host if raw_request.client else "unknown")
