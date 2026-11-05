@@ -2601,16 +2601,6 @@
       appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
     }
     if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
-    try {
-      const result = await apiFetch("/api/conversations", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({title: "New chat"}),
-      });
-      activeAIConversationId = result.conversation.id;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not start a new chat.", "error");
-    }
   }
 
   function renderAIHistory(items) {
