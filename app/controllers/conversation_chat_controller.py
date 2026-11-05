@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/conversations", tags=["AI conversations"])
 class ChatTurn(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
 
+
 @router.post("/{conversation_id}/messages")
 async def send_message(conversation_id: int, body: ChatTurn, request: Request):
     check_rate_limit(request.client.host if request.client else "unknown")
