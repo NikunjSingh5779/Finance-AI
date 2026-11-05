@@ -210,7 +210,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Local logout must succeed even when the backend is unavailable.
     }
     api.clearSession();
-    await AsyncStorage.removeItem(SESSION_KEY);
+    await removeStoredSession();
     setSession(null);
     setUser(null);
   };
