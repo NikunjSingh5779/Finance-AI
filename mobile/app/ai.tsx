@@ -85,6 +85,74 @@ export default function AIScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages, sending]);
 
+  const startNewChat = useCallback(async () => {
+    setHistoryOpen(false);
+    setError("");
+    setQuestion("");
+    setMessages([{ role: "assistant", content: START_MESSAGE }]);
+    setConversationId(null);
+    if (!ready) return;
+    try {
+      const result = await api.createConversation();
+      setConversationId(result.conversation.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start a new chat.");
+    }
+  }, [api, ready]);
+
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const result = await api.conversations();
+      setHistoryItems(result.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load saved conversations.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [api]);
+
+  const resumeConversation = async (item: AIConversation) => {
+    setHistoryLoading(true);
+    try {
+      const result = await api.getConversation(item.id);
+      setConversationId(result.conversation.id);
+      setMessages(result.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })));
+      setHistoryOpen(false);
+      setQuestion("");
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open this conversation.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const removeConversation = (item: AIConversation) => {
+    Alert.alert("Delete conversation", "This permanently deletes this chat and its messages.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void api.deleteConversation(item.id).then(async () => {
+            setHistoryItems((current) => current.filter((entry) => entry.id !== item.id));
+            if (conversationId === item.id) await startNewChat();
+          }).catch((err) => setError(err instanceof Error ? err.message : "Could not delete the conversation."));
+        },
+      },
+    ]);
+  };
+
+  useFocusEffect(useCallback(() => {
+    void startNewChat();
+    return undefined;
+  }, [startNewChat]));
+
   const sendPrompt = async (preset?: string) => {
     const trimmed = (preset ?? question).trim();
     if (trimmed.length < 3 || sending) return;
