@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button, Input } from "./components";
 import { colors } from "./theme";
+import { Icon } from "./icons";
 
 export interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
