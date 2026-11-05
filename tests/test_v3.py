@@ -130,7 +130,6 @@ def test_v3_conversation_rename_and_delete_are_persistent(v3_client):
     assert v3_client.get(f"/api/conversations/{conversation_id}").status_code == 404
 
 
-
 def test_recurring_schedule_can_be_created_and_listed(v3_client):
     payload = {
         "name": "Netflix",
