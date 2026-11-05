@@ -16,6 +16,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 from xml.etree import ElementTree
 
 logger = logging.getLogger(__name__)
@@ -104,34 +105,66 @@ class DuckDuckGoSearcher:
         Returns:
             List of SearchResult objects.
         """
-        # Try the maintained DDGS client first.
-        results = await self._search_library(
-            query,
-            max_results,
-            region,
-            timelimit,
-        )
+        # Keep total search latency bounded on hosted backends. DDGS can stall
+        # on challenged endpoints, so move on quickly to independent feeds.
+        try:
+            results = await asyncio.wait_for(
+                self._search_library(query, max_results, region, timelimit),
+                timeout=5.5,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("DDGS search timed out; trying HTTP fallback")
+            results = []
         if results:
             logger.debug("DuckDuckGo search via library", extra={"query": query, "results": len(results)})
             return results
 
-        # Fallback: httpx-based scraping
-        results = await self._search_httpx(query, max_results)
+        try:
+            results = await asyncio.wait_for(
+                self._search_httpx(query, max_results),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("DuckDuckGo HTTP fallback timed out")
+            results = []
         if results:
             logger.debug("DuckDuckGo search via httpx fallback", extra={"query": query, "results": len(results)})
             return results
 
-        # DuckDuckGo can be rate-limited on hosted backends. Google News RSS is
-        # a public, keyless fallback that keeps time-sensitive questions usable.
-        results = await self._search_google_news_rss(query, max_results)
-        if results:
-            logger.info(
-                "Google News RSS fallback returned results",
-                extra={"query": query, "results": len(results)},
-            )
-            return results
+        # Public RSS feeds do not require API keys. Run both independently so
+        # one provider outage does not delay or suppress the other.
+        google_results, bing_results = await asyncio.gather(
+            self._search_google_news_rss(query, max_results),
+            self._search_bing_news_rss(query, max_results),
+            return_exceptions=True,
+        )
+        combined: list[SearchResult] = []
+        seen: set[str] = set()
+        for batch in (google_results, bing_results):
+            if isinstance(batch, Exception):
+                logger.warning("RSS search fallback failed: %s", batch)
+                continue
+            for item in batch:
+                key = item.url.strip().lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    combined.append(item)
+                if len(combined) >= max_results:
+                    break
+            if len(combined) >= max_results:
+                break
 
-        logger.warning("DuckDuckGo and Google News returned no results", extra={"query": query})
+        if combined:
+            logger.info(
+                "News RSS fallback returned results",
+                extra={"query": query, "results": len(combined)},
+            )
+            return combined
+
+        logger.warning(
+            "DuckDuckGo, Google News and Bing News returned no results",
+            extra={"query": query},
+        )
         return []
 
     async def _search_library(
@@ -149,7 +182,7 @@ class DuckDuckGoSearcher:
             from ddgs import DDGS
 
             def run_search() -> list[dict[str, Any]]:
-                searcher = DDGS()
+                searcher = DDGS(timeout=6)
                 return list(
                     searcher.text(
                         query,
@@ -195,7 +228,7 @@ class DuckDuckGoSearcher:
 
             client = await self._ensure_client()
             url = "https://html.duckduckgo.com/html/"
-            resp = await client.post(url, data={"q": query})
+            resp = await client.post(url, data={"q": query}, timeout=5.0)
             resp.raise_for_status()
 
             class DDGParser(HTMLParser):
@@ -251,7 +284,7 @@ class DuckDuckGoSearcher:
                     "gl": "IN",
                     "ceid": "IN:en",
                 },
-                timeout=8.0,
+                timeout=5.5,
             )
             response.raise_for_status()
             root = ElementTree.fromstring(response.content)
@@ -288,6 +321,66 @@ class DuckDuckGoSearcher:
             return results
         except Exception as exc:
             logger.warning("Google News RSS search failed: %s", exc)
+            return []
+
+    async def _search_bing_news_rss(
+        self,
+        query: str,
+        max_results: int = 10,
+    ) -> list[SearchResult]:
+        """Search Bing News' public RSS view when keyless search providers fail."""
+        try:
+            client = await self._ensure_client()
+            response = await client.get(
+                "https://www.bing.com/news/search",
+                params={"q": query, "format": "RSS", "setmkt": "en-IN"},
+                timeout=5.5,
+            )
+            response.raise_for_status()
+            root = ElementTree.fromstring(response.content)
+            results: list[SearchResult] = []
+
+            for item in root.findall(".//item")[:max_results]:
+                title = (item.findtext("title") or "").strip()
+                raw_url = (item.findtext("link") or "").strip()
+                description = item.findtext("description") or ""
+                snippet = html.unescape(re.sub(r"<[^>]+>", " ", description))
+                snippet = re.sub(r"\s+", " ", snippet).strip()
+                published = (item.findtext("pubDate") or "").strip()
+                publisher = ""
+                for node in item.iter():
+                    if node.tag.rsplit("}", 1)[-1].lower() == "source":
+                        publisher = (node.text or "").strip()
+                        if publisher:
+                            break
+                if publisher:
+                    snippet = f"{publisher}. {snippet}".strip()
+                if published:
+                    snippet = f"{snippet} Published: {published}".strip()
+
+                parsed = urlsplit(raw_url)
+                if (
+                    parsed.hostname
+                    and parsed.hostname.endswith("bing.com")
+                    and parsed.path.endswith("/apiclick.aspx")
+                ):
+                    target = parse_qs(parsed.query).get("url", [""])[0].strip()
+                    if target.startswith(("https://", "http://")):
+                        raw_url = target
+
+                if title and raw_url.startswith(("https://", "http://")):
+                    results.append(
+                        SearchResult(
+                            title=title,
+                            url=raw_url,
+                            snippet=snippet,
+                            source="bing_news",
+                        )
+                    )
+
+            return results
+        except Exception as exc:
+            logger.warning("Bing News RSS search failed: %s", exc)
             return []
 
     # ------------------------------------------------------------------

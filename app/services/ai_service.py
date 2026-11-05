@@ -318,6 +318,25 @@ class AIService:
         return None
 
     @staticmethod
+    def _is_current_price_request(question: str) -> bool:
+        """Detect a request for the live/traded price, not an IPO issue price band."""
+        lowered = question.lower()
+        if re.search(r"\b(issue price|offer price|price band)\b", lowered) and not re.search(
+            r"\b(share price|stock price|trading at)\b",
+            lowered,
+        ):
+            return False
+        has_price = bool(re.search(
+            r"\b(price|quote|trading at|share price|stock price)\b",
+            lowered,
+        ))
+        has_freshness = bool(re.search(
+            r"\b(now|today|current|latest|right now|live)\b",
+            lowered,
+        ))
+        return has_price and has_freshness
+
+    @staticmethod
     def _query_intent(
         question: str,
         conversation: list[dict[str, str]] | None = None,
@@ -701,7 +720,11 @@ class AIService:
         market_data = None
         market_evidence = ""
 
-        if intent in {"market_fact", "market_research"}:
+        include_current_quote = (
+            intent == "ipo_research"
+            and self._is_current_price_request(question)
+        )
+        if intent in {"market_fact", "market_research"} or include_current_quote:
             market_data = await self._get_market_data(question)
             if intent == "market_fact" and market_data:
                 return self._market_fact_response(market_data)
@@ -774,37 +797,58 @@ class AIService:
                     web_results, web_pages = candidate_results, candidate_pages
                     break
 
-        # Do not ask the model to guess when a current-information query
-        # produced no evidence that passed entity/topic relevance checks.
+        # Do not ask the model to guess when current-information research has no evidence.
         if (
             should_search
             and intent not in {"market_explainer", "general_research"}
             and not web_results
             and not web_pages
-            and not market_evidence
         ):
             if intent == "ipo_research":
+                if market_data:
+                    quote = self._market_fact_response(market_data)
+                    return (
+                        quote
+                        + "\n\nI couldn't verify the IPO timeline or issue-price details "
+                        "from matching prospectus or exchange records in this request. "
+                        "The quote above is the traded share price, not the IPO issue price."
+                    )
+                previous_fallback = next(
+                    (
+                        str(message.get("content", "")).strip()
+                        for message in reversed(conversation or [])
+                        if message.get("role") == "assistant" and message.get("content")
+                    ),
+                    "",
+                )
+                if "couldn't retrieve enough matching" in previous_fallback.lower():
+                    return (
+                        "I still can't retrieve the official Jio IPO documents from the "
+                        "search providers. I won't guess the dates or issue price. "
+                        "Please retry shortly, or check the issuer's RHP and NSE/BSE notices."
+                    )
                 return (
                     "I couldn't retrieve enough matching, authoritative information to confirm the "
-                    "current IPO timeline. I don't want to give you an outdated date or imply that an "
-                    "issue is still upcoming when it may already have opened, closed, or listed. "
-                    "The reliable records are the issuer's RHP or prospectus and the relevant NSE/BSE "
-                    "listing notices. The search service is not returning usable matching pages right "
-                    "now, so this is a retrieval limitation rather than proof that no IPO exists."
+                    "IPO timeline or issue price right now. I don't want to give an outdated date "
+                    "or issue-price figure, and I won't guess whether the issue is open "
+                    "or listed. The best records are the issuer's RHP/prospectus and the official "
+                    "NSE/BSE listing notices. This is a search-provider limitation, not evidence "
+                    "that the IPO does not exist."
                 )
-            if intent == "market_fact":
+            if not market_evidence:
+                if intent == "market_fact":
+                    return (
+                        "I couldn't retrieve a verified current quote for that security just now. I don't "
+                        "want to give you an old or guessed price. This does not mean the company is "
+                        "unlisted; it means the live-quote and search sources did not return a usable "
+                        "price in this request. Check the exact ticker on NSE or BSE before trading."
+                    )
                 return (
-                    "I couldn't retrieve a verified current quote for that security just now. I don't "
-                    "want to give you an old or guessed price. This does not mean the company is "
-                    "unlisted; it means the live-quote and search sources did not return a usable "
-                    "price in this request. Check the exact ticker on NSE or BSE before trading."
+                    "I couldn't retrieve enough matching, current sources to answer this reliably. "
+                    "I have kept unrelated results out rather than filling the gaps with guesses. "
+                    "This can happen when the public search provider is temporarily unavailable; it "
+                    "doesn't by itself mean the company, product, or event has no information available."
                 )
-            return (
-                "I couldn't retrieve enough matching, current sources to answer this reliably. "
-                "I have kept unrelated results out rather than filling the gaps with guesses. "
-                "This can happen when the public search provider is temporarily unavailable; it "
-                "doesn't by itself mean the company, product, or event has no information available."
-            )
 
         providers = self._provider_candidates()
         if not providers:
@@ -1014,6 +1058,10 @@ class AIService:
             f"{issuer} IPO opening date closing date allotment listing date {year}",
             f"{issuer} RHP prospectus public issue timeline {year}",
         )
+        if AIService._is_current_price_request(query):
+            candidates += (
+                f"{issuer} current NSE BSE share price JPL exchange quote {year}",
+            )
         original = " ".join(query.lower().split())
         return tuple(
             candidate
@@ -1063,6 +1111,22 @@ class AIService:
             if lowered.startswith(prefix):
                 query = text[len(prefix):].strip()
                 break
+
+        ipo_research_text = query or text
+        ipo_terms = (
+            "ipo", "drhp", "rhp", "prospectus", "sebi filing",
+            "listing date", "ipo date", "public issue",
+        )
+        if any(term in ipo_research_text.lower() for term in ipo_terms):
+            issuer_text = ipo_research_text.lower()
+            if re.search(r"\b(jio|jpl)\b", issuer_text):
+                year = re.search(r"\b20\d{2}\b", ipo_research_text)
+                year_text = year.group(0) if year else str(datetime.now().year)
+                ipo_query = (
+                    "Jio IPO Jio Platforms Limited IPO DRHP SEBI RHP listing status issue price "
+                    + year_text
+                )
+                return ipo_query
 
         travel_question = AIService._is_travel_planning_query(text)
         web_signals = (
@@ -1434,6 +1498,8 @@ Rules:
 - Compare IPO event dates with today; say whether the issue is open, closed, allotted or listed.
 - Date earlier-session coverage separately from today's quote; label reported causes versus speculation.
 - Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
+- For IPO plus price questions, separate the exchange quote from the IPO issue price/band.
+  State the quote timestamp and whether it is live, delayed, or a dated close.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say what could not be verified; do not fill the gap with guesses.
