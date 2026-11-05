@@ -218,7 +218,8 @@ app.include_router(ai_router)
 app.include_router(insights_router)
 app.include_router(goal_router)
 app.include_router(net_worth_router)
-app.include_router(report_router)\napp.include_router(recurring_router)
+app.include_router(report_router)
+app.include_router(recurring_router)
 
 SUPPORTED_AI_KEYS = (
     "OMNIROUTE_API_KEY",

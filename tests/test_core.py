@@ -497,7 +497,6 @@ def test_transaction_csv_import_validates_account_mappings(client):
     assert created[0]["account_id"] == account_id
 
 
-
 def test_recurring_payment_crud_and_record_is_idempotent(client):
     created = client.post(
         "/recurring",
