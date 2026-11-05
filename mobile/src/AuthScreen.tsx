@@ -7,9 +7,10 @@ import { Icon } from "./icons";
 export interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignup: (email: string, password: string, name: string) => Promise<boolean>;
+  onGoogleSignIn?: () => Promise<void>;
 }
 
-export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
+export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProps) {
   const [signupMode, setSignupMode] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
