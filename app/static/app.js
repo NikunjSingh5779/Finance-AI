@@ -2763,7 +2763,9 @@
     const input = $("chat-input");
     const chat = $("chat-msgs");
     const message = input?.value.trim() || "";
-    if (!message || !chat) return;
+    if (!message || !chat || aiSending) return;
+    aiSending = true;
+    const generation = aiChatGeneration;
     appendSavedChatMessage("user", message);
     input.value = "";
 
