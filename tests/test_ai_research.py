@@ -711,6 +711,7 @@ def test_personal_finance_report_format_does_not_leak_into_general_finance_educa
     assert "PERSONAL FINANCIAL OVERVIEW RESPONSE FORMAT" not in provider.prompt
     assert "Private purchase" not in provider.prompt
 
+
 def test_combined_jio_ipo_and_current_price_keeps_both_research_intents():
     question = "When is Jio IPO and what is its price now?"
     query = AIService._extract_web_search_query(question)
@@ -848,4 +849,3 @@ def test_bing_news_rss_parser_unwraps_tracking_link_and_extracts_source():
     assert results[0].source == "bing_news"
     assert "NSE India" in results[0].snippet
     assert "Thu, 05 Nov 2026" in results[0].snippet
-
