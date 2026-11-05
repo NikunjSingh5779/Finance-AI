@@ -20,16 +20,18 @@ class RecurringRepository:
     def _map(row) -> RecurringItemOut:
         data = dict(row)
         data["is_active"] = bool(data["is_active"])
+        data["is_archived"] = bool(data.get("is_archived", False))
         return RecurringItemOut(**data)
 
-    def list(self) -> list[RecurringItemOut]:
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM recurring_items
-            ORDER BY is_active DESC, next_due_date ASC, id DESC
-            """
-        ).fetchall()
+    def list(self, include_archived: bool = False) -> list[RecurringItemOut]:
+        query = "SELECT * FROM recurring_items"
+        if not include_archived:
+            query += " WHERE is_archived = FALSE"
+        query += (
+            " ORDER BY is_archived ASC, is_active DESC, "
+            "next_due_date ASC, id DESC"
+        )
+        rows = self.conn.execute(query).fetchall()
         return [self._map(row) for row in rows]
 
     def get(self, item_id: int) -> RecurringItemOut | None:
@@ -88,6 +90,7 @@ class RecurringRepository:
         allowed = {
             "name", "amount", "type", "category", "frequency", "next_due_date",
             "schedule_day", "schedule_month", "account_id", "is_active",
+            "is_archived",
         }
         data = {key: value for key, value in data.items() if key in allowed}
         assignments = ", ".join(f"{key} = ?" for key in data)

@@ -11,6 +11,7 @@
   let transactionTypeFilter = "all";
   let budgetsData = [];
   let recurringData = [];
+  let showArchivedRecurring = false;
   let budgetCategoryTotals = {};
   let accountsData = [];
   let pendingCSVImport = null;
@@ -1495,8 +1496,10 @@
 
   async function loadRecurring() {
     try {
-      recurringData = await apiFetch("/recurring");
-      const activeCount = recurringData.filter(item => item.is_active).length;
+      recurringData = await apiFetch("/recurring?include_archived=true");
+      const activeCount = recurringData.filter(
+        item => item.is_active && !item.is_archived
+      ).length;
       const badge = $("recurring-count-badge");
       if (badge) badge.textContent = String(activeCount);
       renderRecurringItems();
@@ -1542,15 +1545,44 @@
     const container = $("recurring-items");
     if (!container) return;
     container.replaceChildren();
-    const active = recurringData.filter(item => item.is_active);
+
+    const visibleItems = recurringData.filter(
+      item => Boolean(item.is_archived) === showArchivedRecurring
+    );
+    const active = visibleItems.filter(
+      item => item.is_active && !item.is_archived
+    );
     const summary = $("recurring-summary");
+    const heading = $("recurring-list-heading");
+    const toggle = $("recurring-archive-toggle");
+    if (heading) {
+      heading.textContent = showArchivedRecurring
+        ? "Archived schedules"
+        : "Active schedules";
+    }
+    if (toggle) {
+      toggle.textContent = showArchivedRecurring
+        ? "Show active"
+        : "Show archived";
+      toggle.setAttribute("aria-pressed", String(showArchivedRecurring));
+    }
+
     if (summary) {
       summary.replaceChildren();
-      [
-        {label:"Active schedules",value:active.length},
-        {label:"Recurring expenses",value:active.filter(item => item.type === "expense").length},
-        {label:"Recurring income",value:active.filter(item => item.type === "income").length}
-      ].forEach(metric => {
+      const metrics = showArchivedRecurring
+        ? [{label:"Archived schedules",value:visibleItems.length}]
+        : [
+            {label:"Active schedules",value:active.length},
+            {
+              label:"Recurring expenses",
+              value:active.filter(item => item.type === "expense").length
+            },
+            {
+              label:"Recurring income",
+              value:active.filter(item => item.type === "income").length
+            }
+          ];
+      metrics.forEach(metric => {
         const card = document.createElement("div");
         card.className = "recurring-summary-card";
         const value = document.createElement("strong");
@@ -1561,16 +1593,25 @@
         summary.appendChild(card);
       });
     }
-    if (!recurringData.length) {
+
+    if (!visibleItems.length) {
       const empty = document.createElement("div");
       empty.className = "empty-state";
-      empty.textContent = "No recurring schedules yet. Add a bill, subscription or regular income above.";
+      empty.textContent = showArchivedRecurring
+        ? "No archived schedules yet. Archive a bill or subscription to move it here."
+        : "No recurring schedules yet. Add a bill, subscription or regular income above.";
       container.appendChild(empty);
       return;
     }
-    recurringData.forEach(item => {
+
+    visibleItems.forEach(item => {
       const card = document.createElement("article");
-      card.className = "recurring-card" + (item.is_active ? "" : " is-paused");
+      card.className = "recurring-card";
+      if (!item.is_active || item.is_archived) {
+        card.classList.add("is-paused");
+      }
+      if (item.is_archived) card.classList.add("is-archived");
+
       const head = document.createElement("div");
       head.className = "recurring-card-head";
       const identity = document.createElement("div");
@@ -1578,27 +1619,93 @@
       const title = document.createElement("h3");
       title.textContent = item.name;
       const meta = document.createElement("p");
-      meta.textContent = item.category + " · " + item.frequency[0].toUpperCase() + item.frequency.slice(1);
+      const frequency = item.frequency[0].toUpperCase() + item.frequency.slice(1);
+      meta.textContent = item.category + " · " + frequency;
+      if (item.last_recorded_due_date) {
+        meta.textContent += " · Last recorded " +
+          formatRecurringDate(item.last_recorded_due_date);
+      }
       identity.append(title,meta);
+
       const amount = document.createElement("strong");
-      amount.className = "recurring-amount " + (item.type === "income" ? "income" : "expense");
+      amount.className = "recurring-amount " +
+        (item.type === "income" ? "income" : "expense");
       amount.textContent = (item.type === "income" ? "+" : "−") + fmt(item.amount);
       head.append(identity,amount);
+
       const due = document.createElement("div");
       due.className = "recurring-due-row";
       const dueText = document.createElement("strong");
-      dueText.textContent = item.is_active ? recurringDueLabel(item.next_due_date) : "Paused";
+      dueText.textContent = item.is_archived
+        ? "Archived"
+        : item.is_active
+          ? recurringDueLabel(item.next_due_date)
+          : "Paused";
       const dueDate = document.createElement("span");
-      dueDate.textContent = "Next: " + formatRecurringDate(item.next_due_date);
+      dueDate.textContent = (item.is_archived ? "Last scheduled: " : "Next: ") +
+        formatRecurringDate(item.next_due_date);
       due.append(dueText,dueDate);
+
       const actions = document.createElement("div");
       actions.className = "recurring-actions";
-      if (item.is_active) actions.appendChild(recurringButton("Mark paid / received","primary",() => recordRecurringPayment(item)));
-      actions.appendChild(recurringButton(item.is_active ? "Pause" : "Resume","secondary",() => toggleRecurringItem(item)));
-      actions.appendChild(recurringButton("Delete","danger",() => deleteRecurringItem(item)));
+      if (item.is_archived) {
+        actions.appendChild(recurringButton(
+          "Restore",
+          "primary",
+          () => setRecurringArchived(item, false)
+        ));
+      } else {
+        if (item.is_active) {
+          actions.appendChild(recurringButton(
+            "Mark paid / received",
+            "primary",
+            () => recordRecurringPayment(item)
+          ));
+        }
+        actions.appendChild(recurringButton(
+          item.is_active ? "Pause" : "Resume",
+          "secondary",
+          () => toggleRecurringItem(item)
+        ));
+        actions.appendChild(recurringButton(
+          "Archive",
+          "secondary",
+          () => setRecurringArchived(item, true)
+        ));
+      }
+
       card.append(head,due,actions);
       container.appendChild(card);
     });
+  }
+
+  function toggleRecurringArchiveView() {
+    showArchivedRecurring = !showArchivedRecurring;
+    renderRecurringItems();
+  }
+
+  async function setRecurringArchived(item, archived) {
+    const action = archived ? "Archive" : "Restore";
+    const message = archived
+      ? "Archive " + item.name + "? It will be hidden from active schedules. Payment history will be kept."
+      : "Restore " + item.name + "? It will remain paused until you resume it.";
+    if (!window.confirm(message)) return;
+
+    try {
+      await apiFetch("/recurring/" + item.id, {
+        method: "PUT",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({is_archived:archived})
+      });
+      await loadRecurring();
+      showToast(
+        archived
+          ? "Schedule archived. Payment history preserved."
+          : "Schedule restored. Resume it when you are ready."
+      );
+    } catch (error) {
+      showToast(error.message || action + " failed.", "error");
+    }
   }
 
   async function createRecurringItem() {
@@ -3391,6 +3498,7 @@
     addBudget,
     deleteBudget,
     createRecurringItem,
+    toggleRecurringArchiveView,
     openAccountModal,
     closeAccountModal,
     saveAccount,

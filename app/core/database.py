@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS recurring_items (
     schedule_month  INTEGER CHECK(schedule_month BETWEEN 1 AND 12),
     account_id      BIGINT,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    is_archived     BOOLEAN NOT NULL DEFAULT FALSE,
     last_recorded_due_date TEXT,
     created         TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT recurring_item_account_user_fk
@@ -85,6 +86,15 @@ CREATE TABLE IF NOT EXISTS recurring_items (
         REFERENCES accounts(id, user_id),
     UNIQUE(id, user_id)
 );
+
+ALTER TABLE recurring_items
+    ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_recurring_items_user_archive_due
+    ON recurring_items(user_id, is_archived, is_active, next_due_date);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_created
+    ON transactions(created DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS ai_conversations (
     id          BIGSERIAL PRIMARY KEY,
@@ -437,6 +447,7 @@ def init_db() -> None:
                 schedule_month  INTEGER CHECK(schedule_month BETWEEN 1 AND 12),
                 account_id      INTEGER REFERENCES accounts(id),
                 is_active       INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+                is_archived     INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)),
                 last_recorded_due_date TEXT,
                 created         TEXT DEFAULT (datetime('now'))
             );
@@ -457,6 +468,8 @@ def init_db() -> None:
                 ON goals(user_id);
             CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
                 ON recurring_items(user_id, is_active, next_due_date);
+            CREATE INDEX IF NOT EXISTS idx_transactions_created
+                ON transactions(created DESC, id DESC);
             CREATE TABLE IF NOT EXISTS ai_conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
@@ -536,10 +549,32 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         WHERE recurring_item_id IS NOT NULL
         """
     )
+    recurring_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(recurring_items)").fetchall()
+    }
+    if "is_archived" not in recurring_columns:
+        conn.execute(
+            "ALTER TABLE recurring_items ADD COLUMN is_archived "
+            "INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1))"
+        )
+
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
         ON recurring_items(user_id, is_active, next_due_date)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_recurring_items_user_archive_due
+        ON recurring_items(user_id, is_archived, is_active, next_due_date)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_transactions_created
+        ON transactions(created DESC, id DESC)
         """
     )
 

@@ -365,6 +365,16 @@
             <button type="button" class="btn-add recurring-add-button" onclick="createRecurringItem()">Add schedule</button>
           </div>
         </div>
+        <div class="recurring-list-toolbar">
+          <div class="recurring-list-heading" id="recurring-list-heading">Active schedules</div>
+          <button
+            type="button"
+            id="recurring-archive-toggle"
+            class="recurring-archive-toggle"
+            onclick="toggleRecurringArchiveView()"
+            aria-pressed="false"
+          >Show archived</button>
+        </div>
         <div class="recurring-summary-row" id="recurring-summary"></div>
         <div class="recurring-card-grid" id="recurring-items"><div class="empty-state">No recurring schedules yet. Add a bill, subscription or regular income above.</div></div>
       </div>
