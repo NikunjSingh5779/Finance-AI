@@ -1,4 +1,7 @@
 import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
@@ -224,6 +227,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await persistSession(next);
   };
 
+  const handleGoogleSignIn = async () => {
+    const randomBytes = await Crypto.getRandomBytesAsync(32);
+    let binary = "";
+    randomBytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    const verifier = btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+    const digest = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      verifier,
+      { encoding: Crypto.CryptoEncoding.BASE64 },
+    );
+    const challenge = digest.replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+    const { url } = await api.googleNativeStart(challenge);
+    const redirectUrl = Linking.createURL("auth/callback");
+    const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
+    if (result.type !== "success" || !result.url) {
+      if (result.type === "cancel" || result.type === "dismiss") return;
+      throw new Error("Google sign-in could not complete. Please try again.");
+    }
+    const callback = new URL(result.url);
+    const oauthError = callback.searchParams.get("error_description") || callback.searchParams.get("error");
+    if (oauthError) throw new Error(oauthError);
+    const code = callback.searchParams.get("code");
+    if (!code) throw new Error("Google did not return an authorization code.");
+    const next = await api.googleExchange(code, verifier);
+    if (!next.access_token || !next.refresh_token) {
+      throw new Error("Google sign-in completed without an active session.");
+    }
+    await persistSession(next);
+  };
+
   const handleSignup = async (
     email: string,
     password: string,
@@ -268,7 +301,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           logout,
         }}
       >
-        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} />
+        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} onGoogleSignIn={handleGoogleSignIn} />
       </AppContext.Provider>
     );
   }
