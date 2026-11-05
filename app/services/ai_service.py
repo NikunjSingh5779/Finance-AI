@@ -1497,7 +1497,8 @@ Rules:
 - Compare IPO event dates with today; say whether the issue is open, closed, allotted or listed.
 - Date earlier-session coverage separately from today's quote; label reported causes versus speculation.
 - Verify IPO dates against issuer, SEBI or exchange filings. Recognize DRHP, RHP, prospectus and allotment.
-- When an IPO question also asks for a current price, report the live/last-traded exchange quote separately from the IPO issue price or price band. Never treat one as the other; state the quote timestamp and whether it is live, delayed, or a dated close.
+- For IPO plus price questions, separate the exchange quote from the IPO issue price/band.
+  State the quote timestamp and whether it is live, delayed, or a dated close.
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say what could not be verified; do not fill the gap with guesses.
