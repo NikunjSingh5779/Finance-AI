@@ -173,6 +173,7 @@
   function setAuthMode(mode) {
     authMode = mode;
     const signup = mode === "signup";
+    const recovery = mode === "recovery";
     const title = $("auth-title");
     const subtitle = $("auth-subtitle");
     const nameWrap = $("auth-name-wrap");
@@ -181,23 +182,27 @@
     const submit = $("auth-submit");
     const toggle = $("auth-toggle");
 
-    if (title) title.textContent = signup ? "Create your account" : "Welcome back";
+    if (title) title.textContent = signup ? "Create your account" : recovery ? "Reset your password" : "Welcome back";
     if (subtitle) {
       subtitle.textContent = signup
         ? "Create your private FinanceAI workspace."
-        : "Sign in to your private FinanceAI workspace.";
+        : recovery
+          ? "Choose a new password for your FinanceAI account."
+          : "Sign in to your private FinanceAI workspace.";
     }
     if (nameWrap) nameWrap.hidden = !signup;
     if (nameInput) nameInput.required = signup;
     if (passwordInput) {
-      passwordInput.autocomplete = signup ? "new-password" : "current-password";
-      passwordInput.placeholder = signup ? "8+ characters, number and symbol" : "Your password";
+      passwordInput.autocomplete = (signup || recovery) ? "new-password" : "current-password";
+      passwordInput.placeholder = (signup || recovery) ? "8+ characters, number and symbol" : "Your password";
     }
-    $("auth-password-rules")?.toggleAttribute("hidden", !signup);
-    $("auth-forgot")?.toggleAttribute("hidden", signup);
+    $("auth-password-rules")?.toggleAttribute("hidden", !(signup || recovery));
+    $("auth-forgot")?.toggleAttribute("hidden", signup || recovery);
+    $("auth-google")?.toggleAttribute("hidden", recovery);
+    if (toggle) toggle.hidden = recovery;
     updatePasswordRules();
-    if (submit) submit.textContent = signup ? "Create account" : "Sign in";
-    if (toggle) {
+    if (submit) submit.textContent = signup ? "Create account" : recovery ? "Update password" : "Sign in";
+    if (toggle && !recovery) {
       toggle.textContent = signup
         ? "Already have an account? Sign in"
         : "New to FinanceAI? Create an account";
