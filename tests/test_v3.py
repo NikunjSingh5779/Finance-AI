@@ -166,7 +166,10 @@ def test_recurring_inline_handler_is_exported_to_the_pwa():
 
     assert 'onclick="createRecurringItem()"' in html
     exports = script.split("Object.assign(window,", 1)[1].split("});", 1)[0]
-    assert "createRecurringItem," in exports\n\n\ndef test_recurring_archive_preserves_history_and_restore_stays_paused(v3_client):
+    assert "createRecurringItem," in exports
+
+
+def test_recurring_archive_preserves_history_and_restore_stays_paused(v3_client):
     created = v3_client.post(
         "/recurring",
         json={
@@ -245,4 +248,4 @@ def test_new_transactions_appear_before_older_entries_by_creation_time(v3_client
     listed = v3_client.get("/transactions?skip=0&limit=10")
     assert listed.status_code == 200
     assert listed.json()[0]["id"] == just_added.json()["id"]
-    assert listed.json()[0]["description"] == "Just added subscription"\n
+    assert listed.json()[0]["description"] == "Just added subscription"
