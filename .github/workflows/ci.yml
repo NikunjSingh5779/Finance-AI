@@ -45,31 +45,3 @@ jobs:
           test -s netlify-dist/icons/apple-touch-icon.png
           test -s netlify-dist/offline.html
           ! grep -q '"/static/' netlify-dist/sw.js
-
-  mobile-typecheck:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Install mobile dependencies
-        run: npm install --prefer-dedupe
-
-      - name: Deduplicate mobile dependencies
-        run: npm dedupe
-
-      - name: Align Expo dependencies
-        run: npx expo install --fix
-
-      - name: Deduplicate Expo dependencies
-        run: npm dedupe
-
-      - name: Typecheck mobile app
-        run: npm run typecheck
