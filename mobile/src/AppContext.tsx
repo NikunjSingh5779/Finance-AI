@@ -110,6 +110,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authRequired, setAuthRequired] = useState(false);
   const [user, setUser] = useState<AppContextValue["user"]>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [passwordResetPending, setPasswordResetPending] = useState(false);
   const incomingAuthUrl = Linking.useURL();
   const handledAuthUrl = useRef<string | null>(null);
 
@@ -236,10 +237,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const verified = await api.verifyEmail(tokenHash, tokenType);
           if (verified.access_token && verified.refresh_token) {
             await persistSession(verified);
+            if (tokenType === "recovery") setPasswordResetPending(true);
           }
           return;
         }
 
+        const fragmentType = fragment.get("type") || incoming.searchParams.get("type");
         const accessToken = fragment.get("access_token") || incoming.searchParams.get("access_token");
         const refreshToken = fragment.get("refresh_token") || incoming.searchParams.get("refresh_token");
         if (accessToken && refreshToken) {
@@ -249,6 +252,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             refresh_token: refreshToken,
             expires_in: Number.isFinite(expiresIn) ? expiresIn : 3600,
           });
+          if (fragmentType === "recovery") setPasswordResetPending(true);
         }
       } catch (error) {
         console.warn("FinanceAI auth callback could not be completed:", error);
@@ -257,6 +261,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     void completeDeepLinkAuth();
   }, [incomingAuthUrl, api]);
+
+  const handleForgotPassword = async (email: string) => {
+    if (Platform.OS === "web") {
+      await api.passwordRecovery(email);
+    } else {
+      await api.passwordRecoveryNative(email);
+    }
+  };
+
+  const handleResetPassword = async (password: string) => {
+    await api.updatePassword(password);
+    setPasswordResetPending(false);
+    await logout();
+  };
 
   const handleLogin = async (email: string, password: string) => {
     const next = await api.login(email, password);
@@ -319,6 +337,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await removeStoredSession();
     setSession(null);
     setUser(null);
+    setPasswordResetPending(false);
   };
 
   if (!checked) {
@@ -327,6 +346,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         <ActivityIndicator color={colors.primary} size="large" />
         <Text style={styles.loadingText}>Connecting to FinanceAI…</Text>
       </View>
+    );
+  }
+
+  if (passwordResetPending && session) {
+    return (
+      <AppContext.Provider
+        value={{
+          apiBaseUrl,
+          api,
+          ready: false,
+          authRequired,
+          user,
+          logout,
+        }}
+      >
+        <AuthScreen
+          onLogin={handleLogin}
+          onSignup={handleSignup}
+          onGoogleSignIn={handleGoogleSignIn}
+          onForgotPassword={handleForgotPassword}
+          onResetPassword={handleResetPassword}
+          passwordResetMode
+        />
+      </AppContext.Provider>
     );
   }
 
@@ -342,7 +385,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           logout,
         }}
       >
-        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} onGoogleSignIn={handleGoogleSignIn} />
+        <AuthScreen
+          onLogin={handleLogin}
+          onSignup={handleSignup}
+          onGoogleSignIn={handleGoogleSignIn}
+          onForgotPassword={handleForgotPassword}
+        />
       </AppContext.Provider>
     );
   }
