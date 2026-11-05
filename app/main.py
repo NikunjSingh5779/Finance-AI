@@ -90,7 +90,6 @@ origin_regex = os.getenv(
 ).strip() or None
 
 
-
 AUTH_PUBLIC_PATHS = {
     "/",
     "/sw.js",
@@ -154,6 +153,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.exception_handler(NotFoundError)
 async def not_found_handler(request: Request, exc: NotFoundError):
