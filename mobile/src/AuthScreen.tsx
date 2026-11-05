@@ -27,8 +27,8 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
     }
     if (signupMode && (
       password.length < 8
-      || !/\\d/.test(password)
-      || !/[^A-Za-z0-9\\s]/.test(password)
+      || !/\d/.test(password)
+      || !/[^A-Za-z0-9\s]/.test(password)
     )) {
       setError("Use at least 8 characters, including one number and one special character.");
       return;
@@ -115,11 +115,11 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
             <Text style={[styles.passwordRule, password.length >= 8 && styles.passwordRuleMet]}>
               {password.length >= 8 ? "✓" : "○"} At least 8 characters
             </Text>
-            <Text style={[styles.passwordRule, /\\d/.test(password) && styles.passwordRuleMet]}>
-              {/\\d/.test(password) ? "✓" : "○"} At least one number
+            <Text style={[styles.passwordRule, /\d/.test(password) && styles.passwordRuleMet]}>
+              {/\d/.test(password) ? "✓" : "○"} At least one number
             </Text>
-            <Text style={[styles.passwordRule, /[^A-Za-z0-9\\s]/.test(password) && styles.passwordRuleMet]}>
-              {/[^A-Za-z0-9\\s]/.test(password) ? "✓" : "○"} At least one special character
+            <Text style={[styles.passwordRule, /[^A-Za-z0-9\s]/.test(password) && styles.passwordRuleMet]}>
+              {/[^A-Za-z0-9\s]/.test(password) ? "✓" : "○"} At least one special character
             </Text>
           </View>
         ) : null}
@@ -181,6 +181,12 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   message: { color: colors.primary, fontSize: 13, lineHeight: 19 },
   spinner: { marginTop: 2 },
+  passwordField: { position: "relative" },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: "absolute", right: 12, top: 28, width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  passwordRules: { gap: 4, marginTop: -4 },
+  passwordRule: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  passwordRuleMet: { color: colors.primary },
   switchButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   switchText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   privacy: { color: colors.subtle, fontSize: 11, textAlign: "center", marginTop: 18, maxWidth: 340 },
