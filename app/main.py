@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from app.controllers.account_controller import router as account_router
 from app.controllers.auth_controller import router as auth_router
 from app.controllers.ai_controller import router as ai_router
+from app.controllers.conversation_controller import router as conversation_router
+from app.controllers.conversation_chat_controller import router as conversation_chat_router
 from app.controllers.analysis_controller import router as analysis_router
 from app.controllers.budget_controller import router as budget_router
 from app.controllers.general_controller import router as general_router
@@ -110,6 +112,8 @@ AUTH_PUBLIC_PATHS = {
     "/auth/logout",
     "/auth/google/start",
     "/auth/google/exchange",
+    "/auth/password/recovery",
+    "/auth/email/verify",
 }
 
 
@@ -215,6 +219,8 @@ app.include_router(analysis_router)
 app.include_router(general_router)
 app.include_router(market_router)
 app.include_router(ai_router)
+app.include_router(conversation_router)
+app.include_router(conversation_chat_router)
 app.include_router(insights_router)
 app.include_router(goal_router)
 app.include_router(net_worth_router)
