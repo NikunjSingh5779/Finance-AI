@@ -820,7 +820,10 @@ class AIService:
             web_pages=web_pages,
             market_evidence=market_evidence,
             intent=intent,
-            include_financial_context=self._needs_personal_context(question),
+            include_financial_context=(
+                self._needs_personal_context(question)
+                and intent not in {"general_knowledge", "general_research"}
+            ),
         )
 
         response = None
@@ -870,14 +873,18 @@ class AIService:
         lowered = question.lower()
         if AIService._is_travel_planning_query(question):
             if any(term in lowered for term in ("train", "railway", "irctc")):
-                return (
+                railway_domains = (
                     "irctc.co.in",
                     "indianrail.gov.in",
                     "indianrailways.gov.in",
-                    "himachaltourism.gov.in",
-                    "himachal.nic.in",
-                    "incredibleindia.gov.in",
                 )
+                if any(term in lowered for term in ("himachal", "shimla", "manali", "dharamshala")):
+                    return railway_domains + (
+                        "himachaltourism.gov.in",
+                        "himachal.nic.in",
+                        "incredibleindia.gov.in",
+                    )
+                return railway_domains
             return (
                 "himachaltourism.gov.in",
                 "himachal.nic.in",
@@ -1266,10 +1273,18 @@ class AIService:
             for item in budgets
         ) or "- No budgets configured"
 
+        history_messages = (conversation or [])[-4:]
+        if intent in {"general_knowledge", "general_research"}:
+            # Do not carry private financial history into unrelated answers.
+            history_messages = [
+                message for message in history_messages
+                if not self._contains_financial_topic(str(message.get("content", "")))
+                and not self._needs_personal_context(str(message.get("content", "")))
+            ]
         history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
-            for message in (conversation or [])[-4:]
+            for message in history_messages
         ) or "- None"
 
         from app.services.web_research_service import WebResearchService
@@ -1354,14 +1369,17 @@ labels, show calculations when useful, and use a Markdown table for a genuine
 category or period comparison. Only include personal figures supplied in the
 financial context; do not add unrelated overview sections to a narrow question.
 """
-        elif not self._is_finance_related(question, conversation):
+        elif intent in {"general_knowledge", "general_research"}:
             response_format = """GENERAL ASSISTANT RESPONSE FORMAT
 Answer the question directly and helpfully, even when it is unrelated to
 personal finance. Use concise headings, steps, bullets, or a comparison table
 when they make the answer easier to act on. For travel planning, organize the
 answer around route options, journey time, trip length, transport, stay, food,
-local travel, and a realistic budget breakdown. Clearly distinguish sourced
-live schedules and fares from approximate planning estimates.
+local travel, and a realistic budget breakdown. For a fixed budget, estimate
+how many days it can reasonably cover and show transport, accommodation, food,
+local travel, activities, and contingency separately. State assumptions about
+traveller count and trip style. Clearly distinguish sourced live schedules and
+fares from approximate planning estimates.
 """
         else:
             response_format = """FINANCE EDUCATION / RESEARCH RESPONSE FORMAT
