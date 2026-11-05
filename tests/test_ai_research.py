@@ -587,7 +587,7 @@ def test_travel_request_uses_current_research_without_private_finance_data(monke
     assert "IRCTC Delhi to Kalka train information" in provider.prompt
     assert "Private purchase" not in provider.prompt
     assert "₹5,000" not in provider.prompt
-    assert "50k budget" in provider.prompt.lower()
+    assert "in 50k" in provider.prompt.lower()
     assert "how many days" in provider.prompt.lower()
     assert "50k budget" in reply.lower()
 
