@@ -334,6 +334,7 @@ def test_duckduckgo_search_uses_google_news_rss_when_ddg_is_unavailable(monkeypa
     monkeypatch.setattr(searcher, "_search_library", no_results)
     monkeypatch.setattr(searcher, "_search_httpx", no_results)
     monkeypatch.setattr(searcher, "_search_google_news_rss", rss_results)
+    monkeypatch.setattr(searcher, "_search_bing_news_rss", no_results)
 
     results = asyncio.run(searcher.search("Jio Platforms IPO listing", max_results=5))
 
@@ -364,7 +365,7 @@ def test_google_news_rss_parser_extracts_publisher_and_date():
         async def get(self, url, *, params, timeout):
             assert url == "https://news.google.com/rss/search"
             assert params["gl"] == "IN"
-            assert timeout == 8.0
+            assert timeout == 5.5
             return FakeResponse()
 
     searcher = DuckDuckGoSearcher()
