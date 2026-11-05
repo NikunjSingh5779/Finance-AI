@@ -89,14 +89,6 @@ origin_regex = os.getenv(
     DEFAULT_CORS_ORIGIN_REGEX,
 ).strip() or None
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=origin_regex,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 AUTH_PUBLIC_PATHS = {
     "/",
@@ -149,6 +141,18 @@ async def authentication_middleware(request: Request, call_next):
     finally:
         if context_token is not None:
             reset_user_id(context_token)
+
+
+# CORS must wrap authentication middleware so browsers can read 401 responses
+# and the PWA can refresh an expired Supabase session instead of reporting a
+# generic network failure.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=origin_regex,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(NotFoundError)
