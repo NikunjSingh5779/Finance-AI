@@ -1,16 +1,10 @@
-﻿param(
+param(
   [ValidateSet(
     "setup",
     "web",
-    "android-emulator",
-    "android-phone",
-    "ios-simulator",
     "docker",
     "docker-build",
     "test",
-    "apk",
-    "preview-apk",
-    "production-aab",
     "netlify-preview",
     "netlify-production"
   )]
@@ -27,16 +21,7 @@ switch ($Action) {
     & (Join-Path $PSScriptRoot "setup.ps1")
   }
   "web" {
-    & (Join-Path $PSScriptRoot "run.ps1") -Mode web
-  }
-  "android-emulator" {
-    & (Join-Path $PSScriptRoot "run.ps1") -Mode android-emulator
-  }
-  "android-phone" {
-    & (Join-Path $PSScriptRoot "run.ps1") -Mode android-phone
-  }
-  "ios-simulator" {
-    & (Join-Path $PSScriptRoot "run.ps1") -Mode ios-simulator
+    & (Join-Path $PSScriptRoot "run.ps1")
   }
   "docker" {
     & (Join-Path $PSScriptRoot "run-docker.ps1")
@@ -52,22 +37,10 @@ switch ($Action) {
       python -m pytest -q
       python -m flake8 app tests
     }
-    Push-Location "mobile"
-    try {
-      npm run typecheck
-      npx expo-doctor
-    } finally {
-      Pop-Location
-    }
-  }
-  "apk" {
-    & (Join-Path $PSScriptRoot "build-android.ps1") -Profile development
-  }
-  "preview-apk" {
-    & (Join-Path $PSScriptRoot "build-android.ps1") -Profile preview
-  }
-  "production-aab" {
-    & (Join-Path $PSScriptRoot "build-android.ps1") -Profile production
+    node --check app/static/app.js
+    node --check app/static/pwa.js
+    node --check app/static/sw.js
+    node scripts/build-netlify.mjs
   }
   "netlify-preview" {
     & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -ApiUrl $ApiUrl
@@ -76,4 +49,3 @@ switch ($Action) {
     & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -Production -ApiUrl $ApiUrl
   }
 }
-
