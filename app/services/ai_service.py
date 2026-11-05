@@ -797,24 +797,22 @@ class AIService:
                     web_results, web_pages = candidate_results, candidate_pages
                     break
 
-        # Do not ask the model to guess when a current-information query
-        # produced no evidence that passed entity/topic relevance checks.
+        # Do not ask the model to guess when current-information research has no evidence.
         if (
             should_search
             and intent not in {"market_explainer", "general_research"}
             and not web_results
             and not web_pages
-            and not market_evidence
         ):
-            if intent == "ipo_research" and market_data:
-                quote = self._market_fact_response(market_data)
-                return (
-                    quote
-                    + "\n\nI couldn't verify the IPO timeline or issue-price details "
-                    "from matching prospectus or exchange records in this request. "
-                    "The quote above is the traded share price, not the IPO issue price."
-                )
             if intent == "ipo_research":
+                if market_data:
+                    quote = self._market_fact_response(market_data)
+                    return (
+                        quote
+                        + "\n\nI couldn't verify the IPO timeline or issue-price details "
+                        "from matching prospectus or exchange records in this request. "
+                        "The quote above is the traded share price, not the IPO issue price."
+                    )
                 previous_fallback = next(
                     (
                         str(message.get("content", "")).strip()
@@ -831,25 +829,25 @@ class AIService:
                     )
                 return (
                     "I couldn't retrieve enough matching, authoritative information to confirm the "
-                    "current IPO timeline. I don't want to give you an outdated date or imply that an "
-                    "issue is still upcoming when it may already have opened, closed, or listed. "
-                    "The reliable records are the issuer's RHP or prospectus and the relevant NSE/BSE "
-                    "listing notices. The search service is not returning usable matching pages right "
-                    "now, so this is a retrieval limitation rather than proof that no IPO exists."
+                    "IPO timeline or issue price right now. I won't guess whether the issue is open "
+                    "or listed. The best records are the issuer's RHP/prospectus and the official "
+                    "NSE/BSE listing notices. This is a search-provider limitation, not evidence "
+                    "that the IPO does not exist."
                 )
-            if intent == "market_fact":
+            if not market_evidence:
+                if intent == "market_fact":
+                    return (
+                        "I couldn't retrieve a verified current quote for that security just now. I don't "
+                        "want to give you an old or guessed price. This does not mean the company is "
+                        "unlisted; it means the live-quote and search sources did not return a usable "
+                        "price in this request. Check the exact ticker on NSE or BSE before trading."
+                    )
                 return (
-                    "I couldn't retrieve a verified current quote for that security just now. I don't "
-                    "want to give you an old or guessed price. This does not mean the company is "
-                    "unlisted; it means the live-quote and search sources did not return a usable "
-                    "price in this request. Check the exact ticker on NSE or BSE before trading."
+                    "I couldn't retrieve enough matching, current sources to answer this reliably. "
+                    "I have kept unrelated results out rather than filling the gaps with guesses. "
+                    "This can happen when the public search provider is temporarily unavailable; it "
+                    "doesn't by itself mean the company, product, or event has no information available."
                 )
-            return (
-                "I couldn't retrieve enough matching, current sources to answer this reliably. "
-                "I have kept unrelated results out rather than filling the gaps with guesses. "
-                "This can happen when the public search provider is temporarily unavailable; it "
-                "doesn't by itself mean the company, product, or event has no information available."
-            )
 
         providers = self._provider_candidates()
         if not providers:
