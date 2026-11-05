@@ -639,4 +639,3 @@ def test_account_cannot_be_deleted_while_recurring_schedule_uses_it(client):
     response = client.delete(f"/accounts/{account_id}")
     assert response.status_code == 409
     assert response.json()["details"]["recurring_item_count"] == 1
-
