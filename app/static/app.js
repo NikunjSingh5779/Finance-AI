@@ -1482,6 +1482,7 @@
     try {
       accountsData = await apiFetch("/accounts");
       renderAccounts();
+      populateAccountSelect("r-account");
     } catch (error) {
       showToast("Could not load accounts: " + error.message, "error");
     }

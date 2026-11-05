@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, 
 import { useFinance } from "../src/AppContext";
 import { Button, Card, ChipRow, EmptyState, ErrorBanner, Header, Input, LoadingState, Pill, Screen, SectionTitle, SmallText } from "../src/components";
 import { Icon } from "../src/icons";
-import type { RecurringItem } from "../src/types";
+import type { Account, RecurringItem } from "../src/types";
 import { colors } from "../src/theme";
 
 function localDateInput() {
@@ -37,6 +37,8 @@ function money(value: number) {
 export default function RecurringScreen() {
   const { api, ready } = useFinance();
   const [items, setItems] = useState<RecurringItem[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountSelection, setAccountSelection] = useState("None");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,7 +55,9 @@ export default function RecurringScreen() {
     if (!ready) return;
     try {
       setError("");
-      setItems(await api.recurring());
+      const [recurringItems, accountItems] = await Promise.all([api.recurring(), api.accounts()]);
+      setItems(recurringItems);
+      setAccounts(accountItems);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load recurring schedules.");
     } finally {
@@ -64,6 +68,10 @@ export default function RecurringScreen() {
   useEffect(() => { void load(); }, [load]);
 
   const activeItems = useMemo(() => items.filter(item => item.is_active), [items]);
+  const accountOptions = useMemo(
+    () => ["None", ...accounts.map(account => account.name + " (#" + account.id + ")")],
+    [accounts],
+  );
   const totalMonthlyExpense = useMemo(() => activeItems.reduce((sum, item) => {
     if (item.type !== "expense") return sum;
     const monthly = item.frequency === "weekly"
@@ -81,6 +89,7 @@ export default function RecurringScreen() {
     setCategory("Subscriptions");
     setFrequency("Monthly");
     setNextDueDate(localDateInput());
+    setAccountSelection("None");
     setFormOpen(false);
   };
 
@@ -100,6 +109,7 @@ export default function RecurringScreen() {
         category: category.trim(),
         frequency: frequency.toLowerCase() as "weekly" | "monthly" | "yearly",
         next_due_date: nextDueDate,
+        account_id: accounts.find(account => account.name + " (#" + account.id + ")" === accountSelection)?.id ?? null,
       });
       resetForm();
       await load();
@@ -232,6 +242,8 @@ export default function RecurringScreen() {
             <Input label="Category" value={category} onChangeText={setCategory} placeholder="Subscriptions" maxLength={50} />
             <SmallText>Frequency</SmallText>
             <ChipRow values={["Weekly", "Monthly", "Yearly"]} selected={frequency} onSelect={setFrequency} />
+            <SmallText>Account (optional)</SmallText>
+            <ChipRow values={accountOptions} selected={accountSelection} onSelect={setAccountSelection} />
             <Input label="Next due date (YYYY-MM-DD)" value={nextDueDate} onChangeText={setNextDueDate} placeholder="2026-11-15" autoCapitalize="none" />
             <Button title="Create schedule" onPress={() => void createItem()} loading={saving} disabled={saving} />
           </ScrollView>
