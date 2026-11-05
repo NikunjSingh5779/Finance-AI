@@ -6,7 +6,7 @@
 <meta name="description" content="A private workspace for tracking spending, budgets, cash flow and financial goals.">
 <title>FinanceAI — Personal Finance</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<link rel="stylesheet" href="/static/style.css?v=2026-11-05-hallmark-desktop-1">
+<link rel="stylesheet" href="/static/style.css?v=2026-11-05-financeai-v2">
 <link rel="stylesheet" href="/static/insights.css">
   <meta name="theme-color" content="#111111">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -86,6 +86,13 @@
           </span>
           <span class="nav-label">Budgets</span>
           <span class="nav-badge" id="budget-count-badge">0</span>
+        </button>
+        <button class="nav-item" type="button" onclick="goPage('recurring',this)">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3.5v3M16 3.5v3M4 9h16M8 13h3M8 16h7"/></svg>
+          </span>
+          <span class="nav-label">Recurring</span>
+          <span class="nav-badge" id="recurring-count-badge">0</span>
         </button>
       </div>
 
@@ -328,6 +335,29 @@
         <div class="budget-page-grid" id="budget-page-list"><div class="empty-state" style="grid-column:1/-1">No budgets yet</div></div>
       </div>
 
+      <div class="page" id="page-recurring">
+        <div class="full-card recurring-intro-card">
+          <div class="full-header">
+            <div>
+              <h1 class="full-title">Recurring payments</h1>
+              <p class="recurring-intro">Track subscriptions, bills and regular income. FinanceAI only records a transaction when you mark an occurrence as paid or received.</p>
+            </div>
+          </div>
+          <div class="add-form-grid recurring-form-grid">
+            <div class="fg"><label for="r-name">Name</label><input id="r-name" type="text" maxlength="100" placeholder="Netflix, Rent, Salary"></div>
+            <div class="fg"><label for="r-amount">Amount (₹)</label><input id="r-amount" type="number" min="0.01" step="0.01" placeholder="499"></div>
+            <div class="fg"><label for="r-type">Type</label><select id="r-type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+            <div class="fg"><label for="r-category">Category</label><input id="r-category" type="text" maxlength="50" placeholder="Subscriptions"></div>
+            <div class="fg"><label for="r-frequency">Frequency</label><select id="r-frequency"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select></div>
+            <div class="fg"><label for="r-next-date">Next due date</label><input id="r-next-date" type="date"></div>
+            <div class="fg"><label for="r-account">Account (optional)</label><select id="r-account"><option value="">No account</option></select></div>
+            <button type="button" class="btn-add recurring-add-button" onclick="createRecurringItem()">Add schedule</button>
+          </div>
+        </div>
+        <div class="recurring-summary-row" id="recurring-summary"></div>
+        <div class="recurring-card-grid" id="recurring-items"><div class="empty-state">No recurring schedules yet. Add a bill, subscription or regular income above.</div></div>
+      </div>
+
       <div class="page" id="page-ai-page">
   <div class="ai-container">
 
@@ -517,6 +547,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=2026-11-05-hallmark-desktop-1"></script>
+<script src="/static/app.js?v=2026-11-05-financeai-v2"></script>
 </body>
 </html>

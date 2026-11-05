@@ -2428,3 +2428,33 @@ textarea:focus-visible {
   }
 }
 
+
+/* FinanceAI V2 · recurring payments */
+.recurring-intro-card{margin-bottom:16px}
+.recurring-intro{color:var(--text2);font-size:13px;line-height:1.6;max-width:760px;margin-top:7px}
+.recurring-form-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.recurring-add-button{align-self:end;min-height:42px}
+.recurring-summary-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.recurring-summary-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:5px}
+.recurring-summary-card strong{font-size:22px;color:var(--text);font-weight:700}
+.recurring-summary-card span{font-size:12px;color:var(--text2)}
+.recurring-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.recurring-card{min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.recurring-card.is-paused{opacity:.72}
+.recurring-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.recurring-card-identity{min-width:0}
+.recurring-card-identity h3{color:var(--text);font-size:15px;line-height:1.4;font-weight:700;overflow-wrap:anywhere}
+.recurring-card-identity p{color:var(--text2);font-size:12px;margin-top:4px}
+.recurring-amount{white-space:nowrap;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.recurring-amount.income{color:var(--green)}
+.recurring-amount.expense{color:var(--text)}
+.recurring-due-row{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:11px 0}
+.recurring-due-row strong{color:var(--text);font-size:12px}
+.recurring-due-row span{color:var(--text2);font-size:11px;text-align:right}
+.recurring-actions{display:flex;flex-wrap:wrap;gap:8px}
+.recurring-action{min-height:36px;padding:7px 11px;border-radius:9px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
+.recurring-action.primary{background:var(--green);border-color:var(--green);color:#07130b}
+.recurring-action.danger{color:var(--red)}
+.recurring-action:hover{filter:brightness(1.12)}
+@media(max-width:1000px){.recurring-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recurring-card-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.recurring-summary-row{gap:7px}.recurring-summary-card{padding:11px 9px}.recurring-summary-card strong{font-size:19px}.recurring-summary-card span{font-size:10px}.recurring-form-grid{grid-template-columns:1fr}.recurring-due-row{align-items:flex-start;flex-direction:column}.recurring-due-row span{text-align:left}}

@@ -9,7 +9,7 @@
 
   let txnsData = [];
   let transactionTypeFilter = "all";
-  let budgetsData = [];
+  let budgetsData = [];\n  let recurringData = [];
   let budgetCategoryTotals = {};
   let accountsData = [];
   let pendingCSVImport = null;
@@ -1297,6 +1297,187 @@
     }
   }
 
+  async function loadRecurring() {
+    try {
+      recurringData = await apiFetch("/recurring");
+      const activeCount = recurringData.filter(item => item.is_active).length;
+      const badge = $("recurring-count-badge");
+      if (badge) badge.textContent = String(activeCount);
+      renderRecurringItems();
+    } catch (error) {
+      showToast("Could not load recurring schedules: " + error.message, "error");
+    }
+  }
+
+  function localDateValue() {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+  }
+
+  function formatRecurringDate(value) {
+    const date = new Date(String(value) + "T00:00:00");
+    return Number.isNaN(date.getTime())
+      ? String(value)
+      : date.toLocaleDateString(undefined, {day:"numeric",month:"short",year:"numeric"});
+  }
+
+  function recurringDueLabel(value) {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const due = new Date(String(value) + "T00:00:00");
+    const days = Math.round((due.getTime() - today.getTime()) / 86400000);
+    if (days < 0) return "Overdue by " + Math.abs(days) + " day" + (Math.abs(days) === 1 ? "" : "s");
+    if (days === 0) return "Due today";
+    if (days === 1) return "Due tomorrow";
+    return "Due in " + days + " days";
+  }
+
+  function recurringButton(label, tone, handler) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "recurring-action " + tone;
+    button.textContent = label;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function renderRecurringItems() {
+    const container = $("recurring-items");
+    if (!container) return;
+    container.replaceChildren();
+    const active = recurringData.filter(item => item.is_active);
+    const summary = $("recurring-summary");
+    if (summary) {
+      summary.replaceChildren();
+      [
+        {label:"Active schedules",value:active.length},
+        {label:"Recurring expenses",value:active.filter(item => item.type === "expense").length},
+        {label:"Recurring income",value:active.filter(item => item.type === "income").length}
+      ].forEach(metric => {
+        const card = document.createElement("div");
+        card.className = "recurring-summary-card";
+        const value = document.createElement("strong");
+        value.textContent = String(metric.value);
+        const label = document.createElement("span");
+        label.textContent = metric.label;
+        card.append(value,label);
+        summary.appendChild(card);
+      });
+    }
+    if (!recurringData.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No recurring schedules yet. Add a bill, subscription or regular income above.";
+      container.appendChild(empty);
+      return;
+    }
+    recurringData.forEach(item => {
+      const card = document.createElement("article");
+      card.className = "recurring-card" + (item.is_active ? "" : " is-paused");
+      const head = document.createElement("div");
+      head.className = "recurring-card-head";
+      const identity = document.createElement("div");
+      identity.className = "recurring-card-identity";
+      const title = document.createElement("h3");
+      title.textContent = item.name;
+      const meta = document.createElement("p");
+      meta.textContent = item.category + " · " + item.frequency[0].toUpperCase() + item.frequency.slice(1);
+      identity.append(title,meta);
+      const amount = document.createElement("strong");
+      amount.className = "recurring-amount " + (item.type === "income" ? "income" : "expense");
+      amount.textContent = (item.type === "income" ? "+" : "−") + fmt(item.amount);
+      head.append(identity,amount);
+      const due = document.createElement("div");
+      due.className = "recurring-due-row";
+      const dueText = document.createElement("strong");
+      dueText.textContent = item.is_active ? recurringDueLabel(item.next_due_date) : "Paused";
+      const dueDate = document.createElement("span");
+      dueDate.textContent = "Next: " + formatRecurringDate(item.next_due_date);
+      due.append(dueText,dueDate);
+      const actions = document.createElement("div");
+      actions.className = "recurring-actions";
+      if (item.is_active) actions.appendChild(recurringButton("Mark paid / received","primary",() => recordRecurringPayment(item)));
+      actions.appendChild(recurringButton(item.is_active ? "Pause" : "Resume","secondary",() => toggleRecurringItem(item)));
+      actions.appendChild(recurringButton("Delete","danger",() => deleteRecurringItem(item)));
+      card.append(head,due,actions);
+      container.appendChild(card);
+    });
+  }
+
+  async function createRecurringItem() {
+    const name = $("r-name").value.trim();
+    const amount = Number($("r-amount").value);
+    const category = $("r-category").value.trim();
+    const nextDueDate = $("r-next-date").value;
+    const accountValue = $("r-account").value;
+    if (!name || !Number.isFinite(amount) || amount <= 0 || !category || !nextDueDate) {
+      showToast("Enter a name, valid amount, category and next due date.", "error");
+      return;
+    }
+    try {
+      await apiFetch("/recurring", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          name, amount, type:$("r-type").value, category,
+          frequency:$("r-frequency").value,
+          next_due_date:nextDueDate,
+          account_id:accountValue ? Number(accountValue) : null
+        })
+      });
+      $("r-name").value = "";
+      $("r-amount").value = "";
+      $("r-category").value = "";
+      $("r-next-date").value = localDateValue();
+      $("r-account").value = "";
+      await loadRecurring();
+      showToast("Recurring schedule added.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function recordRecurringPayment(item) {
+    if (!window.confirm("Record " + item.name + " for " + formatRecurringDate(item.next_due_date) + " as paid / received? This creates one transaction.")) return;
+    try {
+      await apiFetch("/recurring/" + item.id + "/record", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({due_date:item.next_due_date})
+      });
+      await refreshAll();
+      showToast("Recurring transaction recorded.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function toggleRecurringItem(item) {
+    try {
+      await apiFetch("/recurring/" + item.id, {
+        method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({is_active:!item.is_active})
+      });
+      await loadRecurring();
+      showToast(item.is_active ? "Schedule paused." : "Schedule resumed.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function deleteRecurringItem(item) {
+    if (!window.confirm("Delete " + item.name + "? Payment history is always retained.")) return;
+    try {
+      await apiFetch("/recurring/" + item.id,{method:"DELETE"});
+      await loadRecurring();
+      showToast("Recurring schedule deleted.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
   async function loadAccounts() {
     try {
       accountsData = await apiFetch("/accounts");
@@ -1383,7 +1564,7 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadTransactions(), loadBudgets(), loadAccounts()]);
+    await Promise.all([loadTransactions(), loadBudgets(), loadAccounts(), loadRecurring()]);
     await loadSummary();
   }
 
@@ -1392,6 +1573,8 @@
       Promise.all([loadTransactions(), loadAccounts(), loadSummary()]);
     } else if (currentPage === "budgets") {
       Promise.all([loadTransactions(), loadBudgets(), loadSummary()]);
+    } else if (currentPage === "recurring") {
+      Promise.all([loadRecurring(), loadAccounts()]);
     } else if (currentPage === "accounts") {
       Promise.all([loadAccounts(), loadSummary()]);
     } else if (currentPage === "insights") {
@@ -2776,7 +2959,7 @@
     const titles = {
       dashboard: "Overview",
       transactions: "Transactions",
-      budgets: "Budgets",
+      budgets: "Budgets",\n      recurring: "Recurring payments",
       accounts: "Accounts",
       planning: "Planning & Wealth",
       "ai-page": "AI Assistant"
@@ -2851,7 +3034,7 @@
       else showMonthlyExpenses();
     });
 
-    $("t-date").value = new Date().toISOString().slice(0, 10);
+    $("r-next-date").value = localDateValue();\n    populateAccountSelect("r-account");\n    $("t-date").value = new Date().toISOString().slice(0, 10);
     $("m-date").value = new Date().toISOString().slice(0, 10);
     $("search-input")?.addEventListener("keydown", event => {
       if (event.key === "Escape") {
