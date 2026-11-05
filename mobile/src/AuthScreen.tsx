@@ -80,16 +80,27 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
           autoComplete="email"
         />
 
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="At least 8 characters"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete={signupMode ? "new-password" : "current-password"}
-        />
+        <View style={styles.passwordField}>
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            placeholder={signupMode ? "8+ characters, number and symbol" : "Your password"}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete={signupMode ? "new-password" : "current-password"}
+            style={styles.passwordInput}
+          />
+          <Pressable
+            style={styles.passwordToggle}
+            onPress={() => setShowPassword((value) => !value)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+          >
+            <Icon name="eye" size={19} color={colors.muted} />
+          </Pressable>
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
