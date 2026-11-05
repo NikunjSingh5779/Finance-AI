@@ -3266,6 +3266,12 @@
 
     $("planning-nav-item")?.addEventListener("click", activatePlanning);
     $("insights-nav-item")?.addEventListener("click", activateInsights);
+    $("ai-history-toggle")?.addEventListener("click", openAIHistory);
+    $("ai-history-close")?.addEventListener("click", () => {
+      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+    });
+    $("ai-new-chat")?.addEventListener("click", () => void startNewAIChat());
+    $("ai-history-search")?.addEventListener("input", () => renderAIHistory(aiHistoryItems));
 
     $("modal")?.addEventListener("click", event => {
       if (event.target === $("modal")) closeModal();
