@@ -486,20 +486,116 @@ def test_generic_finance_education_does_not_attach_private_account_context():
     assert AIService._needs_personal_context("How much did I spend on food this month?")
 
 
-def test_unrelated_question_is_declined_without_calling_the_ai_provider():
-    class UnexpectedProvider:
-        def generate_response(self, prompt):
-            raise AssertionError("An unrelated request must not reach the AI provider.")
+def test_general_question_reaches_provider_without_private_financial_context():
+    class CapturingProvider:
+        prompt = ""
 
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return "The ocean is a vast body of salt water."
+
+    provider = CapturingProvider()
     reply = asyncio.run(
-        AIService(provider=UnexpectedProvider()).get_financial_advice(
-            "Write a poem about the ocean",
-            financial_context={},
-            conversation=[],
+        AIService(provider=provider).get_financial_advice(
+            "What is the ocean?",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
+                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
+                "budgets": [{"category": "Private", "limit_amt": 5000}],
+            },
+            conversation=[
+                {"role": "user", "content": "How much did I spend on groceries?"},
+                {"role": "assistant", "content": "You spent ₹5,000 on groceries."},
+            ],
         )
     )
 
-    assert "finance-related questions only" in reply.lower()
+    assert "vast body" in reply
+    assert "Query intent: general_knowledge" in provider.prompt
+    assert "Private purchase" not in provider.prompt
+    assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
+    assert "₹5,000" not in provider.prompt
+    assert "Never refuse a request solely because it is outside finance." in provider.prompt
+
+
+def test_train_travel_question_uses_general_research_and_current_rail_search():
+    question = (
+        "How can I travel from Delhi to Himachal by train in 50k, "
+        "and how many days can I travel?"
+    )
+    assert AIService._query_intent(question) == "general_research"
+    query = AIService._extract_web_search_query(question)
+    assert query is not None
+    assert "Delhi to Himachal" in query
+    assert "Indian Railways" in query
+    assert "train timetable" in query
+    assert "IRCTC" in query
+    assert "himachaltourism.gov.in" in AIService._preferred_domains(question)
+
+
+def test_travel_request_uses_current_research_without_private_finance_data(monkeypatch):
+    class FakeResearcher:
+        def __init__(self):
+            self.queries = []
+
+        async def search_and_fetch(self, query, **kwargs):
+            self.queries.append(query)
+            return [
+                SearchResult(
+                    "IRCTC Delhi to Kalka train information",
+                    "https://www.irctc.co.in/",
+                    "Official railway booking and train information.",
+                )
+            ], []
+
+    class CapturingProvider:
+        prompt = ""
+
+        def generate_response(self, prompt):
+            self.prompt = prompt
+            return (
+                "A Delhi-to-Himachal trip can fit a 50k budget. "
+                "The exact duration depends on stay and travel style."
+            )
+
+    researcher = FakeResearcher()
+    provider = CapturingProvider()
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: researcher,
+    )
+
+    reply = asyncio.run(
+        AIService(provider=provider).get_financial_advice(
+            "How can I travel from Delhi to Himachal by train in 50k, "
+            "and how many days can I travel?",
+            financial_context={
+                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
+                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
+                "budgets": [{"category": "Private", "limit_amt": 5000}],
+            },
+            conversation=[
+                {"role": "user", "content": "How much did I spend on groceries?"},
+                {"role": "assistant", "content": "You spent ₹5,000 on groceries."},
+            ],
+        )
+    )
+
+    assert researcher.queries
+    assert "Delhi to Himachal" in researcher.queries[0]
+    assert "Query intent: general_research" in provider.prompt
+    assert "IRCTC Delhi to Kalka train information" in provider.prompt
+    assert "Private purchase" not in provider.prompt
+    assert "₹5,000" not in provider.prompt
+    assert "in 50k" in provider.prompt.lower()
+    assert "how many days" in provider.prompt.lower()
+    assert "50k budget" in reply.lower()
+
+
+def test_travel_budget_question_does_not_attach_personal_account_context():
+    question = "Plan a Himachal trip by train with a 50k budget."
+    assert AIService._query_intent(question) == "general_research"
+    assert not AIService._needs_personal_context(question)
 
 
 def test_general_finance_question_uses_finance_education_prompt_without_private_data():

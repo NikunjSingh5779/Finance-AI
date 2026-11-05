@@ -6,7 +6,7 @@
 <meta name="description" content="A private workspace for tracking spending, budgets, cash flow and financial goals.">
 <title>FinanceAI — Personal Finance</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<link rel="stylesheet" href="/static/style.css?v=2026-11-05-financeai-v2">
+<link rel="stylesheet" href="/static/style.css?v=2026-11-05-general-assistant-brand">
 <link rel="stylesheet" href="/static/insights.css">
   <meta name="theme-color" content="#111111">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,7 +21,7 @@
 <body>
 <div id="auth-screen" class="auth-screen" hidden>
   <div class="auth-card">
-    <div class="auth-brand"><div class="logo-icon" aria-hidden="true">🤑</div><div><div class="logo-text">FinanceAI</div><div class="logo-sub">Personal Finance</div></div></div>
+    <div class="auth-brand"><div class="logo-icon" aria-hidden="true"><img src="/static/icons/financeai-logo.png" alt=""></div><div><div class="logo-text">FinanceAI</div><div class="logo-sub">Personal Finance</div></div></div>
     <div class="auth-copy">
       <div class="auth-title" id="auth-title">Welcome back</div>
       <div class="auth-subtitle" id="auth-subtitle">Sign in to your private finance workspace.</div>
@@ -57,7 +57,7 @@
   <!-- SIDEBAR -->
   <aside class="sidebar" aria-label="FinanceAI workspace navigation">
     <div class="sidebar-logo">
-      <div class="logo-icon" aria-hidden="true">🤑</div>
+      <div class="logo-icon" aria-hidden="true"><img src="/static/icons/financeai-logo.png" alt=""></div>
       <div>
         <div class="logo-text">FinanceAI</div>
         <div class="logo-sub">Personal finance workspace</div>
@@ -381,7 +381,7 @@
     <!-- INPUT BAR -->
     <div class="chat-input-bar">
       <span class="attach">📎</span>
-      <input type="text" id="chat-input" placeholder="Ask about your budget, savings…"
+      <input type="text" id="chat-input" placeholder="Ask FinanceAI anything — money, travel, technology…"
         onkeydown="if(event.key==='Enter')sendChat()">
       <button type="button" class="send-btn" onclick="sendChat()">↑</button>
     </div>
