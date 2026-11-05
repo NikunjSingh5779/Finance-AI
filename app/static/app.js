@@ -2596,60 +2596,41 @@
   async function sendChat() {
     const input = $("chat-input");
     const chat = $("chat-msgs");
-    const message = input.value.trim();
+    const message = input?.value.trim() || "";
     if (!message || !chat) return;
-
-    const userWrap = document.createElement("div");
-    userWrap.className = "chat-msg user";
-    const userBubble = document.createElement("div");
-    userBubble.className = "chat-bubble user";
-    userBubble.textContent = message;
-    userWrap.appendChild(userBubble);
-    chat.appendChild(userWrap);
-
+    appendSavedChatMessage("user", message);
     input.value = "";
 
     const typing = document.createElement("div");
     typing.className = "chat-msg ai";
     typing.id = "typing";
-    const typingBubble = document.createElement("div");
-    typingBubble.className = "chat-bubble ai";
-    const marketTerms = /\b(gold|silver|crude oil|bitcoin|crypto|stock|share|quote|market price|forex)\b/i;
-    const isMarketQuestion = marketTerms.test(message);
-    typingBubble.textContent = isMarketQuestion
-      ? "Checking the latest available market quote..."
-      : "I'm analyzing your finances... 📊";
-    typing.appendChild(typingBubble);
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble ai";
+    bubble.textContent = "I'm working on your question...";
+    typing.appendChild(bubble);
     chat.appendChild(typing);
     chat.scrollTop = chat.scrollHeight;
 
     try {
-      const result = await apiFetch("/ai/advice", {
+      if (!activeAIConversationId) {
+        const created = await apiFetch("/api/conversations", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({title: "New chat"}),
+        });
+        activeAIConversationId = created.conversation.id;
+      }
+      const result = await apiFetch("/api/conversations/" + activeAIConversationId + "/messages", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({question: message, messages: []})
+        body: JSON.stringify({question: message}),
       });
-
       typing.remove();
-      const aiWrap = document.createElement("div");
-      aiWrap.className = "chat-msg ai";
-      const aiBubble = document.createElement("div");
-      aiBubble.className = "chat-bubble ai";
-      renderAiMarkdown(aiBubble, result.advice || result.reply || "No response");
-      aiWrap.appendChild(aiBubble);
-      chat.appendChild(aiWrap);
+      appendSavedChatMessage("ai", result.reply || "No response");
     } catch (error) {
       typing.remove();
-      const errorWrap = document.createElement("div");
-      errorWrap.className = "chat-msg ai";
-      const bubble = document.createElement("div");
-      bubble.className = "chat-bubble ai";
-      bubble.textContent = "⚠️ AI is currently unavailable.";
-      errorWrap.appendChild(bubble);
-      chat.appendChild(errorWrap);
+      appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
     }
-
-    chat.scrollTop = chat.scrollHeight;
   }
 
   function createInsightsPage() {
