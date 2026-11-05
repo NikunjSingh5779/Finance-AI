@@ -86,6 +86,76 @@ CREATE TABLE IF NOT EXISTS recurring_items (
     UNIQUE(id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS ai_conversations (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL DEFAULT auth.uid(),
+    title       TEXT NOT NULL DEFAULT 'New chat',
+    summary     TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id              BIGSERIAL PRIMARY KEY,
+    conversation_id BIGINT NOT NULL,
+    user_id         UUID NOT NULL DEFAULT auth.uid(),
+    role            TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content         TEXT NOT NULL,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ai_message_conversation_user_fk
+        FOREIGN KEY (conversation_id, user_id)
+        REFERENCES ai_conversations(id, user_id)
+        ON DELETE CASCADE
+);
+
+ALTER TABLE ai_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_messages ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ai_conversations, ai_messages TO authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+
+DROP POLICY IF EXISTS ai_conversations_select_own ON ai_conversations;
+DROP POLICY IF EXISTS ai_conversations_insert_own ON ai_conversations;
+DROP POLICY IF EXISTS ai_conversations_update_own ON ai_conversations;
+DROP POLICY IF EXISTS ai_conversations_delete_own ON ai_conversations;
+CREATE POLICY ai_conversations_select_own ON ai_conversations
+    FOR SELECT TO authenticated
+    USING ((select auth.uid()) = user_id);
+CREATE POLICY ai_conversations_insert_own ON ai_conversations
+    FOR INSERT TO authenticated
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY ai_conversations_update_own ON ai_conversations
+    FOR UPDATE TO authenticated
+    USING ((select auth.uid()) = user_id)
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY ai_conversations_delete_own ON ai_conversations
+    FOR DELETE TO authenticated
+    USING ((select auth.uid()) = user_id);
+
+DROP POLICY IF EXISTS ai_messages_select_own ON ai_messages;
+DROP POLICY IF EXISTS ai_messages_insert_own ON ai_messages;
+DROP POLICY IF EXISTS ai_messages_update_own ON ai_messages;
+DROP POLICY IF EXISTS ai_messages_delete_own ON ai_messages;
+CREATE POLICY ai_messages_select_own ON ai_messages
+    FOR SELECT TO authenticated
+    USING ((select auth.uid()) = user_id);
+CREATE POLICY ai_messages_insert_own ON ai_messages
+    FOR INSERT TO authenticated
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY ai_messages_update_own ON ai_messages
+    FOR UPDATE TO authenticated
+    USING ((select auth.uid()) = user_id)
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY ai_messages_delete_own ON ai_messages
+    FOR DELETE TO authenticated
+    USING ((select auth.uid()) = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_updated
+    ON ai_conversations(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_user_created
+    ON ai_messages(conversation_id, user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id
     ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id
@@ -387,6 +457,32 @@ def init_db() -> None:
                 ON goals(user_id);
             CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
                 ON recurring_items(user_id, is_active, next_due_date);
+            CREATE TABLE IF NOT EXISTS ai_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                title TEXT NOT NULL DEFAULT 'New chat',
+                summary TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(id, user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (conversation_id, user_id)
+                    REFERENCES ai_conversations(id, user_id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_updated
+                ON ai_conversations(user_id, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_user_created
+                ON ai_messages(conversation_id, user_id, created_at);
         """
         )
         _run_migrations(conn)
