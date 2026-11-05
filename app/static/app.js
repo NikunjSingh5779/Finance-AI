@@ -189,7 +189,13 @@
     }
     if (nameWrap) nameWrap.hidden = !signup;
     if (nameInput) nameInput.required = signup;
-    if (passwordInput) passwordInput.autocomplete = signup ? "new-password" : "current-password";
+    if (passwordInput) {
+      passwordInput.autocomplete = signup ? "new-password" : "current-password";
+      passwordInput.placeholder = signup ? "8+ characters, number and symbol" : "Your password";
+    }
+    $("auth-password-rules")?.toggleAttribute("hidden", !signup);
+    $("auth-forgot")?.toggleAttribute("hidden", signup);
+    updatePasswordRules();
     if (submit) submit.textContent = signup ? "Create account" : "Sign in";
     if (toggle) {
       toggle.textContent = signup
@@ -198,6 +204,51 @@
     }
     showAuthError("");
     showAuthSuccess("");
+  }
+
+  function passwordChecks(value) {
+    return {
+      length: value.length >= 8,
+      number: /\\d/.test(value),
+      special: /[^A-Za-z0-9\\s]/.test(value),
+    };
+  }
+
+  function updatePasswordRules() {
+    const input = $("auth-password");
+    const rules = $("auth-password-rules");
+    if (!input || !rules) return;
+    const checks = passwordChecks(input.value);
+    Object.entries(checks).forEach(([name, valid]) => {
+      const item = rules.querySelector('[data-rule="' + name + '"]');
+      if (!item) return;
+      item.dataset.valid = valid ? "true" : "false";
+      const labels = {
+        length: "At least 8 characters",
+        number: "At least one number",
+        special: "At least one special character",
+      };
+      item.textContent = (valid ? "✓ " : "○ ") + labels[name];
+    });
+  }
+
+  async function requestPasswordRecovery() {
+    const email = $("auth-email")?.value.trim().toLowerCase() || "";
+    if (!email) {
+      showAuthError("Enter your email address first.");
+      $("auth-email")?.focus();
+      return;
+    }
+    const button = $("auth-forgot");
+    if (button) button.disabled = true;
+    try {
+      await authRequest("/auth/password/recovery", { email });
+      showAuthSuccess("If that email is registered, a password recovery link has been sent.");
+    } catch (error) {
+      showAuthError(error instanceof Error ? error.message : "Could not request password recovery.");
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   function showAuthScreen(message = "") {
@@ -337,6 +388,13 @@
     if (!email || !password || (authMode === "signup" && name.length < 2)) {
       showAuthError(authMode === "signup" ? "Enter your name, email and password." : "Enter your email and password.");
       return;
+    }
+    if (authMode === "signup") {
+      const checks = passwordChecks(password);
+      if (!checks.length || !checks.number || !checks.special) {
+        showAuthError("Use at least 8 characters, including one number and one special character.");
+        return;
+      }
     }
 
     const button = $("auth-submit");
@@ -3142,6 +3200,17 @@
 
   $("auth-form")?.addEventListener("submit", submitAuth);
   $("auth-toggle")?.addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  $("auth-password-toggle")?.addEventListener("click", () => {
+    const input = $("auth-password");
+    const button = $("auth-password-toggle");
+    if (!input || !button) return;
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+    button.setAttribute("aria-pressed", reveal ? "true" : "false");
+  });
+  $("auth-password")?.addEventListener("input", updatePasswordRules);
+  $("auth-forgot")?.addEventListener("click", requestPasswordRecovery);
   $("auth-google")?.addEventListener("click", signInWithGoogle);
   $("logout-btn")?.addEventListener("click", logout);
   setAuthMode("login");
