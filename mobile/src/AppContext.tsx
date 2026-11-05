@@ -109,6 +109,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
 
   useEffect(() => {
+    let active = true;
+    api.setSessionChangeHandler(async (next) => {
+      if (next) {
+        await writeStoredSession(JSON.stringify(next));
+      } else {
+        await removeStoredSession();
+      }
+      if (!active) return;
+      setSession(next);
+      setUser(next ? {
+        id: next.user?.id || "",
+        email: next.user?.email,
+        name: next.user?.user_metadata?.name || next.user?.user_metadata?.full_name,
+      } : null);
+    });
+    return () => {
+      active = false;
+      api.setSessionChangeHandler(null);
+    };
+  }, [api]);
+
+  useEffect(() => {
     let mounted = true;
 
     const bootstrap = async () => {
