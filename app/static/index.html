@@ -371,6 +371,24 @@
 
       <div class="page" id="page-ai-page">
   <div class="ai-container">
+    <div class="ai-history-toolbar">
+      <div class="ai-history-heading">AI Assistant</div>
+      <div class="ai-history-actions">
+        <button type="button" id="ai-history-toggle" class="ai-history-button">History</button>
+        <button type="button" id="ai-new-chat" class="ai-new-chat-button">＋ New chat</button>
+      </div>
+    </div>
+    <div id="ai-history-panel" class="ai-history-panel" hidden>
+      <div class="ai-history-panel-header">
+        <div>
+          <div class="ai-history-panel-title">Saved conversations</div>
+          <div class="ai-history-panel-subtitle">Your chats are private to your account.</div>
+        </div>
+        <button type="button" id="ai-history-close" class="ai-history-close" aria-label="Close history">×</button>
+      </div>
+      <input id="ai-history-search" class="ai-history-search" type="search" placeholder="Search conversations…">
+      <div id="ai-history-list" class="ai-history-list"></div>
+    </div>
 
     <!-- CHAT AREA -->
     <div class="chat-area" id="chat-msgs">
