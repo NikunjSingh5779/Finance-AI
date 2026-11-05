@@ -3,7 +3,7 @@
  * Authentication, financial API responses and personal data are never cached.
  */
 const CACHE_PREFIX = "financeai-shell-";
-const CACHE_NAME = CACHE_PREFIX + "v8";
+const CACHE_NAME = CACHE_PREFIX + "v9";
 const SHELL_URLS = [
   "/",
   "/static/offline.html",
@@ -48,7 +48,6 @@ self.addEventListener("install", event => {
         // A missing optional asset must not prevent the app from installing.
       }
     }));
-    await self.skipWaiting();
   })());
 });
 
