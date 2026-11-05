@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - fix/mobile-budget-ai-research
       - fix/realtime-market-data-chat-format
     paths:
       - "app/static/**"
