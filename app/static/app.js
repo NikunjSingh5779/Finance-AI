@@ -2671,6 +2671,49 @@
     }
   }
 
+  async function resumeAIConversation(conversationId) {
+    try {
+      const result = await apiFetch("/api/conversations/" + conversationId);
+      activeAIConversationId = result.conversation.id;
+      const chat = $("chat-msgs");
+      if (chat) chat.replaceChildren();
+      (result.messages || []).forEach(message => {
+        appendSavedChatMessage(message.role === "user" ? "user" : "ai", message.content);
+      });
+      if (!result.messages?.length) appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
+      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not open this conversation.", "error");
+    }
+  }
+
+  async function renameAIConversation(item) {
+    const title = window.prompt("Rename conversation", item.title || "New chat");
+    if (!title || !title.trim()) return;
+    try {
+      await apiFetch("/api/conversations/" + item.id, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({title: title.trim()}),
+      });
+      await openAIHistory();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not rename this conversation.", "error");
+    }
+  }
+
+  async function deleteAIConversation(conversationId) {
+    if (!window.confirm("Delete this conversation and all its messages?")) return;
+    try {
+      await apiFetch("/api/conversations/" + conversationId, {method: "DELETE"});
+      aiHistoryItems = aiHistoryItems.filter(item => item.id !== conversationId);
+      renderAIHistory(aiHistoryItems);
+      if (activeAIConversationId === conversationId) await startNewAIChat();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not delete this conversation.", "error");
+    }
+  }
+
   function appendSavedChatMessage(role, content) {
     const chat = $("chat-msgs");
     if (!chat) return;
