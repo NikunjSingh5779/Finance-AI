@@ -216,8 +216,8 @@
   function passwordChecks(value) {
     return {
       length: value.length >= 8,
-      number: /\\d/.test(value),
-      special: /[^A-Za-z0-9\\s]/.test(value),
+      number: /\d/.test(value),
+      special: /[^A-Za-z0-9\s]/.test(value),
     };
   }
 
