@@ -89,6 +89,13 @@ class AccountRepository:
         ).fetchone()
         return int(row["count"])
 
+    def count_recurring_items(self, account_id: int) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM recurring_items WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        return int(row["count"])
+
     def get_balance_as_of(self, account_id: int, end_date: str) -> float:
         account = self.get(account_id)
         if account is None:
