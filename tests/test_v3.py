@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -127,3 +128,43 @@ def test_v3_conversation_rename_and_delete_are_persistent(v3_client):
     assert deleted.status_code == 200
     assert deleted.json()["deleted"] is True
     assert v3_client.get(f"/api/conversations/{conversation_id}").status_code == 404
+
+
+
+def test_recurring_schedule_can_be_created_and_listed(v3_client):
+    payload = {
+        "name": "Netflix",
+        "amount": 499,
+        "type": "expense",
+        "category": "subscription",
+        "frequency": "monthly",
+        "next_due_date": "2026-11-06",
+        "account_id": None,
+    }
+
+    created = v3_client.post("/recurring", json=payload)
+
+    assert created.status_code == 201
+    item = created.json()
+    assert item["name"] == "Netflix"
+    assert item["amount"] == 499
+    assert item["frequency"] == "monthly"
+    assert item["is_active"] is True
+
+    listed = v3_client.get("/recurring")
+    assert listed.status_code == 200
+    assert [entry["id"] for entry in listed.json()] == [item["id"]]
+
+
+def test_recurring_inline_handler_is_exported_to_the_pwa():
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    script = (root / "app" / "static" / "app.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'onclick="createRecurringItem()"' in html
+    exports = script.split("Object.assign(window,", 1)[1].split("});", 1)[0]
+    assert "createRecurringItem," in exports
