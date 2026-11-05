@@ -26,6 +26,8 @@
   let authRefreshPromise = null;
   let activeAIConversationId = null;
   let aiHistoryItems = [];
+  let aiChatGeneration = 0;
+  let aiSending = false;
   let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
