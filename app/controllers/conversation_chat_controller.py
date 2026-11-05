@@ -12,6 +12,7 @@ from app.services.ai_service import AIService
 
 router = APIRouter(prefix="/api/conversations", tags=["AI conversations"])
 
+
 class ChatTurn(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
 
