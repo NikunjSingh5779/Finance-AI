@@ -2701,6 +2701,7 @@
   }
 
   async function resumeAIConversation(conversationId) {
+    const generation = ++aiChatGeneration;
     try {
       const result = await apiFetch("/api/conversations/" + conversationId);
       activeAIConversationId = result.conversation.id;
