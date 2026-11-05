@@ -40,24 +40,10 @@
 }
 @media(prefers-reduced-motion:reduce){.pwa-banner{scroll-behavior:auto}}
 
-.pwa-install-nav{
-  width:calc(100% - 24px);
-  min-height:42px;
-  margin:0 12px 10px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:9px;
-  border:1px solid rgba(34,197,94,.42);
-  border-radius:11px;
-  background:linear-gradient(135deg,rgba(34,197,94,.17),rgba(34,197,94,.07));
-  color:#86efac;
-  font-family:inherit;
-  font-size:13px;
-  font-weight:600;
-  cursor:pointer;
-}
-.pwa-install-nav[hidden]{display:none}
-.pwa-install-nav:hover{background:rgba(34,197,94,.22)}
-.pwa-install-nav:focus-visible{outline:2px solid #86efac;outline-offset:2px}
-.pwa-install-nav-icon{font-size:17px;line-height:1}
+
+.pwa-install-fab{position:fixed;z-index:10040;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);min-height:46px;display:flex;align-items:center;justify-content:center;gap:9px;padding:0 16px;border:1px solid rgba(34,197,94,.5);border-radius:14px;background:linear-gradient(135deg,#0b6b3d,#064526);color:#f0fff5;box-shadow:0 8px 26px rgba(0,0,0,.26);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.pwa-install-fab[hidden]{display:none}
+.pwa-install-fab:hover{background:linear-gradient(135deg,#0c7f48,#075b31)}
+.pwa-install-fab:focus-visible{outline:2px solid #86efac;outline-offset:3px}
+.pwa-install-fab span:first-child{font-size:18px;line-height:1}
+@media(max-width:480px){.pwa-install-fab{right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);min-height:44px;padding:0 13px}}
