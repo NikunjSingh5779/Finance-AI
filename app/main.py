@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FinanceAI Personal Finance API",
-    version="2.1.0",
+    version="3.0.0",
     description="Personal finance tracking, analytics, forecasting and AI insights.",
     lifespan=lifespan,
 )
