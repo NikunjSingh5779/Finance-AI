@@ -9,7 +9,8 @@
 
   let txnsData = [];
   let transactionTypeFilter = "all";
-  let budgetsData = [];\n  let recurringData = [];
+  let budgetsData = [];
+  let recurringData = [];
   let budgetCategoryTotals = {};
   let accountsData = [];
   let pendingCSVImport = null;
@@ -2960,7 +2961,8 @@
     const titles = {
       dashboard: "Overview",
       transactions: "Transactions",
-      budgets: "Budgets",\n      recurring: "Recurring payments",
+      budgets: "Budgets",
+      recurring: "Recurring payments",
       accounts: "Accounts",
       planning: "Planning & Wealth",
       "ai-page": "AI Assistant"
@@ -3035,7 +3037,8 @@
       else showMonthlyExpenses();
     });
 
-    $("r-next-date").value = localDateValue();\n    populateAccountSelect("r-account");\n    $("t-date").value = new Date().toISOString().slice(0, 10);
+    $("r-next-date").value = localDateValue();
+    populateAccountSelect("r-account");\n    $("t-date").value = new Date().toISOString().slice(0, 10);
     $("m-date").value = new Date().toISOString().slice(0, 10);
     $("search-input")?.addEventListener("keydown", event => {
       if (event.key === "Escape") {
