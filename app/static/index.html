@@ -37,8 +37,19 @@
       </div>
       <div class="fg">
         <label for="auth-password">Password</label>
-        <input id="auth-password" type="password" autocomplete="current-password" placeholder="At least 8 characters" required>
+        <div class="auth-password-control">
+          <input id="auth-password" type="password" autocomplete="current-password" placeholder="Your password" required>
+          <button id="auth-password-toggle" class="auth-password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+          </button>
+        </div>
       </div>
+      <div id="auth-password-rules" class="auth-password-rules" hidden>
+        <div data-rule="length">○ At least 8 characters</div>
+        <div data-rule="number">○ At least one number</div>
+        <div data-rule="special">○ At least one special character</div>
+      </div>
+      <button id="auth-forgot" class="auth-forgot" type="button">Forgot password?</button>
       <div id="auth-error" class="auth-message error" hidden></div>
       <div id="auth-success" class="auth-message success" hidden></div>
       <button id="auth-submit" class="btn-submit auth-submit" type="submit">Sign in</button>
