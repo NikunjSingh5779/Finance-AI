@@ -2458,3 +2458,39 @@ textarea:focus-visible {
 .recurring-action:hover{filter:brightness(1.12)}
 @media(max-width:1000px){.recurring-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recurring-card-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.recurring-summary-row{gap:7px}.recurring-summary-card{padding:11px 9px}.recurring-summary-card strong{font-size:19px}.recurring-summary-card span{font-size:10px}.recurring-form-grid{grid-template-columns:1fr}.recurring-due-row{align-items:flex-start;flex-direction:column}.recurring-due-row span{text-align:left}}
+
+
+.auth-password-control{position:relative;display:flex;align-items:center}
+.auth-password-control input{padding-right:48px!important}
+.auth-password-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer}
+.auth-password-toggle:hover{background:var(--bg3);color:var(--green)}
+.auth-password-toggle svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.auth-password-rules{display:grid;gap:5px;margin-top:-4px;color:var(--text3);font-size:11px;line-height:16px}
+.auth-password-rules [data-valid="true"]{color:var(--green)}
+.auth-forgot{display:block;margin:-4px 0 2px auto;padding:4px 0;border:0;background:transparent;color:var(--green);font-size:12px;font-weight:650;cursor:pointer}
+.auth-forgot:hover{text-decoration:underline}
+
+
+.ai-history-toolbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.ai-history-heading{font-size:14px;font-weight:750;color:var(--text)}
+.ai-history-actions{display:flex;align-items:center;gap:8px}
+.ai-history-button,.ai-new-chat-button{min-height:36px;padding:7px 13px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}
+.ai-history-button:hover{border-color:var(--green);color:var(--green)}
+.ai-new-chat-button{border-color:var(--green);background:var(--green);color:#06140b}
+.ai-history-panel{position:absolute;z-index:250;top:88px;right:20px;width:min(390px,calc(100vw - 32px));max-height:min(70vh,620px);padding:14px;border:1px solid var(--border2);border-radius:16px;background:var(--bg2);box-shadow:0 20px 60px rgba(0,0,0,.42);display:flex;flex-direction:column;gap:12px}
+.ai-history-panel[hidden]{display:none!important}
+.ai-history-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.ai-history-panel-title{font-size:14px;font-weight:750;color:var(--text)}
+.ai-history-panel-subtitle{margin-top:3px;font-size:11px;color:var(--text3)}
+.ai-history-close{width:32px;height:32px;border:0;border-radius:8px;background:var(--bg3);color:var(--text2);font-size:21px;cursor:pointer}
+.ai-history-search{width:100%;padding:10px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3);color:var(--text);outline:none}
+.ai-history-list{overflow:auto;min-height:80px}
+.ai-history-empty{padding:22px 10px;text-align:center;color:var(--text3);font-size:12px}
+.ai-history-item{display:flex;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--border)}
+.ai-history-open{flex:1;min-width:0;padding:0;border:0;background:transparent;text-align:left;cursor:pointer}
+.ai-history-item-title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px;font-weight:700}
+.ai-history-item-preview{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3);font-size:11px}
+.ai-history-item-date{display:block;margin-top:4px;color:var(--text3);font-size:10px}
+.ai-history-item-action{flex-shrink:0;padding:7px;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer}
+.ai-history-item-action:hover{background:var(--bg3);color:var(--red)}
+@media(max-width:640px){.ai-history-toolbar{padding:9px 12px}.ai-history-panel{top:70px;right:8px;width:calc(100vw - 16px)}}

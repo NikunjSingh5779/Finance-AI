@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from urllib.parse import quote
 from contextvars import ContextVar, Token
 from typing import Any
 
@@ -186,6 +187,7 @@ async def sign_up(
     email: str,
     password: str,
     name: str | None = None,
+    redirect_to: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "email": email,
@@ -193,7 +195,10 @@ async def sign_up(
     }
     if name:
         payload["data"] = {"name": name}
-    return await _supabase_request("POST", "/signup", payload=payload)
+    path = "/signup"
+    if redirect_to:
+        path += "?redirect_to=" + quote(redirect_to, safe="")
+    return await _supabase_request("POST", path, payload=payload)
 
 
 async def sign_in(email: str, password: str) -> dict[str, Any]:
@@ -213,10 +218,47 @@ async def refresh_session(refresh_token: str) -> dict[str, Any]:
 
 
 async def sign_out(access_token: str) -> None:
+    """Revoke only this device's session; other devices stay signed in."""
     await _supabase_request(
         "POST",
-        "/logout",
+        "/logout?scope=local",
         access_token=access_token,
+    )
+
+
+async def sign_out_all(access_token: str) -> None:
+    """Explicitly revoke every session for the current user."""
+    await _supabase_request(
+        "POST",
+        "/logout?scope=global",
+        access_token=access_token,
+    )
+
+
+async def request_password_reset(email: str, redirect_to: str) -> dict[str, Any]:
+    from urllib.parse import quote
+
+    return await _supabase_request(
+        "POST",
+        "/recover?redirect_to=" + quote(redirect_to, safe=""),
+        payload={"email": email},
+    )
+
+
+async def verify_email_token(token_hash: str, token_type: str) -> dict[str, Any]:
+    return await _supabase_request(
+        "POST",
+        "/verify",
+        payload={"token_hash": token_hash, "type": token_type},
+    )
+
+
+async def update_user_password(access_token: str, password: str) -> dict[str, Any]:
+    return await _supabase_request(
+        "PUT",
+        "/user",
+        access_token=access_token,
+        payload={"password": password},
     )
 
 

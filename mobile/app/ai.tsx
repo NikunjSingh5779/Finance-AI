@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFinance } from "../src/AppContext";
 import type { ChatMessage } from "../src/types";
 import { colors } from "../src/theme";
 import { Button, ChipRow, ErrorBanner, Header, Pill } from "../src/components";
 import { Icon } from "../src/icons";
+import type { AIConversation } from "../src/api";
+import { useFocusEffect } from "expo-router";
 
 const START_MESSAGE = "Hello Alex! I've analyzed your recent financial activity. Ask me anything about spending, budgets, savings or goals.";
 
@@ -63,6 +65,11 @@ export default function AIScreen() {
   const [sending, setSending] = useState(false);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [error, setError] = useState("");
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [historyItems, setHistoryItems] = useState<AIConversation[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const chatGenerationRef = useRef(0);
 
   const checkProvider = useCallback(async () => {
     if (!ready) return;
@@ -79,30 +86,106 @@ export default function AIScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages, sending]);
 
+  const startNewChat = useCallback(() => {
+    chatGenerationRef.current += 1;
+    setHistoryOpen(false);
+    setError("");
+    setQuestion("");
+    setMessages([{ role: "assistant", content: START_MESSAGE }]);
+    setConversationId(null);
+  }, []);
+
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const result = await api.conversations();
+      setHistoryItems(result.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load saved conversations.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [api]);
+
+  const resumeConversation = async (item: AIConversation) => {
+    const generation = ++chatGenerationRef.current;
+    setHistoryLoading(true);
+    try {
+      const result = await api.getConversation(item.id);
+      if (generation !== chatGenerationRef.current) return;
+      setConversationId(result.conversation.id);
+      setMessages(result.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })));
+      setHistoryOpen(false);
+      setQuestion("");
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open this conversation.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const removeConversation = (item: AIConversation) => {
+    Alert.alert("Delete conversation", "This permanently deletes this chat and its messages.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          void api.deleteConversation(item.id).then(async () => {
+            setHistoryItems((current) => current.filter((entry) => entry.id !== item.id));
+            if (conversationId === item.id) await startNewChat();
+          }).catch((err) => setError(err instanceof Error ? err.message : "Could not delete the conversation."));
+        },
+      },
+    ]);
+  };
+
+  useFocusEffect(useCallback(() => {
+    void startNewChat();
+    return undefined;
+  }, [startNewChat]));
+
   const sendPrompt = async (preset?: string) => {
     const trimmed = (preset ?? question).trim();
     if (trimmed.length < 3 || sending) return;
     setSending(true);
     setError("");
+    const generation = chatGenerationRef.current;
     const userMessage: ChatMessage = { role: "user", content: trimmed };
-    const nextMessages = messages.concat(userMessage);
-    setMessages(nextMessages);
+    setMessages((current) => current.concat(userMessage));
     setQuestion("");
 
     try {
-      const response = await api.chat(trimmed, nextMessages.map((message) => ({ role: message.role, content: message.content })));
-      setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
+      let activeConversationId = conversationId;
+      if (activeConversationId === null) {
+        const created = await api.createConversation();
+        activeConversationId = created.conversation.id;
+        if (generation === chatGenerationRef.current) {
+          setConversationId(activeConversationId);
+        }
+      }
+      const response = await api.sendConversationMessage(activeConversationId, trimmed);
+      if (generation === chatGenerationRef.current) {
+        setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI request failed.");
+      if (generation === chatGenerationRef.current) {
+        setError(err instanceof Error ? err.message : "AI request failed.");
+      }
     } finally {
       setSending(false);
     }
   };
 
   const clearChat = () => {
-    Alert.alert("Clear chat", "Remove the current AI conversation?", [
+    Alert.alert("Start a new chat", "The current conversation will remain saved in History.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: () => setMessages([{ role: "assistant", content: START_MESSAGE }]) },
+      { text: "New chat", onPress: () => void startNewChat() },
     ]);
   };
 
@@ -114,6 +197,16 @@ export default function AIScreen() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Header title="Assistant" />
+      <View style={styles.chatToolbar}>
+        <Pressable onPress={() => void openHistory()} style={styles.historyButton} accessibilityRole="button">
+          <Icon name="calendar" size={16} color={colors.primary} />
+          <Text style={styles.historyButtonText}>History</Text>
+        </Pressable>
+        <Pressable onPress={() => void startNewChat()} style={styles.newChatButton} accessibilityRole="button">
+          <Icon name="plus" size={16} color={colors.onAccent} />
+          <Text style={styles.newChatButtonText}>New chat</Text>
+        </Pressable>
+      </View>
 
       {providerReady === false ? (
         <View style={styles.unavailableWrap}>
@@ -230,12 +323,48 @@ export default function AIScreen() {
           </Pressable>
         </View>
       </View>
+      <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={() => setHistoryOpen(false)}>
+        <View style={styles.historyBackdrop}>
+          <View style={styles.historySheet}>
+            <View style={styles.historySheetHeader}>
+              <Text style={styles.historyTitle}>Saved conversations</Text>
+              <Pressable onPress={() => setHistoryOpen(false)}><Icon name="close" size={22} color={colors.muted} /></Pressable>
+            </View>
+            {historyLoading ? <ActivityIndicator color={colors.primary} /> : null}
+            <ScrollView>
+              {historyItems.map((item) => (
+                <View key={item.id} style={styles.historyItem}>
+                  <Pressable style={styles.historyItemMain} onPress={() => void resumeConversation(item)}>
+                    <Text style={styles.historyItemTitle}>{item.title}</Text>
+                    <Text style={styles.historyItemPreview} numberOfLines={1}>{item.last_message || "No messages yet"}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => removeConversation(item)}><Icon name="trash" size={18} color={colors.danger} /></Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  chatToolbar: { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  historyButton: { minHeight: 38, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 7 },
+  historyButtonText: { color: colors.primary, fontSize: 12, fontWeight: "700" },
+  newChatButton: { minHeight: 38, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", gap: 7 },
+  newChatButtonText: { color: colors.onAccent, fontSize: 12, fontWeight: "700" },
+  historyBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,.55)" },
+  historySheet: { maxHeight: "78%", minHeight: 280, padding: 18, backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, gap: 14 },
+  historySheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  historyTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
+  historyItem: { minHeight: 68, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 10 },
+  historyItemMain: { flex: 1, minWidth: 0, paddingVertical: 10 },
+  historyItemTitle: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  historyItemPreview: { color: colors.muted, fontSize: 11, marginTop: 3 },
+  historyDelete: { padding: 10 },
   conversation: { flex: 1 },
   conversationContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 10, gap: 12 },
   messageRow: { width: "100%", flexDirection: "row", alignItems: "flex-start", gap: 8 },

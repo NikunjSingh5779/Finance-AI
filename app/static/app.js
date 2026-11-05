@@ -23,6 +23,11 @@
 
   const API = window.FINANCEAI_API_URL || "";
   let authSession = null;
+  let authRefreshPromise = null;
+  let activeAIConversationId = null;
+  let aiHistoryItems = [];
+  let aiChatGeneration = 0;
+  let aiSending = false;
   let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
@@ -172,6 +177,7 @@
   function setAuthMode(mode) {
     authMode = mode;
     const signup = mode === "signup";
+    const recovery = mode === "recovery";
     const title = $("auth-title");
     const subtitle = $("auth-subtitle");
     const nameWrap = $("auth-name-wrap");
@@ -180,23 +186,78 @@
     const submit = $("auth-submit");
     const toggle = $("auth-toggle");
 
-    if (title) title.textContent = signup ? "Create your account" : "Welcome back";
+    if (title) title.textContent = signup ? "Create your account" : recovery ? "Reset your password" : "Welcome back";
     if (subtitle) {
       subtitle.textContent = signup
         ? "Create your private FinanceAI workspace."
-        : "Sign in to your private FinanceAI workspace.";
+        : recovery
+          ? "Choose a new password for your FinanceAI account."
+          : "Sign in to your private FinanceAI workspace.";
     }
     if (nameWrap) nameWrap.hidden = !signup;
     if (nameInput) nameInput.required = signup;
-    if (passwordInput) passwordInput.autocomplete = signup ? "new-password" : "current-password";
-    if (submit) submit.textContent = signup ? "Create account" : "Sign in";
-    if (toggle) {
+    if (passwordInput) {
+      passwordInput.autocomplete = (signup || recovery) ? "new-password" : "current-password";
+      passwordInput.placeholder = (signup || recovery) ? "8+ characters, number and symbol" : "Your password";
+    }
+    $("auth-password-rules")?.toggleAttribute("hidden", !(signup || recovery));
+    $("auth-forgot")?.toggleAttribute("hidden", signup || recovery);
+    $("auth-google")?.toggleAttribute("hidden", recovery);
+    if (toggle) toggle.hidden = recovery;
+    updatePasswordRules();
+    if (submit) submit.textContent = signup ? "Create account" : recovery ? "Update password" : "Sign in";
+    if (toggle && !recovery) {
       toggle.textContent = signup
         ? "Already have an account? Sign in"
         : "New to FinanceAI? Create an account";
     }
     showAuthError("");
     showAuthSuccess("");
+  }
+
+  function passwordChecks(value) {
+    return {
+      length: value.length >= 8,
+      number: /\d/.test(value),
+      special: /[^A-Za-z0-9\s]/.test(value),
+    };
+  }
+
+  function updatePasswordRules() {
+    const input = $("auth-password");
+    const rules = $("auth-password-rules");
+    if (!input || !rules) return;
+    const checks = passwordChecks(input.value);
+    Object.entries(checks).forEach(([name, valid]) => {
+      const item = rules.querySelector('[data-rule="' + name + '"]');
+      if (!item) return;
+      item.dataset.valid = valid ? "true" : "false";
+      const labels = {
+        length: "At least 8 characters",
+        number: "At least one number",
+        special: "At least one special character",
+      };
+      item.textContent = (valid ? "✓ " : "○ ") + labels[name];
+    });
+  }
+
+  async function requestPasswordRecovery() {
+    const email = $("auth-email")?.value.trim().toLowerCase() || "";
+    if (!email) {
+      showAuthError("Enter your email address first.");
+      $("auth-email")?.focus();
+      return;
+    }
+    const button = $("auth-forgot");
+    if (button) button.disabled = true;
+    try {
+      await authRequest("/auth/password/recovery", { email });
+      showAuthSuccess("If that email is registered, a password recovery link has been sent.");
+    } catch (error) {
+      showAuthError(error instanceof Error ? error.message : "Could not request password recovery.");
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   function showAuthScreen(message = "") {
@@ -212,6 +273,22 @@
     updateUserUI();
   }
 
+  function readableAuthError(payload, fallback) {
+    const value = payload && typeof payload === "object" ? payload : {};
+    const detail = value.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map(item => {
+        if (item && typeof item === "object" && item.msg) return String(item.msg);
+        return "Invalid input";
+      }).join("; ");
+    }
+    if (detail && typeof detail === "object") {
+      return String(detail.message || detail.msg || detail.error || fallback);
+    }
+    return String(value.message || value.error_description || value.msg || fallback);
+  }
+
   async function authRequest(path, payload) {
     const response = await fetch(API + path, {
       method: "POST",
@@ -219,31 +296,60 @@
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      let message = response.statusText || "Authentication failed";
-      try {
-        const data = await response.json();
-        message = data.detail || message;
-      } catch (_) {}
-      throw new Error(message);
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      const error = new Error(readableAuthError(data, response.statusText || "Authentication failed"));
+      error.status = response.status;
+      throw error;
     }
     return response.json();
   }
 
   async function refreshAuthSession() {
+    if (authRefreshPromise) return authRefreshPromise;
     if (!authSession?.refresh_token) return false;
-    try {
-      const next = await authRequest("/auth/refresh", {
-        refresh_token: authSession.refresh_token,
-      });
-      if (!next.access_token || !next.refresh_token) {
+
+    const refreshToken = authSession.refresh_token;
+    authRefreshPromise = (async () => {
+      let response;
+      try {
+        response = await fetch(API + "/auth/refresh", {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      } catch (_) {
+        const error = new Error("FinanceAI is temporarily unreachable. Your saved session has been kept.");
+        error.status = 0;
+        throw error;
+      }
+
+      if (response.status === 400 || response.status === 401) {
         clearAuthSession();
         return false;
       }
+      if (!response.ok) {
+        let data = {};
+        try { data = await response.json(); } catch (_) {}
+        const error = new Error(readableAuthError(data, response.statusText || "Could not refresh your session."));
+        error.status = response.status;
+        throw error;
+      }
+
+      const next = await response.json();
+      if (!next.access_token || !next.refresh_token) {
+        const error = new Error("The session refresh response was incomplete.");
+        error.status = 502;
+        throw error;
+      }
       setAuthSession(next);
       return true;
-    } catch (_) {
-      clearAuthSession();
-      return false;
+    })();
+
+    try {
+      return await authRefreshPromise;
+    } finally {
+      authRefreshPromise = null;
     }
   }
 
@@ -257,12 +363,14 @@
     }
 
     const response = await fetch(API + path, { ...options, headers });
-    if (response.status === 401 && retryOnUnauthorized && !path.startsWith("/auth/")) {
-      if (await refreshAuthSession()) {
-        return apiResponse(path, options, false);
-      }
-      showAuthScreen("Your session expired. Please sign in again.");
-      throw new Error("Authentication required");
+    const canRefresh = !path.startsWith("/auth/") || path === "/auth/me";
+    if (response.status === 401 && retryOnUnauthorized && canRefresh && authSession?.refresh_token) {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) return apiResponse(path, options, false);
+      showAuthScreen("Your session has expired. Please sign in again.");
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
     }
     return response;
   }
@@ -270,16 +378,11 @@
   async function apiFetch(path, options = {}, retryOnUnauthorized = true) {
     const response = await apiResponse(path, options, retryOnUnauthorized);
     if (!response.ok) {
-      let message = response.statusText || "Request failed";
-      try {
-        const payload = await response.json();
-        if (Array.isArray(payload.detail)) {
-          message = payload.detail.map(item => item.msg || JSON.stringify(item)).join("; ");
-        } else {
-          message = payload.detail || payload.message || message;
-        }
-      } catch (_) {}
-      throw new Error(message);
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      const error = new Error(readableAuthError(payload, response.statusText || "Request failed"));
+      error.status = response.status;
+      throw error;
     }
     if (response.status === 204) return undefined;
     return response.json();
@@ -295,16 +398,35 @@
       showAuthError(authMode === "signup" ? "Enter your name, email and password." : "Enter your email and password.");
       return;
     }
+    if (authMode === "signup" || authMode === "recovery") {
+      const checks = passwordChecks(password);
+      if (!checks.length || !checks.number || !checks.special) {
+        showAuthError("Use at least 8 characters, including one number and one special character.");
+        return;
+      }
+    }
 
     const button = $("auth-submit");
     if (button) {
       button.disabled = true;
-      button.textContent = authMode === "signup" ? "Creating account…" : "Signing in…";
+      button.textContent = authMode === "signup" ? "Creating account…" : authMode === "recovery" ? "Updating password…" : "Signing in…";
     }
 
     try {
       showAuthError("");
       showAuthSuccess("");
+      if (authMode === "recovery") {
+        await apiFetch("/auth/password/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        clearAuthSession();
+        $("auth-password").value = "";
+        setAuthMode("login");
+        showAuthSuccess("Your password has been updated. Sign in with your new password.");
+        return;
+      }
       const result = await authRequest(
         authMode === "signup" ? "/auth/signup" : "/auth/login",
         authMode === "signup" ? { email, password, name } : { email, password },
@@ -325,7 +447,7 @@
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = authMode === "signup" ? "Create account" : "Sign in";
+        button.textContent = authMode === "signup" ? "Create account" : authMode === "recovery" ? "Update password" : "Sign in";
       }
     }
   }
@@ -389,15 +511,69 @@
     const params = new URLSearchParams(window.location.search);
     const oauthCode = params.get("code");
     const oauthError = params.get("error_description") || params.get("error");
+    const tokenHash = params.get("token_hash");
+    const verificationType = params.get("type");
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const fragmentRefreshToken = fragment.get("refresh_token");
+    const fragmentType = fragment.get("type") || verificationType;
 
-    if (!oauthCode && !oauthError) return false;
+    if (!oauthCode && !oauthError && !tokenHash && !fragmentRefreshToken) return false;
 
-    const cleanUrl = window.location.pathname + window.location.hash;
-    window.history.replaceState({}, document.title, cleanUrl);
+    window.history.replaceState({}, document.title, window.location.pathname);
 
     if (oauthError) {
       sessionStorage.removeItem("financeai.google.pkce.verifier");
       showAuthScreen(oauthError);
+      return true;
+    }
+
+    if (fragmentRefreshToken) {
+      try {
+        const result = await authRequest("/auth/refresh", {
+          refresh_token: fragmentRefreshToken,
+        });
+        if (!result.access_token || !result.refresh_token) {
+          throw new Error("Email confirmation did not create an active session.");
+        }
+        if (fragmentType === "recovery") {
+          authSession = result;
+          setAuthMode("recovery");
+          showAuthScreen();
+          showAuthSuccess("Your recovery link is verified. Choose a new password.");
+        } else {
+          setAuthSession(result);
+          showAppShell();
+          init();
+        }
+      } catch (error) {
+        showAuthScreen(error instanceof Error ? error.message : "Email verification failed.");
+      }
+      return true;
+    }
+
+    if (tokenHash && verificationType) {
+      try {
+        const result = await authRequest("/auth/email/verify", {
+          token_hash: tokenHash,
+          type: verificationType,
+        });
+        if (verificationType === "recovery") {
+          if (!result.access_token) throw new Error("The recovery link did not create a reset session.");
+          authSession = result;
+          setAuthMode("recovery");
+          showAuthScreen();
+          showAuthSuccess("Email verified. Choose a new password below.");
+        } else if (result.access_token && result.refresh_token) {
+          setAuthSession(result);
+          showAppShell();
+          init();
+        } else {
+          showAuthScreen();
+          showAuthSuccess("Your email is verified. You can now sign in.");
+        }
+      } catch (error) {
+        showAuthScreen(error instanceof Error ? error.message : "Email verification failed.");
+      }
       return true;
     }
 
@@ -429,6 +605,8 @@
     if (await handleGoogleOAuthCallback()) return;
 
     try {
+      const storedAtStartup = localStorage.getItem("financeai.auth.session");
+      if (storedAtStartup) authSession = JSON.parse(storedAtStartup);
       const response = await fetch(API + "/auth/config");
       if (!response.ok) throw new Error("Cannot load authentication configuration.");
       const config = await response.json();
@@ -443,7 +621,16 @@
         const stored = localStorage.getItem("financeai.auth.session");
         if (stored) {
           authSession = JSON.parse(stored);
-          await apiFetch("/auth/me");
+          try {
+            await apiFetch("/auth/me");
+          } catch (error) {
+            if (error.status === 401) {
+              clearAuthSession();
+              showAuthScreen("Your session has expired. Please sign in again.");
+              return;
+            }
+            // Keep the saved session when the API is temporarily unavailable.
+          }
           updateUserUI();
           showAppShell();
           init();
@@ -455,7 +642,15 @@
 
       showAuthScreen();
     } catch (error) {
-      showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+      if (authSession?.refresh_token) {
+        // Do not turn a temporary backend outage into an apparent logout.
+        updateUserUI();
+        showAppShell();
+        init();
+        showToast("FinanceAI is offline. Your saved session is still available.", "error");
+      } else {
+        showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+      }
     }
   }
 
@@ -2436,63 +2631,184 @@
     sendChat();
   }
 
+  async function startNewAIChat() {
+    aiChatGeneration += 1;
+    activeAIConversationId = null;
+    const chat = $("chat-msgs");
+    if (chat) {
+      chat.replaceChildren();
+      appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
+    }
+    if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+  }
+
+  function renderAIHistory(items) {
+    const list = $("ai-history-list");
+    if (!list) return;
+    list.replaceChildren();
+    const query = ($("ai-history-search")?.value || "").trim().toLowerCase();
+    const filtered = items.filter(item =>
+      String(item.title || "").toLowerCase().includes(query)
+      || String(item.last_message || "").toLowerCase().includes(query)
+    );
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "ai-history-empty";
+      empty.textContent = query ? "No matching conversations." : "No saved conversations yet.";
+      list.appendChild(empty);
+      return;
+    }
+    filtered.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "ai-history-item";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "ai-history-open";
+      const title = document.createElement("span");
+      title.className = "ai-history-item-title";
+      title.textContent = item.title || "New chat";
+      const preview = document.createElement("span");
+      preview.className = "ai-history-item-preview";
+      preview.textContent = item.last_message || "No messages yet";
+      open.append(title, preview);
+      open.addEventListener("click", () => void resumeAIConversation(item.id));
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "ai-history-item-action";
+      rename.textContent = "Rename";
+      rename.addEventListener("click", () => void renameAIConversation(item));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ai-history-item-action";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => void deleteAIConversation(item.id));
+      row.append(open, rename, remove);
+      list.appendChild(row);
+    });
+  }
+
+  async function openAIHistory() {
+    const panel = $("ai-history-panel");
+    if (!panel) return;
+    panel.hidden = false;
+    try {
+      const result = await apiFetch("/api/conversations");
+      aiHistoryItems = result.items || [];
+      renderAIHistory(aiHistoryItems);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not load chat history.", "error");
+    }
+  }
+
+  async function resumeAIConversation(conversationId) {
+    const generation = ++aiChatGeneration;
+    try {
+      const result = await apiFetch("/api/conversations/" + conversationId);
+      if (generation !== aiChatGeneration) return;
+      activeAIConversationId = result.conversation.id;
+      const chat = $("chat-msgs");
+      if (chat) chat.replaceChildren();
+      (result.messages || []).forEach(message => {
+        appendSavedChatMessage(message.role === "user" ? "user" : "ai", message.content);
+      });
+      if (!result.messages?.length) appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
+      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not open this conversation.", "error");
+    }
+  }
+
+  async function renameAIConversation(item) {
+    const title = window.prompt("Rename conversation", item.title || "New chat");
+    if (!title || !title.trim()) return;
+    try {
+      await apiFetch("/api/conversations/" + item.id, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({title: title.trim()}),
+      });
+      await openAIHistory();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not rename this conversation.", "error");
+    }
+  }
+
+  async function deleteAIConversation(conversationId) {
+    if (!window.confirm("Delete this conversation and all its messages?")) return;
+    try {
+      await apiFetch("/api/conversations/" + conversationId, {method: "DELETE"});
+      aiHistoryItems = aiHistoryItems.filter(item => item.id !== conversationId);
+      renderAIHistory(aiHistoryItems);
+      if (activeAIConversationId === conversationId) await startNewAIChat();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not delete this conversation.", "error");
+    }
+  }
+
+  function appendSavedChatMessage(role, content) {
+    const chat = $("chat-msgs");
+    if (!chat) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-msg " + role;
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + role;
+    if (role === "ai") renderAiMarkdown(bubble, content);
+    else bubble.textContent = content;
+    wrapper.appendChild(bubble);
+    chat.appendChild(wrapper);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
   async function sendChat() {
     const input = $("chat-input");
     const chat = $("chat-msgs");
-    const message = input.value.trim();
-    if (!message || !chat) return;
-
-    const userWrap = document.createElement("div");
-    userWrap.className = "chat-msg user";
-    const userBubble = document.createElement("div");
-    userBubble.className = "chat-bubble user";
-    userBubble.textContent = message;
-    userWrap.appendChild(userBubble);
-    chat.appendChild(userWrap);
-
+    const message = input?.value.trim() || "";
+    if (!message || !chat || aiSending) return;
+    aiSending = true;
+    const generation = aiChatGeneration;
+    appendSavedChatMessage("user", message);
     input.value = "";
 
     const typing = document.createElement("div");
     typing.className = "chat-msg ai";
     typing.id = "typing";
-    const typingBubble = document.createElement("div");
-    typingBubble.className = "chat-bubble ai";
-    const marketTerms = /\b(gold|silver|crude oil|bitcoin|crypto|stock|share|quote|market price|forex)\b/i;
-    const isMarketQuestion = marketTerms.test(message);
-    typingBubble.textContent = isMarketQuestion
-      ? "Checking the latest available market quote..."
-      : "I'm analyzing your finances... 📊";
-    typing.appendChild(typingBubble);
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble ai";
+    bubble.textContent = "I'm working on your question...";
+    typing.appendChild(bubble);
     chat.appendChild(typing);
     chat.scrollTop = chat.scrollHeight;
 
     try {
-      const result = await apiFetch("/ai/advice", {
+      let targetConversationId = activeAIConversationId;
+      if (!targetConversationId) {
+        const created = await apiFetch("/api/conversations", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({title: "New chat"}),
+        });
+        targetConversationId = created.conversation.id;
+        if (generation === aiChatGeneration) {
+          activeAIConversationId = targetConversationId;
+        }
+      }
+      const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({question: message, messages: []})
+        body: JSON.stringify({question: message}),
       });
-
       typing.remove();
-      const aiWrap = document.createElement("div");
-      aiWrap.className = "chat-msg ai";
-      const aiBubble = document.createElement("div");
-      aiBubble.className = "chat-bubble ai";
-      renderAiMarkdown(aiBubble, result.advice || result.reply || "No response");
-      aiWrap.appendChild(aiBubble);
-      chat.appendChild(aiWrap);
+      if (generation === aiChatGeneration && activeAIConversationId === targetConversationId) {
+        appendSavedChatMessage("ai", result.reply || "No response");
+      }
     } catch (error) {
       typing.remove();
-      const errorWrap = document.createElement("div");
-      errorWrap.className = "chat-msg ai";
-      const bubble = document.createElement("div");
-      bubble.className = "chat-bubble ai";
-      bubble.textContent = "⚠️ AI is currently unavailable.";
-      errorWrap.appendChild(bubble);
-      chat.appendChild(errorWrap);
+      if (generation === aiChatGeneration) {
+        appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
+      }
+    } finally {
+      aiSending = false;
     }
-
-    chat.scrollTop = chat.scrollHeight;
   }
 
   function createInsightsPage() {
@@ -2973,6 +3289,7 @@
     if (name === "ai-page") {
       content.style.overflow = "hidden";
       content.style.padding = "0";
+      void startNewAIChat();
     } else {
       content.style.overflow = "";
       content.style.padding = "";
@@ -2992,6 +3309,12 @@
 
     $("planning-nav-item")?.addEventListener("click", activatePlanning);
     $("insights-nav-item")?.addEventListener("click", activateInsights);
+    $("ai-history-toggle")?.addEventListener("click", openAIHistory);
+    $("ai-history-close")?.addEventListener("click", () => {
+      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+    });
+    $("ai-new-chat")?.addEventListener("click", () => void startNewAIChat());
+    $("ai-history-search")?.addEventListener("input", () => renderAIHistory(aiHistoryItems));
 
     $("modal")?.addEventListener("click", event => {
       if (event.target === $("modal")) closeModal();
@@ -3090,6 +3413,17 @@
 
   $("auth-form")?.addEventListener("submit", submitAuth);
   $("auth-toggle")?.addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  $("auth-password-toggle")?.addEventListener("click", () => {
+    const input = $("auth-password");
+    const button = $("auth-password-toggle");
+    if (!input || !button) return;
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+    button.setAttribute("aria-pressed", reveal ? "true" : "false");
+  });
+  $("auth-password")?.addEventListener("input", updatePasswordRules);
+  $("auth-forgot")?.addEventListener("click", requestPasswordRecovery);
   $("auth-google")?.addEventListener("click", signInWithGoogle);
   $("logout-btn")?.addEventListener("click", logout);
   setAuthMode("login");

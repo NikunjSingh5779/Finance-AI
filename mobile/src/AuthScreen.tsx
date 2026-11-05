@@ -2,17 +2,20 @@ import { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button, Input } from "./components";
 import { colors } from "./theme";
+import { Icon } from "./icons";
 
 export interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignup: (email: string, password: string, name: string) => Promise<boolean>;
+  onGoogleSignIn?: () => Promise<void>;
 }
 
-export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
+export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProps) {
   const [signupMode, setSignupMode] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -21,6 +24,14 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !password || (signupMode && name.trim().length < 2)) {
       setError(signupMode ? "Enter your name, email and password." : "Enter your email and password.");
+      return;
+    }
+    if (signupMode && (
+      password.length < 8
+      || !/\d/.test(password)
+      || !/[^A-Za-z0-9\s]/.test(password)
+    )) {
+      setError("Use at least 8 characters, including one number and one special character.");
       return;
     }
     setBusy(true);
@@ -78,16 +89,41 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
           autoComplete="email"
         />
 
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="At least 8 characters"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete={signupMode ? "new-password" : "current-password"}
-        />
+        <View style={styles.passwordField}>
+          <Input
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            placeholder={signupMode ? "8+ characters, number and symbol" : "Your password"}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete={signupMode ? "new-password" : "current-password"}
+            style={styles.passwordInput}
+          />
+          <Pressable
+            style={styles.passwordToggle}
+            onPress={() => setShowPassword((value) => !value)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+          >
+            <Icon name="eye" size={19} color={colors.muted} />
+          </Pressable>
+        </View>
+
+        {signupMode ? (
+          <View style={styles.passwordRules}>
+            <Text style={[styles.passwordRule, password.length >= 8 && styles.passwordRuleMet]}>
+              {password.length >= 8 ? "✓" : "○"} At least 8 characters
+            </Text>
+            <Text style={[styles.passwordRule, /\d/.test(password) && styles.passwordRuleMet]}>
+              {/\d/.test(password) ? "✓" : "○"} At least one number
+            </Text>
+            <Text style={[styles.passwordRule, /[^A-Za-z0-9\s]/.test(password) && styles.passwordRuleMet]}>
+              {/[^A-Za-z0-9\s]/.test(password) ? "✓" : "○"} At least one special character
+            </Text>
+          </View>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -99,6 +135,23 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
         />
 
         {busy ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+        {onGoogleSignIn && Platform.OS !== "web" ? (
+          <Pressable
+            onPress={() => {
+              setBusy(true);
+              setError("");
+              void onGoogleSignIn().catch((err) => {
+                setError(err instanceof Error ? err.message : "Google sign-in failed.");
+              }).finally(() => setBusy(false));
+            }}
+            disabled={busy}
+            accessibilityRole="button"
+            style={styles.googleButton}
+          >
+            <Text style={styles.googleSymbol}>G</Text>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => {
@@ -146,6 +199,15 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   message: { color: colors.primary, fontSize: 13, lineHeight: 19 },
   spinner: { marginTop: 2 },
+  passwordField: { position: "relative" },
+  passwordInput: { paddingRight: 48 },
+  passwordToggle: { position: "absolute", right: 12, top: 28, width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  passwordRules: { gap: 4, marginTop: -4 },
+  passwordRule: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  passwordRuleMet: { color: colors.primary },
+  googleButton: { minHeight: 48, borderRadius: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  googleSymbol: { color: "#4285F4", fontSize: 22, fontWeight: "800" },
+  googleButtonText: { color: "#202124", fontSize: 14, fontWeight: "700" },
   switchButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   switchText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   privacy: { color: colors.subtle, fontSize: 11, textAlign: "center", marginTop: 18, maxWidth: 340 },

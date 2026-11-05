@@ -25,8 +25,22 @@ export class ApiError extends Error {
 
 async function parseError(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { detail?: string };
-    return body.detail || "Request failed with HTTP " + response.status;
+    const body = await response.json() as Record<string, unknown>;
+    const detail = body.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return "Invalid input";
+      }).join("; ");
+    }
+    if (detail && typeof detail === "object") {
+      const value = detail as Record<string, unknown>;
+      return String(value.message || value.msg || value.error || "The request could not be completed.");
+    }
+    return String(body.message || body.error_description || body.msg || "Request failed with HTTP " + response.status);
   } catch {
     return "Request failed with HTTP " + response.status;
   }
@@ -36,14 +50,39 @@ export interface AuthSession {
   access_token: string;
   refresh_token: string;
   expires_in?: number;
-  user?: { id?: string; email?: string; user_metadata?: { name?: string } };
+  expires_at?: number;
+  user?: { id?: string; email?: string; user_metadata?: { name?: string; full_name?: string } };
+}
+
+export interface AIConversation {
+  id: number;
+  title: string;
+  summary?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message?: string | null;
+}
+
+export interface AIMessage {
+  id: number;
+  conversation_id: number;
+  role: "user" | "assistant";
+  content: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
 export class FinanceApi {
   private accessToken: string | null = null;
   private refreshTokenValue: string | null = null;
+  private refreshPromise: Promise<AuthSession | null> | null = null;
+  private sessionChangeHandler: ((session: AuthSession | null) => Promise<void> | void) | null = null;
 
   constructor(private readonly baseUrl: string) {}
+
+  setSessionChangeHandler(handler: ((session: AuthSession | null) => Promise<void> | void) | null) {
+    this.sessionChangeHandler = handler;
+  }
 
   setSession(session: AuthSession | null) {
     this.accessToken = session?.access_token ?? null;
@@ -91,10 +130,11 @@ export class FinanceApi {
       response.status === 401 &&
       retryOnUnauthorized &&
       this.refreshTokenValue &&
-      !path.startsWith("/auth/")
+      (!path.startsWith("/auth/") || path === "/auth/me")
     ) {
-      const refreshed = await this.refreshSession().catch(() => null);
+      const refreshed = await this.refreshSession();
       if (refreshed) return this.request<T>(path, init, false);
+      await this.sessionChangeHandler?.(null);
     }
 
     if (!response.ok) {
@@ -127,6 +167,17 @@ export class FinanceApi {
     );
   }
 
+  signupNative(email: string, password: string, name?: string) {
+    return this.request<AuthSession & { requires_email_confirmation?: boolean }>(
+      "/auth/signup/native",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+      },
+      false,
+    );
+  }
+
   signup(email: string, password: string, name?: string) {
     return this.request<AuthSession & { requires_email_confirmation?: boolean }>(
       "/auth/signup",
@@ -139,19 +190,45 @@ export class FinanceApi {
   }
 
   async refreshSession(): Promise<AuthSession | null> {
+    if (this.refreshPromise) return this.refreshPromise;
     if (!this.refreshTokenValue) return null;
-    const response = await fetch(this.url("/auth/refresh"), {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: this.refreshTokenValue }),
-    });
-    if (!response.ok) {
-      this.clearSession();
-      return null;
+
+    const tokenToRefresh = this.refreshTokenValue;
+    this.refreshPromise = (async () => {
+      let response: Response;
+      try {
+        response = await fetch(this.url("/auth/refresh"), {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: tokenToRefresh }),
+        });
+      } catch {
+        throw new ApiError("FinanceAI is temporarily unreachable. Your session has been kept on this device.");
+      }
+
+      if (response.status === 400 || response.status === 401) {
+        this.clearSession();
+        await this.sessionChangeHandler?.(null);
+        return null;
+      }
+      if (!response.ok) {
+        throw new ApiError(await parseError(response), response.status);
+      }
+
+      const session = (await response.json()) as AuthSession;
+      if (!session.access_token || !session.refresh_token) {
+        throw new ApiError("The session refresh response was incomplete.", response.status);
+      }
+      this.setSession(session);
+      await this.sessionChangeHandler?.(session);
+      return session;
+    })();
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
     }
-    const session = (await response.json()) as AuthSession;
-    this.setSession(session);
-    return session.access_token ? session : null;
   }
 
   logout() {
@@ -159,6 +236,82 @@ export class FinanceApi {
       "/auth/logout",
       { method: "POST" },
       false,
+    );
+  }
+
+  googleNativeStart(codeChallenge: string) {
+    return this.request<{ url: string }>("/auth/google/native/start", {
+      method: "POST",
+      body: JSON.stringify({ code_challenge: codeChallenge }),
+    }, false);
+  }
+
+  googleExchange(authCode: string, codeVerifier: string) {
+    return this.request<AuthSession>("/auth/google/exchange", {
+      method: "POST",
+      body: JSON.stringify({ auth_code: authCode, code_verifier: codeVerifier }),
+    }, false);
+  }
+
+  passwordRecovery(email: string) {
+    return this.request<{ success: boolean; message: string }>(
+      "/auth/password/recovery",
+      { method: "POST", body: JSON.stringify({ email }) },
+      false,
+    );
+  }
+
+  verifyEmail(tokenHash: string, type: "signup" | "email" | "recovery") {
+    return this.request<AuthSession>(
+      "/auth/email/verify",
+      { method: "POST", body: JSON.stringify({ token_hash: tokenHash, type }) },
+      false,
+    );
+  }
+
+  updatePassword(password: string) {
+    return this.request<{ success: boolean }>(
+      "/auth/password/update",
+      { method: "POST", body: JSON.stringify({ password }) },
+      false,
+    );
+  }
+
+  conversations() {
+    return this.request<{ items: AIConversation[] }>("/api/conversations");
+  }
+
+  createConversation(title = "New chat") {
+    return this.request<{ conversation: AIConversation }>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  getConversation(id: number) {
+    return this.request<{ conversation: AIConversation; messages: AIMessage[] }>(
+      "/api/conversations/" + id,
+    );
+  }
+
+  renameConversation(id: number, title: string) {
+    return this.request<{ conversation: AIConversation }>(
+      "/api/conversations/" + id,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    );
+  }
+
+  deleteConversation(id: number) {
+    return this.request<{ deleted: boolean }>(
+      "/api/conversations/" + id,
+      { method: "DELETE" },
+    );
+  }
+
+  sendConversationMessage(id: number, question: string) {
+    return this.request<{ success: boolean; reply: string; message: AIMessage; conversation: AIConversation }>(
+      "/api/conversations/" + id + "/messages",
+      { method: "POST", body: JSON.stringify({ question }) },
     );
   }
 
