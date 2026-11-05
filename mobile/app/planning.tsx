@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFinance } from "../src/AppContext";
 import { Button, Card, ChipRow, EmptyState, ErrorBanner, Header, Input, LoadingState, Pill, Screen, SectionTitle, SmallText } from "../src/components";
@@ -16,6 +17,7 @@ const goalColors = [colors.warning, colors.info, colors.chartPurple, colors.prim
 
 export default function PlanningScreen() {
   const { api, ready } = useFinance();
+  const router = useRouter();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [net, setNet] = useState<NetWorthSnapshot | null>(null);
   const [history, setHistory] = useState<NetWorthPoint[]>([]);
@@ -139,6 +141,22 @@ export default function PlanningScreen() {
             <Text style={styles.addButtonText}>Add goal</Text>
           </Pressable>
         </View>
+
+        <Pressable
+          style={styles.recurringShortcut}
+          onPress={() => router.push("/recurring")}
+          accessibilityRole="button"
+          accessibilityLabel="Open recurring payments"
+        >
+          <View style={styles.recurringShortcutIcon}>
+            <Icon name="calendar" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={styles.recurringShortcutTitle}>Recurring payments</Text>
+            <SmallText>Manage subscriptions, bills and regular income</SmallText>
+          </View>
+          <Icon name="chevron-right" size={18} color={colors.muted} />
+        </Pressable>
 
         <Card style={styles.netWorthCard}>
           <View style={styles.netWorthTitleRow}>
@@ -284,6 +302,9 @@ const styles = StyleSheet.create({
   addButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   addButtonText: { color: colors.onAccent, fontSize: 12, fontWeight: "700" },
   netWorthCard: { gap: 12, padding: 16 },
+  recurringShortcut: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface },
+  recurringShortcutIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
+  recurringShortcutTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
   netWorthTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   netWorthLabel: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "700" },
   visibilityButton: { width: 44, height: 44, borderRadius: 8, backgroundColor: colors.surfaceRaised, alignItems: "center", justifyContent: "center" },

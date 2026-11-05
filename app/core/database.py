@@ -62,6 +62,30 @@ CREATE TABLE IF NOT EXISTS goals (
     created         TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE transactions
+    ADD COLUMN IF NOT EXISTS recurring_item_id BIGINT;
+
+CREATE TABLE IF NOT EXISTS recurring_items (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         UUID NOT NULL DEFAULT auth.uid(),
+    name            TEXT NOT NULL,
+    amount          DOUBLE PRECISION NOT NULL CHECK(amount > 0),
+    type            TEXT NOT NULL CHECK(type IN ('income','expense')),
+    category        TEXT NOT NULL,
+    frequency       TEXT NOT NULL CHECK(frequency IN ('weekly','monthly','yearly')),
+    next_due_date   TEXT NOT NULL,
+    schedule_day    INTEGER NOT NULL CHECK(schedule_day BETWEEN 1 AND 31),
+    schedule_month  INTEGER CHECK(schedule_month BETWEEN 1 AND 12),
+    account_id      BIGINT,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    last_recorded_due_date TEXT,
+    created         TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT recurring_item_account_user_fk
+        FOREIGN KEY (account_id, user_id)
+        REFERENCES accounts(id, user_id),
+    UNIQUE(id, user_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id
     ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id
@@ -78,13 +102,19 @@ CREATE INDEX IF NOT EXISTS idx_goals_user_id
     ON goals(user_id);
 CREATE INDEX IF NOT EXISTS idx_goals_target_date
     ON goals(user_id, target_date);
+CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
+    ON recurring_items(user_id, is_active, next_due_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_recurring_occurrence
+    ON transactions(user_id, recurring_item_id, date)
+    WHERE recurring_item_id IS NOT NULL;
 
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recurring_items ENABLE ROW LEVEL SECURITY;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON accounts, transactions, budgets, goals
+GRANT SELECT, INSERT, UPDATE, DELETE ON accounts, transactions, budgets, goals, recurring_items
 TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
@@ -157,6 +187,24 @@ CREATE POLICY goals_update_own ON goals
     USING ((select auth.uid()) = user_id)
     WITH CHECK ((select auth.uid()) = user_id);
 CREATE POLICY goals_delete_own ON goals
+    FOR DELETE TO authenticated
+    USING ((select auth.uid()) = user_id);
+
+DROP POLICY IF EXISTS recurring_items_select_own ON recurring_items;
+DROP POLICY IF EXISTS recurring_items_insert_own ON recurring_items;
+DROP POLICY IF EXISTS recurring_items_update_own ON recurring_items;
+DROP POLICY IF EXISTS recurring_items_delete_own ON recurring_items;
+CREATE POLICY recurring_items_select_own ON recurring_items
+    FOR SELECT TO authenticated
+    USING ((select auth.uid()) = user_id);
+CREATE POLICY recurring_items_insert_own ON recurring_items
+    FOR INSERT TO authenticated
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY recurring_items_update_own ON recurring_items
+    FOR UPDATE TO authenticated
+    USING ((select auth.uid()) = user_id)
+    WITH CHECK ((select auth.uid()) = user_id);
+CREATE POLICY recurring_items_delete_own ON recurring_items
     FOR DELETE TO authenticated
     USING ((select auth.uid()) = user_id);
 """
@@ -306,6 +354,22 @@ def init_db() -> None:
                 category        TEXT    NOT NULL DEFAULT 'Savings',
                 created         TEXT    DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS recurring_items (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id         TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                name            TEXT NOT NULL,
+                amount          REAL NOT NULL CHECK(amount > 0),
+                type            TEXT NOT NULL CHECK(type IN ('income','expense')),
+                category        TEXT NOT NULL,
+                frequency       TEXT NOT NULL CHECK(frequency IN ('weekly','monthly','yearly')),
+                next_due_date   TEXT NOT NULL,
+                schedule_day    INTEGER NOT NULL CHECK(schedule_day BETWEEN 1 AND 31),
+                schedule_month  INTEGER CHECK(schedule_month BETWEEN 1 AND 12),
+                account_id      INTEGER REFERENCES accounts(id),
+                is_active       INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),
+                last_recorded_due_date TEXT,
+                created         TEXT DEFAULT (datetime('now'))
+            );
 
             CREATE INDEX IF NOT EXISTS idx_transactions_date
                 ON transactions(date);
@@ -321,6 +385,8 @@ def init_db() -> None:
                 ON budgets(user_id);
             CREATE INDEX IF NOT EXISTS idx_goals_user_id
                 ON goals(user_id);
+            CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
+                ON recurring_items(user_id, is_active, next_due_date);
         """
         )
         _run_migrations(conn)
@@ -361,6 +427,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id)"
         )
+
+    if "recurring_item_id" not in transaction_columns:
+        conn.execute(
+            "ALTER TABLE transactions ADD COLUMN recurring_item_id INTEGER"
+        )
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_recurring_occurrence
+        ON transactions(user_id, recurring_item_id, date)
+        WHERE recurring_item_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
+        ON recurring_items(user_id, is_active, next_due_date)
+        """
+    )
 
     account_columns = {
         row["name"]

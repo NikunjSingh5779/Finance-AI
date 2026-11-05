@@ -495,3 +495,147 @@ def test_transaction_csv_import_validates_account_mappings(client):
     assert payload["errors"][0]["index"] == 1
     created = client.get("/transactions?skip=0&limit=10").json()
     assert created[0]["account_id"] == account_id
+
+
+def test_recurring_payment_crud_and_record_is_idempotent(client):
+    created = client.post(
+        "/recurring",
+        json={
+            "name": "Streaming subscription",
+            "amount": 499,
+            "type": "expense",
+            "category": "Subscriptions",
+            "frequency": "monthly",
+            "next_due_date": "2026-11-15",
+        },
+    )
+    assert created.status_code == 201
+    item = created.json()
+    assert item["is_active"] is True
+    assert item["next_due_date"] == "2026-11-15"
+
+    listed = client.get("/recurring")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+
+    recorded = client.post(
+        f"/recurring/{item['id']}/record",
+        json={"due_date": "2026-11-15"},
+    )
+    assert recorded.status_code == 201
+    payload = recorded.json()
+    assert payload["transaction"]["amount"] == 499
+    assert payload["transaction"]["recurring_item_id"] == item["id"]
+    assert payload["transaction"]["date"] == "2026-11-15"
+    assert payload["item"]["next_due_date"] == "2026-12-15"
+    assert payload["item"]["last_recorded_due_date"] == "2026-11-15"
+
+    duplicate = client.post(
+        f"/recurring/{item['id']}/record",
+        json={"due_date": "2026-11-15"},
+    )
+    assert duplicate.status_code == 409
+
+    transactions = client.get("/transactions").json()
+    assert len([txn for txn in transactions if txn.get("recurring_item_id") == item["id"]]) == 1
+
+    paused = client.put(f"/recurring/{item['id']}", json={"is_active": False})
+    assert paused.status_code == 200
+    assert paused.json()["is_active"] is False
+
+    blocked = client.post(
+        f"/recurring/{item['id']}/record",
+        json={"due_date": "2026-12-15"},
+    )
+    assert blocked.status_code == 409
+
+
+def test_recurring_month_end_schedule_keeps_anchor_day(client):
+    created = client.post(
+        "/recurring",
+        json={
+            "name": "Rent",
+            "amount": 12000,
+            "type": "expense",
+            "category": "Housing",
+            "frequency": "monthly",
+            "next_due_date": "2027-01-31",
+        },
+    )
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+
+    february = client.post(
+        f"/recurring/{item_id}/record",
+        json={"due_date": "2027-01-31"},
+    )
+    assert february.status_code == 201
+    assert february.json()["item"]["next_due_date"] == "2027-02-28"
+
+    march = client.post(
+        f"/recurring/{item_id}/record",
+        json={"due_date": "2027-02-28"},
+    )
+    assert march.status_code == 201
+    assert march.json()["item"]["next_due_date"] == "2027-03-31"
+
+
+def test_recurring_validation_and_delete_history_rules(client):
+    invalid = client.post(
+        "/recurring",
+        json={
+            "name": "Bad schedule",
+            "amount": 10,
+            "type": "expense",
+            "category": "Other",
+            "frequency": "daily",
+            "next_due_date": "2026-11-15",
+        },
+    )
+    assert invalid.status_code == 422
+
+    created = client.post(
+        "/recurring",
+        json={
+            "name": "Gym",
+            "amount": 1000,
+            "type": "expense",
+            "category": "Health",
+            "frequency": "yearly",
+            "next_due_date": "2026-12-31",
+        },
+    )
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+    deleted = client.delete(f"/recurring/{item_id}")
+    assert deleted.status_code == 200
+
+    missing = client.get(f"/recurring/{item_id}")
+    assert missing.status_code == 404
+
+
+def test_account_cannot_be_deleted_while_recurring_schedule_uses_it(client):
+    account = client.post(
+        "/accounts",
+        json={"name": "Rent account", "balance": 0, "type": "checking"},
+    )
+    assert account.status_code == 201
+    account_id = account.json()["id"]
+
+    schedule = client.post(
+        "/recurring",
+        json={
+            "name": "Rent",
+            "amount": 12000,
+            "type": "expense",
+            "category": "Housing",
+            "frequency": "monthly",
+            "next_due_date": "2026-11-15",
+            "account_id": account_id,
+        },
+    )
+    assert schedule.status_code == 201
+
+    response = client.delete(f"/accounts/{account_id}")
+    assert response.status_code == 409
+    assert response.json()["errors"]["recurring_item_count"] == 1

@@ -10,6 +10,7 @@ import type {
   NetWorthSnapshot,
   Summary,
   Transaction,
+  RecurringItem,
 } from "./types";
 
 export class ApiError extends Error {
@@ -293,6 +294,54 @@ export class FinanceApi {
       "/budgets/" + encodeURIComponent(category),
       { method: "DELETE" },
     );
+  }
+
+  recurring() {
+    return this.request<RecurringItem[]>("/recurring");
+  }
+
+  createRecurring(payload: {
+    name: string;
+    amount: number;
+    type: "income" | "expense";
+    category: string;
+    frequency: "weekly" | "monthly" | "yearly";
+    next_due_date: string;
+    account_id?: number | null;
+  }) {
+    return this.request<RecurringItem>("/recurring", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  updateRecurring(id: number, payload: Partial<{
+    name: string;
+    amount: number;
+    type: "income" | "expense";
+    category: string;
+    frequency: "weekly" | "monthly" | "yearly";
+    next_due_date: string;
+    account_id: number | null;
+    is_active: boolean;
+  }>) {
+    return this.request<RecurringItem>("/recurring/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  recordRecurring(id: number, dueDate: string) {
+    return this.request<{ item: RecurringItem; transaction: Transaction }>(
+      "/recurring/" + id + "/record",
+      { method: "POST", body: JSON.stringify({ due_date: dueDate }) },
+    );
+  }
+
+  deleteRecurring(id: number) {
+    return this.request<{ deleted: number }>("/recurring/" + id, {
+      method: "DELETE",
+    });
   }
 
   goals() {

@@ -52,9 +52,14 @@ class AccountService:
         if self.repository.get(account_id) is None:
             raise AccountNotFoundError(account_id)
 
-        linked = self.repository.count_transactions(account_id)
-        if linked:
-            raise AccountDeletionError(account_id, linked)
+        linked_transactions = self.repository.count_transactions(account_id)
+        linked_recurring_items = self.repository.count_recurring_items(account_id)
+        if linked_transactions or linked_recurring_items:
+            raise AccountDeletionError(
+                account_id,
+                linked_transactions,
+                linked_recurring_items,
+            )
 
         return self.repository.delete(account_id)
 

@@ -15,6 +15,7 @@ AI-assisted personal finance management built with FastAPI, SQLite, vanilla Java
 - Next-month total-expense forecasting from monthly history.
 - Financial Health Score with explainable components.
 - Recurring-expense detection and unusual-spending detection.
+- Managed recurring bills and income schedules with explicit, duplicate-safe payment recording.
 - Server-side AI financial context with provider fallback.
 - Market prices, history, fundamentals, news, and optional experimental forecasting.
 - CSV transaction import.
@@ -124,6 +125,9 @@ Claude/OpenAI-specific credentials are not part of the current provider implemen
 | GET | /api/insights/anomalies | Unusual spending |
 | GET/POST | /goals | Financial goal list/create |
 | GET/PUT/DELETE | /goals/{id} | Financial goal lifecycle |
+| GET/POST | /recurring | List/create recurring schedules |
+| GET/PUT/DELETE | /recurring/{id} | View, update, pause or delete a schedule |
+| POST | /recurring/{id}/record | Record one due occurrence as a transaction |
 | GET | /api/net-worth | Current assets, liabilities, and net worth |
 | GET | /api/reports/monthly | Deterministic monthly report |
 | GET | /api/market/{symbol} | Market data |
@@ -235,3 +239,12 @@ CLI deployment:
     netlify deploy --prod --dir=netlify-dist
 
 A Git-connected Netlify project can instead build automatically from pushes to main. Production deploys replace the primary site version. 
+
+
+## FinanceAI V2 · recurring payments
+
+FinanceAI V2 adds a recurring schedule manager to the web dashboard and native mobile app. Create weekly, monthly or yearly expense/income schedules, optionally associate them with one of the user's own accounts, and pause/resume them when needed.
+
+A scheduled occurrence is **not** automatically written to the ledger. Select **Mark paid / received** to create its transaction. The backend advances the schedule and writes the transaction atomically, and rejects stale/duplicate occurrences. Monthly schedules preserve their original day across shorter months (for example, January 31 → February 28 → March 31). Schedules with payment history cannot be deleted; pause them instead.
+
+For hosted Postgres deployments, apply `supabase/migrations/20261105_recurring_payments.sql`. SQLite development databases create the table and transaction link through the normal idempotent initialization migration.

@@ -67,11 +67,34 @@ class DuplicateTransactionError(ValidationError):
 
 
 class AccountDeletionError(ValidationError):
-    def __init__(self, account_id: int, transaction_count: int):
+    def __init__(
+        self,
+        account_id: int,
+        transaction_count: int,
+        recurring_item_count: int = 0,
+    ):
+        if recurring_item_count:
+            references = []
+            if transaction_count:
+                references.append(f"{transaction_count} linked transactions")
+            references.append(f"{recurring_item_count} recurring schedules")
+            message = (
+                f"Cannot delete account {account_id}: "
+                f"{' and '.join(references)} exist. "
+                "Delete or reassign linked records first."
+            )
+        else:
+            message = (
+                f"Cannot delete account {account_id}: {transaction_count} "
+                "linked transactions exist. Delete or reassign transactions first."
+            )
         super().__init__(
-            f"Cannot delete account {account_id}: {transaction_count} "
-            "linked transactions exist. Delete or reassign transactions first.",
-            {"account_id": account_id, "transaction_count": transaction_count},
+            message,
+            {
+                "account_id": account_id,
+                "transaction_count": transaction_count,
+                "recurring_item_count": recurring_item_count,
+            },
         )
 
 
