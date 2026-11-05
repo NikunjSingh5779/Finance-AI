@@ -228,6 +228,68 @@ export class FinanceApi {
     );
   }
 
+  passwordRecovery(email: string) {
+    return this.request<{ success: boolean; message: string }>(
+      "/auth/password/recovery",
+      { method: "POST", body: JSON.stringify({ email }) },
+      false,
+    );
+  }
+
+  verifyEmail(tokenHash: string, type: "signup" | "email" | "recovery") {
+    return this.request<AuthSession>(
+      "/auth/email/verify",
+      { method: "POST", body: JSON.stringify({ token_hash: tokenHash, type }) },
+      false,
+    );
+  }
+
+  updatePassword(password: string) {
+    return this.request<{ success: boolean }>(
+      "/auth/password/update",
+      { method: "POST", body: JSON.stringify({ password }) },
+      false,
+    );
+  }
+
+  conversations() {
+    return this.request<{ items: AIConversation[] }>("/api/conversations");
+  }
+
+  createConversation(title = "New chat") {
+    return this.request<{ conversation: AIConversation }>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  getConversation(id: number) {
+    return this.request<{ conversation: AIConversation; messages: AIMessage[] }>(
+      "/api/conversations/" + id,
+    );
+  }
+
+  renameConversation(id: number, title: string) {
+    return this.request<{ conversation: AIConversation }>(
+      "/api/conversations/" + id,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    );
+  }
+
+  deleteConversation(id: number) {
+    return this.request<{ deleted: boolean }>(
+      "/api/conversations/" + id,
+      { method: "DELETE" },
+    );
+  }
+
+  sendConversationMessage(id: number, question: string) {
+    return this.request<{ success: boolean; reply: string; message: AIMessage; conversation: AIConversation }>(
+      "/api/conversations/" + id + "/messages",
+      { method: "POST", body: JSON.stringify({ question }) },
+    );
+  }
+
   me() {
     return this.request<{ id: string }>("/auth/me");
   }
