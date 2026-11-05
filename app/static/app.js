@@ -2780,15 +2780,19 @@
     chat.scrollTop = chat.scrollHeight;
 
     try {
-      if (!activeAIConversationId) {
+      let targetConversationId = activeAIConversationId;
+      if (!targetConversationId) {
         const created = await apiFetch("/api/conversations", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({title: "New chat"}),
         });
-        activeAIConversationId = created.conversation.id;
+        targetConversationId = created.conversation.id;
+        if (generation === aiChatGeneration) {
+          activeAIConversationId = targetConversationId;
+        }
       }
-      const result = await apiFetch("/api/conversations/" + activeAIConversationId + "/messages", {
+      const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({question: message}),
