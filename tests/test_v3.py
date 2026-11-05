@@ -262,4 +262,3 @@ def test_auth_unauthorized_response_includes_cors_headers(v3_client, monkeypatch
 
     assert response.status_code == 401
     assert response.headers["access-control-allow-origin"] == origin
-
