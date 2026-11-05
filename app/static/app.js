@@ -318,16 +318,11 @@
   async function apiFetch(path, options = {}, retryOnUnauthorized = true) {
     const response = await apiResponse(path, options, retryOnUnauthorized);
     if (!response.ok) {
-      let message = response.statusText || "Request failed";
-      try {
-        const payload = await response.json();
-        if (Array.isArray(payload.detail)) {
-          message = payload.detail.map(item => item.msg || JSON.stringify(item)).join("; ");
-        } else {
-          message = payload.detail || payload.message || message;
-        }
-      } catch (_) {}
-      throw new Error(message);
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      const error = new Error(readableAuthError(payload, response.statusText || "Request failed"));
+      error.status = response.status;
+      throw error;
     }
     if (response.status === 204) return undefined;
     return response.json();
