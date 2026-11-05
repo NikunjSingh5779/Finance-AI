@@ -4,7 +4,7 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AuthScreen } from "./AuthScreen";
 import { ApiError, FinanceApi, type AuthSession } from "./api";
 import { colors } from "./theme";
@@ -110,6 +110,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authRequired, setAuthRequired] = useState(false);
   const [user, setUser] = useState<AppContextValue["user"]>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
+  const incomingAuthUrl = Linking.useURL();
+  const handledAuthUrl = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -218,6 +220,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       name: next.user?.user_metadata?.name,
     });
   };
+
+  useEffect(() => {
+    if (!incomingAuthUrl || handledAuthUrl.current === incomingAuthUrl) return;
+    handledAuthUrl.current = incomingAuthUrl;
+
+    const completeDeepLinkAuth = async () => {
+      try {
+        const incoming = new URL(incomingAuthUrl);
+        const fragment = new URLSearchParams(incoming.hash.slice(1));
+        const tokenHash = incoming.searchParams.get("token_hash");
+        const tokenType = incoming.searchParams.get("type");
+
+        if (tokenHash && (tokenType === "signup" || tokenType === "email" || tokenType === "recovery")) {
+          const verified = await api.verifyEmail(tokenHash, tokenType);
+          if (verified.access_token && verified.refresh_token) {
+            await persistSession(verified);
+          }
+          return;
+        }
+
+        const accessToken = fragment.get("access_token") || incoming.searchParams.get("access_token");
+        const refreshToken = fragment.get("refresh_token") || incoming.searchParams.get("refresh_token");
+        if (accessToken && refreshToken) {
+          const expiresIn = Number(fragment.get("expires_in") || incoming.searchParams.get("expires_in") || 3600);
+          await persistSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: Number.isFinite(expiresIn) ? expiresIn : 3600,
+          });
+        }
+      } catch (error) {
+        console.warn("FinanceAI auth callback could not be completed:", error);
+      }
+    };
+
+    void completeDeepLinkAuth();
+  }, [incomingAuthUrl, api]);
 
   const handleLogin = async (email: string, password: string) => {
     const next = await api.login(email, password);
