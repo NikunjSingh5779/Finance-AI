@@ -507,8 +507,10 @@
     const params = new URLSearchParams(window.location.search);
     const oauthCode = params.get("code");
     const oauthError = params.get("error_description") || params.get("error");
+    const tokenHash = params.get("token_hash");
+    const verificationType = params.get("type");
 
-    if (!oauthCode && !oauthError) return false;
+    if (!oauthCode && !oauthError && !tokenHash) return false;
 
     const cleanUrl = window.location.pathname + window.location.hash;
     window.history.replaceState({}, document.title, cleanUrl);
@@ -516,6 +518,32 @@
     if (oauthError) {
       sessionStorage.removeItem("financeai.google.pkce.verifier");
       showAuthScreen(oauthError);
+      return true;
+    }
+
+    if (tokenHash && verificationType) {
+      try {
+        const result = await authRequest("/auth/email/verify", {
+          token_hash: tokenHash,
+          type: verificationType,
+        });
+        if (verificationType === "recovery") {
+          if (!result.access_token) throw new Error("The recovery link did not create a reset session.");
+          authSession = result;
+          setAuthMode("recovery");
+          showAuthScreen();
+          showAuthSuccess("Email verified. Choose a new password below.");
+        } else if (result.access_token && result.refresh_token) {
+          setAuthSession(result);
+          showAppShell();
+          init();
+        } else {
+          showAuthScreen();
+          showAuthSuccess("Your email is verified. You can now sign in.");
+        }
+      } catch (error) {
+        showAuthScreen(error instanceof Error ? error.message : "Email verification failed.");
+      }
       return true;
     }
 
