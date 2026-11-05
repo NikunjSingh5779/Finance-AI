@@ -220,11 +220,27 @@ class AIService:
         question: str,
         conversation: list[dict[str, str]] | None = None,
     ) -> bool:
-        """Keep FinanceAI in scope while supporting natural conversational follow-ups."""
+        """Classify finance topics without restricting the assistant to finance."""
         return (
             AIService._contains_financial_topic(question)
             or AIService._is_greeting_or_finance_help(question)
             or AIService._is_contextual_finance_follow_up(question, conversation)
+        )
+
+    @staticmethod
+    def _is_travel_planning_query(question: str) -> bool:
+        """Identify travel requests that benefit from current transport and destination research."""
+        lowered = " ".join(question.lower().split())
+        travel_terms = (
+            "travel", "trip", "itinerary", "tour", "tourism", "tourist",
+            "train", "railway", "irctc", "flight", "airline", "bus route",
+            "road trip", "hotel", "hostel", "destination", "vacation",
+            "holiday", "how to reach", "how do i get to", "route to",
+            "train ticket", "travel from",
+        )
+        return any(
+            re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", lowered)
+            for term in travel_terms
         )
 
     @staticmethod
@@ -302,7 +318,10 @@ class AIService:
         return None
 
     @staticmethod
-    def _query_intent(question: str) -> str:
+    def _query_intent(
+        question: str,
+        conversation: list[dict[str, str]] | None = None,
+    ) -> str:
         lowered = question.lower()
         ipo_terms = (
             "ipo", "drhp", "prospectus", "sebi filing",
@@ -366,6 +385,12 @@ class AIService:
         )
         if any(term in lowered for term in regulated_finance_terms):
             return "web_research"
+
+        if AIService._is_travel_planning_query(question):
+            return "general_research"
+
+        if not AIService._is_finance_related(question, conversation):
+            return "general_knowledge"
 
         if AIService._needs_personal_context(question):
             return "personal_finance"
@@ -671,15 +696,7 @@ class AIService:
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
         question = question.strip()
-        if not self._is_finance_related(question, conversation):
-            return (
-                "I'm FinanceAI, so I can help with finance-related questions only — "
-                "including personal finance, banking, credit and loans, insurance, "
-                "taxes, accounting, investing, financial markets, business finance, "
-                "and financial economics. Please ask me something in one of those areas."
-            )
-
-        intent = self._query_intent(question)
+        intent = self._query_intent(question, conversation)
         market_data = None
         market_evidence = ""
 
@@ -729,7 +746,8 @@ class AIService:
         web_pages: list[Any] = []
         search_query = self._extract_web_search_query(question)
         should_search = intent in {
-            "ipo_research", "market_research", "market_explainer", "web_research"
+            "ipo_research", "market_research", "market_explainer",
+            "web_research", "general_research",
         } or (intent == "market_fact" and market_data is None)
 
         if search_query and should_search:
@@ -759,7 +777,7 @@ class AIService:
         # produced no evidence that passed entity/topic relevance checks.
         if (
             should_search
-            and intent != "market_explainer"
+            and intent not in {"market_explainer", "general_research"}
             and not web_results
             and not web_pages
             and not market_evidence
@@ -850,6 +868,21 @@ class AIService:
     @staticmethod
     def _preferred_domains(question: str) -> tuple[str, ...]:
         lowered = question.lower()
+        if AIService._is_travel_planning_query(question):
+            if any(term in lowered for term in ("train", "railway", "irctc")):
+                return (
+                    "irctc.co.in",
+                    "indianrail.gov.in",
+                    "indianrailways.gov.in",
+                    "himachaltourism.gov.in",
+                    "himachal.nic.in",
+                    "incredibleindia.gov.in",
+                )
+            return (
+                "himachaltourism.gov.in",
+                "himachal.nic.in",
+                "incredibleindia.gov.in",
+            )
         if any(term in lowered for term in ("gst", "tds", "itr", "income tax india", "indian tax")):
             return (
                 "incometax.gov.in",
@@ -1023,6 +1056,7 @@ class AIService:
                 query = text[len(prefix):].strip()
                 break
 
+        travel_question = AIService._is_travel_planning_query(text)
         web_signals = (
             "latest",
             "today",
@@ -1066,10 +1100,16 @@ class AIService:
             and not any(term in lowered for term in current_finance_topics)
             and not market_price_question
             and not market_explainer_question
+            and not travel_question
         ):
             return None
 
         query = query or text
+        if travel_question and query == text:
+            travel_suffix = "travel routes transport options fares journey duration"
+            if re.search(r"\btrain\b|\brailway\b|\birctc\b", lowered):
+                travel_suffix += " Indian Railways train timetable IRCTC"
+            query = f"{query} {travel_suffix} {datetime.now().year}"
 
         if any(
             term in query.lower()
@@ -1314,6 +1354,15 @@ labels, show calculations when useful, and use a Markdown table for a genuine
 category or period comparison. Only include personal figures supplied in the
 financial context; do not add unrelated overview sections to a narrow question.
 """
+        elif not self._is_finance_related(question, conversation):
+            response_format = """GENERAL ASSISTANT RESPONSE FORMAT
+Answer the question directly and helpfully, even when it is unrelated to
+personal finance. Use concise headings, steps, bullets, or a comparison table
+when they make the answer easier to act on. For travel planning, organize the
+answer around route options, journey time, trip length, transport, stay, food,
+local travel, and a realistic budget breakdown. Clearly distinguish sourced
+live schedules and fares from approximate planning estimates.
+"""
         else:
             response_format = """FINANCE EDUCATION / RESEARCH RESPONSE FORMAT
 Use readable Markdown structure. Answer directly first, then use short
@@ -1324,17 +1373,23 @@ and supporting sources. Do not force a personal-finance summary into a general
 finance answer.
 """
 
-        return f"""You are FinanceAI.
+        return f"""You are FinanceAI, a helpful general-purpose assistant with strong personal-finance expertise.
 Today is {date.today().isoformat()}.
 Query intent: {intent}.
 
 Rules:
-- You are a finance-domain assistant, not a general-purpose chatbot.
-  Stay within personal finance, banking, lending, credit, insurance, tax,
-  accounting, investing, securities, markets, fintech/payments, corporate
-  finance, financial planning, and finance-related economics.
-- For an unrelated request, politely say you can help with finance topics only;
-  do not perform the unrelated task.
+- Help with general knowledge and practical topics such as travel, technology,
+  education, everyday planning, writing, and personal finance.
+- Never refuse a request solely because it is outside finance.
+- Use private financial context only when the user explicitly asks about their
+  own or their household's finances. Do not expose account, budget, or
+  transaction data in unrelated answers.
+- For travel planning, give practical route options and a transparent budget
+  breakdown. When the destination or travel dates are unclear, state reasonable
+  assumptions and give a useful starter itinerary instead of refusing.
+- Do not invent train schedules, seat availability, fares, opening hours,
+  current prices, rules, or other time-sensitive facts. Use supplied sources
+  for current details; label estimates and say what still needs verification.
 - Answer the full range of finance questions, not only questions about this
   app's budgets or transactions. Support definitions, explanations, examples,
   comparisons, calculations, statement interpretation, risk analysis, planning,
@@ -1342,9 +1397,9 @@ Rules:
 - Do not assume every finance question is about the user's own accounts.
   Use private financial context only when the question explicitly asks about
   the user's or their household's finances.
-- For calculations, show the formula, assumptions, units, and result.
+- For financial calculations, show the formula, assumptions, units, and result.
   Re-check arithmetic and distinguish estimates from exact figures.
-- For recommendations, explain trade-offs, material risks, and uncertainty.
+- For financial recommendations, explain trade-offs, material risks, and uncertainty.
   Never promise returns or present speculative outcomes as guaranteed.
 - For tax, legal, regulatory, banking-rate, insurance-rule, and other
   jurisdiction-dependent questions, identify the relevant country/region
