@@ -53,6 +53,7 @@ class RecurringItemUpdate(BaseModel):
     next_due_date: str | None = None
     account_id: int | None = None
     is_active: bool | None = None
+    is_archived: bool | None = None
 
     @field_validator("amount")
     @classmethod
