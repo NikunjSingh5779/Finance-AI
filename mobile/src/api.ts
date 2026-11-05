@@ -25,8 +25,22 @@ export class ApiError extends Error {
 
 async function parseError(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { detail?: string };
-    return body.detail || "Request failed with HTTP " + response.status;
+    const body = await response.json() as Record<string, unknown>;
+    const detail = body.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return "Invalid input";
+      }).join("; ");
+    }
+    if (detail && typeof detail === "object") {
+      const value = detail as Record<string, unknown>;
+      return String(value.message || value.msg || value.error || "The request could not be completed.");
+    }
+    return String(body.message || body.error_description || body.msg || "Request failed with HTTP " + response.status);
   } catch {
     return "Request failed with HTTP " + response.status;
   }
