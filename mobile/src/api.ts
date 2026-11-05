@@ -130,10 +130,11 @@ export class FinanceApi {
       response.status === 401 &&
       retryOnUnauthorized &&
       this.refreshTokenValue &&
-      !path.startsWith("/auth/")
+      (!path.startsWith("/auth/") || path === "/auth/me")
     ) {
-      const refreshed = await this.refreshSession().catch(() => null);
+      const refreshed = await this.refreshSession();
       if (refreshed) return this.request<T>(path, init, false);
+      await this.sessionChangeHandler?.(null);
     }
 
     if (!response.ok) {
