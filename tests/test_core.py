@@ -612,3 +612,31 @@ def test_recurring_validation_and_delete_history_rules(client):
 
     missing = client.get(f"/recurring/{item_id}")
     assert missing.status_code == 404
+
+
+def test_account_cannot_be_deleted_while_recurring_schedule_uses_it(client):
+    account = client.post(
+        "/accounts",
+        json={"name": "Rent account", "balance": 0, "type": "checking"},
+    )
+    assert account.status_code == 201
+    account_id = account.json()["id"]
+
+    schedule = client.post(
+        "/recurring",
+        json={
+            "name": "Rent",
+            "amount": 12000,
+            "type": "expense",
+            "category": "Housing",
+            "frequency": "monthly",
+            "next_due_date": "2026-11-15",
+            "account_id": account_id,
+        },
+    )
+    assert schedule.status_code == 201
+
+    response = client.delete(f"/accounts/{account_id}")
+    assert response.status_code == 409
+    assert response.json()["details"]["recurring_item_count"] == 1
+
