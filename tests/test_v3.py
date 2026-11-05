@@ -249,3 +249,17 @@ def test_new_transactions_appear_before_older_entries_by_creation_time(v3_client
     assert listed.status_code == 200
     assert listed.json()[0]["id"] == just_added.json()["id"]
     assert listed.json()[0]["description"] == "Just added subscription"
+
+def test_auth_unauthorized_response_includes_cors_headers(v3_client, monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    origin = "https://finance-ai-61h.pages.dev"
+
+    response = v3_client.get(
+        "/transactions",
+        headers={"Origin": origin},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["access-control-allow-origin"] == origin
+
