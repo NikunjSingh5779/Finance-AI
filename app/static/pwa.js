@@ -131,10 +131,9 @@
     document.getElementById("pwa-install-help")?.remove();
   });
 
-  let reloadAfterUpdate = false;
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!reloadAfterUpdate || refreshing) return;
+    if (refreshing) return;
     refreshing = true;
     window.location.reload();
   });
@@ -153,9 +152,17 @@
           message: "A new FinanceAI version is ready.",
           actionLabel: "Update now",
           onAction: () => {
-            if (!registration.waiting) return;
-            reloadAfterUpdate = true;
-            registration.waiting.postMessage({type: "SKIP_WAITING"});
+            const waitingWorker = registration.waiting;
+            if (!waitingWorker) {
+              registration.update().catch(error => console.warn("FinanceAI update check failed:", error));
+              return;
+            }
+            const updateButton = document.querySelector("#pwa-update-prompt .pwa-action");
+            if (updateButton) {
+              updateButton.disabled = true;
+              updateButton.textContent = "Updating…";
+            }
+            waitingWorker.postMessage({type: "SKIP_WAITING"});
           }
         });
       };
@@ -165,11 +172,18 @@
         const worker = registration.installing;
         if (!worker) return;
         worker.addEventListener("statechange", () => {
-          if (worker.state === "installed") showUpdate();
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdate();
+          }
         });
       });
 
       await registration.update();
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          registration.update().catch(error => console.warn("FinanceAI update check failed:", error));
+        }
+      });
     } catch (error) {
       console.warn("FinanceAI PWA registration failed:", error);
     }
