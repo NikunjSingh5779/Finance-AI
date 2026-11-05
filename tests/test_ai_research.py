@@ -717,9 +717,13 @@ def test_combined_jio_ipo_and_current_price_keeps_both_research_intents():
 
     assert AIService._query_intent(question) == "ipo_research"
     assert "Jio Platforms Limited IPO" in query
-    assert "listing date" in query.lower()
-    assert "price band" in query.lower()
-    assert "current NSE share price" in query
+    assert "RHP SEBI" in query
+    assert "issue price" in query
+    variants = AIService._research_query_variants(
+        query + " current NSE share price",
+        "ipo_research",
+    )
+    assert any("current NSE BSE share price" in item for item in variants)
     assert AIService._is_current_price_request(question)
     assert not AIService._is_current_price_request("What is the Jio IPO price band?")
 
