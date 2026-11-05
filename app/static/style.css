@@ -2458,3 +2458,14 @@ textarea:focus-visible {
 .recurring-action:hover{filter:brightness(1.12)}
 @media(max-width:1000px){.recurring-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recurring-card-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.recurring-summary-row{gap:7px}.recurring-summary-card{padding:11px 9px}.recurring-summary-card strong{font-size:19px}.recurring-summary-card span{font-size:10px}.recurring-form-grid{grid-template-columns:1fr}.recurring-due-row{align-items:flex-start;flex-direction:column}.recurring-due-row span{text-align:left}}
+
+
+.auth-password-control{position:relative;display:flex;align-items:center}
+.auth-password-control input{padding-right:48px!important}
+.auth-password-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--text3);cursor:pointer}
+.auth-password-toggle:hover{background:var(--bg3);color:var(--green)}
+.auth-password-toggle svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.auth-password-rules{display:grid;gap:5px;margin-top:-4px;color:var(--text3);font-size:11px;line-height:16px}
+.auth-password-rules [data-valid="true"]{color:var(--green)}
+.auth-forgot{display:block;margin:-4px 0 2px auto;padding:4px 0;border:0;background:transparent;color:var(--green);font-size:12px;font-weight:650;cursor:pointer}
+.auth-forgot:hover{text-decoration:underline}
