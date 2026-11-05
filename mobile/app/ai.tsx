@@ -159,12 +159,17 @@ export default function AIScreen() {
     setSending(true);
     setError("");
     const userMessage: ChatMessage = { role: "user", content: trimmed };
-    const nextMessages = messages.concat(userMessage);
-    setMessages(nextMessages);
+    setMessages((current) => current.concat(userMessage));
     setQuestion("");
 
     try {
-      const response = await api.chat(trimmed, nextMessages.map((message) => ({ role: message.role, content: message.content })));
+      let activeConversationId = conversationId;
+      if (activeConversationId === null) {
+        const created = await api.createConversation();
+        activeConversationId = created.conversation.id;
+        setConversationId(activeConversationId);
+      }
+      const response = await api.sendConversationMessage(activeConversationId, trimmed);
       setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI request failed.");
