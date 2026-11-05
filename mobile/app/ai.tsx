@@ -172,9 +172,9 @@ export default function AIScreen() {
   };
 
   const clearChat = () => {
-    Alert.alert("Clear chat", "Remove the current AI conversation?", [
+    Alert.alert("Start a new chat", "The current conversation will remain saved in History.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: () => setMessages([{ role: "assistant", content: START_MESSAGE }]) },
+      { text: "New chat", onPress: () => void startNewChat() },
     ]);
   };
 
