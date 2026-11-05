@@ -42,8 +42,11 @@ class RecurringService:
     def __init__(self, repository: RecurringRepository):
         self.repository = repository
 
-    def list_items(self) -> list[RecurringItemOut]:
-        return self.repository.list()
+    def list_items(
+        self,
+        include_archived: bool = False,
+    ) -> list[RecurringItemOut]:
+        return self.repository.list(include_archived=include_archived)
 
     def get_item(self, item_id: int) -> RecurringItemOut:
         item = self.repository.get(item_id)
@@ -62,6 +65,9 @@ class RecurringService:
         account_id = data.get("account_id")
         if account_id is not None and not self.repository.account_exists(account_id):
             raise HTTPException(status_code=422, detail="Selected account does not exist")
+        if data.get("is_archived") is True:
+            data["is_active"] = False
+            item = RecurringItemUpdate(**data)
         updated = self.repository.update(item_id, item)
         if updated is None:
             raise HTTPException(status_code=404, detail="Recurring item not found")
@@ -78,8 +84,16 @@ class RecurringService:
 
     def record_payment(self, item_id: int, due_date: str) -> dict:
         item = self.get_item(item_id)
+        if item.is_archived:
+            raise HTTPException(
+                status_code=409,
+                detail="Archived schedules cannot be marked paid.",
+            )
         if not item.is_active:
-            raise HTTPException(status_code=409, detail="Paused schedules cannot be marked paid")
+            raise HTTPException(
+                status_code=409,
+                detail="Paused schedules cannot be marked paid.",
+            )
         if due_date != item.next_due_date:
             raise HTTPException(
                 status_code=409,
