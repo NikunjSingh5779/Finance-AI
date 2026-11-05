@@ -90,6 +90,7 @@ class RecurringItemOut(BaseModel):
     schedule_month: int | None
     account_id: int | None
     is_active: bool
+    is_archived: bool = False
     last_recorded_due_date: str | None
     created: str | None
 
