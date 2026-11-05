@@ -2593,6 +2593,20 @@
     sendChat();
   }
 
+  function appendSavedChatMessage(role, content) {
+    const chat = $("chat-msgs");
+    if (!chat) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-msg " + role;
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + role;
+    if (role === "ai") renderAiMarkdown(bubble, content);
+    else bubble.textContent = content;
+    wrapper.appendChild(bubble);
+    chat.appendChild(wrapper);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
   async function sendChat() {
     const input = $("chat-input");
     const chat = $("chat-msgs");
