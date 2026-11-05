@@ -21,7 +21,7 @@ class TransactionRepository:
             """
             SELECT *
             FROM transactions
-            ORDER BY date DESC, id DESC
+            ORDER BY created DESC NULLS LAST, id DESC
             LIMIT ? OFFSET ?
             """,
             (limit, skip),
