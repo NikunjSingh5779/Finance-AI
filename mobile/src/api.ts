@@ -179,19 +179,45 @@ export class FinanceApi {
   }
 
   async refreshSession(): Promise<AuthSession | null> {
+    if (this.refreshPromise) return this.refreshPromise;
     if (!this.refreshTokenValue) return null;
-    const response = await fetch(this.url("/auth/refresh"), {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: this.refreshTokenValue }),
-    });
-    if (!response.ok) {
-      this.clearSession();
-      return null;
+
+    const tokenToRefresh = this.refreshTokenValue;
+    this.refreshPromise = (async () => {
+      let response: Response;
+      try {
+        response = await fetch(this.url("/auth/refresh"), {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: tokenToRefresh }),
+        });
+      } catch {
+        throw new ApiError("FinanceAI is temporarily unreachable. Your session has been kept on this device.");
+      }
+
+      if (response.status === 400 || response.status === 401) {
+        this.clearSession();
+        await this.sessionChangeHandler?.(null);
+        return null;
+      }
+      if (!response.ok) {
+        throw new ApiError(await parseError(response), response.status);
+      }
+
+      const session = (await response.json()) as AuthSession;
+      if (!session.access_token || !session.refresh_token) {
+        throw new ApiError("The session refresh response was incomplete.", response.status);
+      }
+      this.setSession(session);
+      await this.sessionChangeHandler?.(session);
+      return session;
+    })();
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
     }
-    const session = (await response.json()) as AuthSession;
-    this.setSession(session);
-    return session.access_token ? session : null;
   }
 
   logout() {
