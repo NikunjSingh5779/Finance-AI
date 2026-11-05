@@ -58,6 +58,7 @@ export default function RootLayout() {
             <Stack.Screen name="insights" />
             <Stack.Screen name="ai" />
             <Stack.Screen name="settings" />
+            <Stack.Screen name="auth/callback" />
           </Stack>
         </View>
         <BottomNavigation />
