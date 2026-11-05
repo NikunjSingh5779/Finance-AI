@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFinance } from "../src/AppContext";
 import type { ChatMessage } from "../src/types";
 import { colors } from "../src/theme";
 import { Button, ChipRow, ErrorBanner, Header, Pill } from "../src/components";
 import { Icon } from "../src/icons";
+import type { AIConversation } from "../src/api";
+import { useFocusEffect } from "expo-router";
 
 const START_MESSAGE = "Hello Alex! I've analyzed your recent financial activity. Ask me anything about spending, budgets, savings or goals.";
 
@@ -63,6 +65,10 @@ export default function AIScreen() {
   const [sending, setSending] = useState(false);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [error, setError] = useState("");
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [historyItems, setHistoryItems] = useState<AIConversation[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const checkProvider = useCallback(async () => {
     if (!ready) return;
