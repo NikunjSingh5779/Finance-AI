@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.database import get_db
 from app.repositories.recurring_repository import RecurringRepository
@@ -18,10 +18,14 @@ def _service(conn) -> RecurringService:
 
 
 @router.get("", response_model=list[RecurringItemOut])
-def list_recurring_items():
+def list_recurring_items(
+    include_archived: bool = Query(False),
+):
     conn = get_db()
     try:
-        return _service(conn).list_items()
+        return _service(conn).list_items(
+            include_archived=include_archived
+        )
     finally:
         conn.close()
 
