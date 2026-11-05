@@ -2632,6 +2632,7 @@
   }
 
   async function startNewAIChat() {
+    aiChatGeneration += 1;
     activeAIConversationId = null;
     const chat = $("chat-msgs");
     if (chat) {
