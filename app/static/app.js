@@ -486,7 +486,16 @@
         const stored = localStorage.getItem("financeai.auth.session");
         if (stored) {
           authSession = JSON.parse(stored);
-          await apiFetch("/auth/me");
+          try {
+            await apiFetch("/auth/me");
+          } catch (error) {
+            if (error.status === 401) {
+              clearAuthSession();
+              showAuthScreen("Your session has expired. Please sign in again.");
+              return;
+            }
+            // Keep the saved session when the API is temporarily unavailable.
+          }
           updateUserUI();
           showAppShell();
           init();
