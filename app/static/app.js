@@ -125,6 +125,16 @@
     });
   }
 
+  function hasUsableAuthSession(session) {
+    return Boolean(
+      session &&
+      typeof session.access_token === "string" &&
+      session.access_token.trim().length > 0 &&
+      typeof session.refresh_token === "string" &&
+      session.refresh_token.trim().length >= 20
+    );
+  }
+
   function setAuthSession(session) {
     authSession = session;
     if (session) {
@@ -308,9 +318,15 @@
 
   async function refreshAuthSession() {
     if (authRefreshPromise) return authRefreshPromise;
-    if (!authSession?.refresh_token) return false;
-
-    const refreshToken = authSession.refresh_token;
+    const refreshToken = typeof authSession?.refresh_token === "string"
+      ? authSession.refresh_token.trim()
+      : "";
+    if (refreshToken.length < 20) {
+      // A malformed persisted token cannot be refreshed. Clear it locally and
+      // let the caller return the user to sign-in instead of retrying a 422.
+      clearAuthSession();
+      return false;
+    }
     authRefreshPromise = (async () => {
       let response;
       try {
@@ -325,7 +341,7 @@
         throw error;
       }
 
-      if (response.status === 400 || response.status === 401) {
+      if (response.status === 400 || response.status === 401 || response.status === 422) {
         clearAuthSession();
         return false;
       }
@@ -606,8 +622,23 @@
     if (await handleGoogleOAuthCallback()) return;
 
     try {
+      let invalidStoredSession = false;
       const storedAtStartup = localStorage.getItem("financeai.auth.session");
-      if (storedAtStartup) authSession = JSON.parse(storedAtStartup);
+      if (storedAtStartup) {
+        try {
+          const savedSession = JSON.parse(storedAtStartup);
+          if (hasUsableAuthSession(savedSession)) {
+            authSession = savedSession;
+          } else {
+            clearAuthSession();
+            invalidStoredSession = true;
+          }
+        } catch (_) {
+          clearAuthSession();
+          invalidStoredSession = true;
+        }
+      }
+
       const response = await fetch(API + "/auth/config");
       if (!response.ok) throw new Error("Cannot load authentication configuration.");
       const config = await response.json();
@@ -618,27 +649,26 @@
         return;
       }
 
-      try {
-        const stored = localStorage.getItem("financeai.auth.session");
-        if (stored) {
-          authSession = JSON.parse(stored);
-          try {
-            await apiFetch("/auth/me");
-          } catch (error) {
-            if (error.status === 401) {
-              clearAuthSession();
-              showAuthScreen("Your session has expired. Please sign in again.");
-              return;
-            }
-            // Keep the saved session when the API is temporarily unavailable.
+      if (invalidStoredSession) {
+        showAuthScreen("Your saved sign-in is incomplete or invalid. Please sign in again.");
+        return;
+      }
+
+      if (authSession) {
+        try {
+          await apiFetch("/auth/me");
+        } catch (error) {
+          if (error.status === 401) {
+            clearAuthSession();
+            showAuthScreen("Your session has expired. Please sign in again.");
+            return;
           }
-          updateUserUI();
-          showAppShell();
-          init();
-          return;
+          // Keep a well-formed saved session during temporary API outages.
         }
-      } catch (_) {
-        clearAuthSession();
+        updateUserUI();
+        showAppShell();
+        init();
+        return;
       }
 
       showAuthScreen();
