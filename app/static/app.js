@@ -525,6 +525,30 @@
       return true;
     }
 
+    if (fragmentRefreshToken) {
+      try {
+        const result = await authRequest("/auth/refresh", {
+          refresh_token: fragmentRefreshToken,
+        });
+        if (!result.access_token || !result.refresh_token) {
+          throw new Error("Email confirmation did not create an active session.");
+        }
+        if (fragmentType === "recovery") {
+          authSession = result;
+          setAuthMode("recovery");
+          showAuthScreen();
+          showAuthSuccess("Your recovery link is verified. Choose a new password.");
+        } else {
+          setAuthSession(result);
+          showAppShell();
+          init();
+        }
+      } catch (error) {
+        showAuthScreen(error instanceof Error ? error.message : "Email verification failed.");
+      }
+      return true;
+    }
+
     if (tokenHash && verificationType) {
       try {
         const result = await authRequest("/auth/email/verify", {
