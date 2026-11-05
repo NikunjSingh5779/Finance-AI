@@ -69,6 +69,7 @@ export default function AIScreen() {
   const [historyItems, setHistoryItems] = useState<AIConversation[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const chatGenerationRef = useRef(0);
 
   const checkProvider = useCallback(async () => {
     if (!ready) return;
@@ -86,6 +87,7 @@ export default function AIScreen() {
   }, [messages, sending]);
 
   const startNewChat = useCallback(() => {
+    chatGenerationRef.current += 1;
     setHistoryOpen(false);
     setError("");
     setQuestion("");
@@ -107,9 +109,11 @@ export default function AIScreen() {
   }, [api]);
 
   const resumeConversation = async (item: AIConversation) => {
+    const generation = ++chatGenerationRef.current;
     setHistoryLoading(true);
     try {
       const result = await api.getConversation(item.id);
+      if (generation !== chatGenerationRef.current) return;
       setConversationId(result.conversation.id);
       setMessages(result.messages.map((message) => ({
         role: message.role,
@@ -151,6 +155,7 @@ export default function AIScreen() {
     if (trimmed.length < 3 || sending) return;
     setSending(true);
     setError("");
+    const generation = chatGenerationRef.current;
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     setMessages((current) => current.concat(userMessage));
     setQuestion("");
@@ -160,12 +165,18 @@ export default function AIScreen() {
       if (activeConversationId === null) {
         const created = await api.createConversation();
         activeConversationId = created.conversation.id;
-        setConversationId(activeConversationId);
+        if (generation === chatGenerationRef.current) {
+          setConversationId(activeConversationId);
+        }
       }
       const response = await api.sendConversationMessage(activeConversationId, trimmed);
-      setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
+      if (generation === chatGenerationRef.current) {
+        setMessages((current) => current.concat({ role: "assistant", content: response.reply }));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI request failed.");
+      if (generation === chatGenerationRef.current) {
+        setError(err instanceof Error ? err.message : "AI request failed.");
+      }
     } finally {
       setSending(false);
     }
