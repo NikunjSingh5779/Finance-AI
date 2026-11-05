@@ -91,13 +91,8 @@ export default function AIScreen() {
     setQuestion("");
     setMessages([{ role: "assistant", content: START_MESSAGE }]);
     setConversationId(null);
-    if (!ready) return;
-    try {
-      const result = await api.createConversation();
-      setConversationId(result.conversation.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start a new chat.");
-    }
+    // Create the persisted row on the first message, avoiding empty history entries.
+    if (!ready) setConversationId(null);
   }, [api, ready]);
 
   const openHistory = useCallback(async () => {
