@@ -394,7 +394,7 @@
       showAuthError(authMode === "signup" ? "Enter your name, email and password." : "Enter your email and password.");
       return;
     }
-    if (authMode === "signup") {
+    if (authMode === "signup" || authMode === "recovery") {
       const checks = passwordChecks(password);
       if (!checks.length || !checks.number || !checks.special) {
         showAuthError("Use at least 8 characters, including one number and one special character.");
@@ -405,12 +405,24 @@
     const button = $("auth-submit");
     if (button) {
       button.disabled = true;
-      button.textContent = authMode === "signup" ? "Creating account…" : "Signing in…";
+      button.textContent = authMode === "signup" ? "Creating account…" : authMode === "recovery" ? "Updating password…" : "Signing in…";
     }
 
     try {
       showAuthError("");
       showAuthSuccess("");
+      if (authMode === "recovery") {
+        await apiFetch("/auth/password/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        clearAuthSession();
+        $("auth-password").value = "";
+        setAuthMode("login");
+        showAuthSuccess("Your password has been updated. Sign in with your new password.");
+        return;
+      }
       const result = await authRequest(
         authMode === "signup" ? "/auth/signup" : "/auth/login",
         authMode === "signup" ? { email, password, name } : { email, password },
@@ -431,7 +443,7 @@
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = authMode === "signup" ? "Create account" : "Sign in";
+        button.textContent = authMode === "signup" ? "Create account" : authMode === "recovery" ? "Update password" : "Sign in";
       }
     }
   }
