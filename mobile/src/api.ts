@@ -50,14 +50,39 @@ export interface AuthSession {
   access_token: string;
   refresh_token: string;
   expires_in?: number;
-  user?: { id?: string; email?: string; user_metadata?: { name?: string } };
+  expires_at?: number;
+  user?: { id?: string; email?: string; user_metadata?: { name?: string; full_name?: string } };
+}
+
+export interface AIConversation {
+  id: number;
+  title: string;
+  summary?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message?: string | null;
+}
+
+export interface AIMessage {
+  id: number;
+  conversation_id: number;
+  role: "user" | "assistant";
+  content: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
 export class FinanceApi {
   private accessToken: string | null = null;
   private refreshTokenValue: string | null = null;
+  private refreshPromise: Promise<AuthSession | null> | null = null;
+  private sessionChangeHandler: ((session: AuthSession | null) => Promise<void> | void) | null = null;
 
   constructor(private readonly baseUrl: string) {}
+
+  setSessionChangeHandler(handler: ((session: AuthSession | null) => Promise<void> | void) | null) {
+    this.sessionChangeHandler = handler;
+  }
 
   setSession(session: AuthSession | null) {
     this.accessToken = session?.access_token ?? null;
