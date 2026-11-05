@@ -2704,6 +2704,7 @@
     const generation = ++aiChatGeneration;
     try {
       const result = await apiFetch("/api/conversations/" + conversationId);
+      if (generation !== aiChatGeneration) return;
       activeAIConversationId = result.conversation.id;
       const chat = $("chat-msgs");
       if (chat) chat.replaceChildren();
