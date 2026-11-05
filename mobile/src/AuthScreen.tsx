@@ -8,10 +8,21 @@ export interface AuthScreenProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignup: (email: string, password: string, name: string) => Promise<boolean>;
   onGoogleSignIn?: () => Promise<void>;
+  onForgotPassword?: (email: string) => Promise<void>;
+  onResetPassword?: (password: string) => Promise<void>;
+  passwordResetMode?: boolean;
 }
 
-export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProps) {
+export function AuthScreen({
+  onLogin,
+  onSignup,
+  onGoogleSignIn,
+  onForgotPassword,
+  onResetPassword,
+  passwordResetMode = false,
+}: AuthScreenProps) {
   const [signupMode, setSignupMode] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,23 +33,51 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
 
   const submit = async () => {
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !password || (signupMode && name.trim().length < 2)) {
+    const passwordMode = signupMode || passwordResetMode;
+
+    if (forgotMode) {
+      if (!cleanEmail) {
+        setError("Enter your email address first.");
+        return;
+      }
+      if (!onForgotPassword) {
+        setError("Password recovery is not available right now.");
+        return;
+      }
+    } else if (passwordResetMode) {
+      if (!password) {
+        setError("Enter your new password.");
+        return;
+      }
+    } else if (!cleanEmail || !password || (signupMode && name.trim().length < 2)) {
       setError(signupMode ? "Enter your name, email and password." : "Enter your email and password.");
       return;
     }
-    if (signupMode && (
-      password.length < 8
-      || !/\d/.test(password)
-      || !/[^A-Za-z0-9\s]/.test(password)
-    )) {
-      setError("Use at least 8 characters, including one number and one special character.");
-      return;
+
+    if (passwordMode) {
+      if (
+        password.length < 8
+        || !/\\d/.test(password)
+        || !/[^A-Za-z0-9\\s]/.test(password)
+      ) {
+        setError("Use at least 8 characters, including one number and one special character.");
+        return;
+      }
     }
+
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      if (signupMode) {
+      if (forgotMode) {
+        await onForgotPassword!(cleanEmail);
+        setMessage("If that email is registered, a password reset link has been sent.");
+        setForgotMode(false);
+        setPassword("");
+      } else if (passwordResetMode) {
+        if (!onResetPassword) throw new Error("Password reset is not available right now.");
+        await onResetPassword(password);
+      } else if (signupMode) {
         const requiresConfirmation = await onSignup(cleanEmail, password, name.trim());
         if (requiresConfirmation) {
           setMessage("Account created. Check your email to confirm the account, then sign in.");
@@ -63,11 +102,17 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
       <View style={styles.brandMark}><Text style={styles.brandEmoji}>💰</Text></View>
       <Text style={styles.title}>FinanceAI</Text>
       <Text style={styles.subtitle}>
-        {signupMode ? "Create your private finance workspace." : "Sign in to your private finance workspace."}
+        {passwordResetMode
+          ? "Choose a new password for your FinanceAI account."
+          : forgotMode
+            ? "We'll send a secure password reset link to your email."
+            : signupMode
+              ? "Create your private finance workspace."
+              : "Sign in to your private finance workspace."}
       </Text>
 
       <View style={styles.card}>
-        {signupMode ? (
+        {signupMode && !passwordResetMode ? (
           <Input
             label="Name"
             value={name}
@@ -78,7 +123,7 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
           />
         ) : null}
 
-        <Input
+        {!passwordResetMode ? <Input
           label="Email"
           value={email}
           onChangeText={setEmail}
@@ -87,18 +132,18 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="email"
-        />
+        /> : null}
 
-        <View style={styles.passwordField}>
+        {!forgotMode ? <View style={styles.passwordField}>
           <Input
             label="Password"
             value={password}
             onChangeText={setPassword}
-            placeholder={signupMode ? "8+ characters, number and symbol" : "Your password"}
+            placeholder={passwordMode ? "8+ characters, number and symbol" : "Your password"}
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
-            autoComplete={signupMode ? "new-password" : "current-password"}
+            autoComplete={passwordMode ? "new-password" : "current-password"}
             style={styles.passwordInput}
           />
           <Pressable
@@ -109,9 +154,9 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
           >
             <Icon name="eye" size={19} color={colors.muted} />
           </Pressable>
-        </View>
+        </View> : null}
 
-        {signupMode ? (
+        {(signupMode || passwordResetMode) ? (
           <View style={styles.passwordRules}>
             <Text style={[styles.passwordRule, password.length >= 8 && styles.passwordRuleMet]}>
               {password.length >= 8 ? "✓" : "○"} At least 8 characters
@@ -129,13 +174,32 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
         {message ? <Text style={styles.message}>{message}</Text> : null}
 
         <Button
-          title={busy ? (signupMode ? "Creating account…" : "Signing in…") : (signupMode ? "Create account" : "Sign in")}
+          title={
+            busy
+              ? (forgotMode ? "Sending reset link…" : passwordResetMode ? "Updating password…" : signupMode ? "Creating account…" : "Signing in…")
+              : (forgotMode ? "Send reset link" : passwordResetMode ? "Update password" : signupMode ? "Create account" : "Sign in")
+          }
           onPress={() => void submit()}
           disabled={busy}
         />
 
         {busy ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
-        {onGoogleSignIn && Platform.OS !== "web" ? (
+        {!signupMode && !forgotMode && !passwordResetMode && onForgotPassword ? (
+          <Pressable
+            onPress={() => {
+              setForgotMode(true);
+              setError("");
+              setMessage("");
+              setPassword("");
+            }}
+            style={styles.forgotButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Pressable>
+        ) : null}
+
+        {onGoogleSignIn && Platform.OS !== "web" && !signupMode && !forgotMode && !passwordResetMode ? (
           <Pressable
             onPress={() => {
               setBusy(true);
@@ -153,19 +217,29 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
           </Pressable>
         ) : null}
 
-        <Pressable
-          onPress={() => {
-            setSignupMode((value) => !value);
-            setError("");
-            setMessage("");
-          }}
-          accessibilityRole="button"
-          style={styles.switchButton}
-        >
-          <Text style={styles.switchText}>
-            {signupMode ? "Already have an account? Sign in" : "New to FinanceAI? Create an account"}
-          </Text>
-        </Pressable>
+        {forgotMode ? (
+          <Pressable
+            onPress={() => { setForgotMode(false); setError(""); setMessage(""); }}
+            accessibilityRole="button"
+            style={styles.switchButton}
+          >
+            <Text style={styles.switchText}>Back to sign in</Text>
+          </Pressable>
+        ) : !passwordResetMode ? (
+          <Pressable
+            onPress={() => {
+              setSignupMode((value) => !value);
+              setError("");
+              setMessage("");
+            }}
+            accessibilityRole="button"
+            style={styles.switchButton}
+          >
+            <Text style={styles.switchText}>
+              {signupMode ? "Already have an account? Sign in" : "New to FinanceAI? Create an account"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Text style={styles.privacy}>
@@ -208,6 +282,8 @@ const styles = StyleSheet.create({
   googleButton: { minHeight: 48, borderRadius: 12, backgroundColor: "#FFFFFF", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   googleSymbol: { color: "#4285F4", fontSize: 22, fontWeight: "800" },
   googleButtonText: { color: "#202124", fontSize: 14, fontWeight: "700" },
+  forgotButton: { alignSelf: "flex-end", paddingVertical: 3, paddingHorizontal: 2 },
+  forgotText: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   switchButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   switchText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   privacy: { color: colors.subtle, fontSize: 11, textAlign: "center", marginTop: 18, maxWidth: 340 },
