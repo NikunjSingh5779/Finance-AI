@@ -261,6 +261,14 @@ export class FinanceApi {
     );
   }
 
+  passwordRecoveryNative(email: string) {
+    return this.request<{ success: boolean; message: string }>(
+      "/auth/password/recovery/native",
+      { method: "POST", body: JSON.stringify({ email }) },
+      false,
+    );
+  }
+
   passwordRecovery(email: string) {
     return this.request<{ success: boolean; message: string }>(
       "/auth/password/recovery",
