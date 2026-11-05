@@ -3145,6 +3145,7 @@
     if (name === "ai-page") {
       content.style.overflow = "hidden";
       content.style.padding = "0";
+      void startNewAIChat();
     } else {
       content.style.overflow = "";
       content.style.padding = "";
