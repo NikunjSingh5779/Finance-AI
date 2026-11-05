@@ -213,6 +213,22 @@
     updateUserUI();
   }
 
+  function readableAuthError(payload, fallback) {
+    const value = payload && typeof payload === "object" ? payload : {};
+    const detail = value.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail.map(item => {
+        if (item && typeof item === "object" && item.msg) return String(item.msg);
+        return "Invalid input";
+      }).join("; ");
+    }
+    if (detail && typeof detail === "object") {
+      return String(detail.message || detail.msg || detail.error || fallback);
+    }
+    return String(value.message || value.error_description || value.msg || fallback);
+  }
+
   async function authRequest(path, payload) {
     const response = await fetch(API + path, {
       method: "POST",
@@ -220,31 +236,60 @@
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      let message = response.statusText || "Authentication failed";
-      try {
-        const data = await response.json();
-        message = data.detail || message;
-      } catch (_) {}
-      throw new Error(message);
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      const error = new Error(readableAuthError(data, response.statusText || "Authentication failed"));
+      error.status = response.status;
+      throw error;
     }
     return response.json();
   }
 
   async function refreshAuthSession() {
+    if (authRefreshPromise) return authRefreshPromise;
     if (!authSession?.refresh_token) return false;
-    try {
-      const next = await authRequest("/auth/refresh", {
-        refresh_token: authSession.refresh_token,
-      });
-      if (!next.access_token || !next.refresh_token) {
+
+    const refreshToken = authSession.refresh_token;
+    authRefreshPromise = (async () => {
+      let response;
+      try {
+        response = await fetch(API + "/auth/refresh", {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      } catch (_) {
+        const error = new Error("FinanceAI is temporarily unreachable. Your saved session has been kept.");
+        error.status = 0;
+        throw error;
+      }
+
+      if (response.status === 400 || response.status === 401) {
         clearAuthSession();
         return false;
       }
+      if (!response.ok) {
+        let data = {};
+        try { data = await response.json(); } catch (_) {}
+        const error = new Error(readableAuthError(data, response.statusText || "Could not refresh your session."));
+        error.status = response.status;
+        throw error;
+      }
+
+      const next = await response.json();
+      if (!next.access_token || !next.refresh_token) {
+        const error = new Error("The session refresh response was incomplete.");
+        error.status = 502;
+        throw error;
+      }
       setAuthSession(next);
       return true;
-    } catch (_) {
-      clearAuthSession();
-      return false;
+    })();
+
+    try {
+      return await authRefreshPromise;
+    } finally {
+      authRefreshPromise = null;
     }
   }
 
