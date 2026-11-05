@@ -829,7 +829,8 @@ class AIService:
                     )
                 return (
                     "I couldn't retrieve enough matching, authoritative information to confirm the "
-                    "IPO timeline or issue price right now. I won't guess whether the issue is open "
+                    "IPO timeline or issue price right now. I don't want to give an outdated date "
+                    "or issue-price figure, and I won't guess whether the issue is open "
                     "or listed. The best records are the issuer's RHP/prospectus and the official "
                     "NSE/BSE listing notices. This is a search-provider limitation, not evidence "
                     "that the IPO does not exist."
@@ -1122,7 +1123,7 @@ class AIService:
                 year = re.search(r"\b20\d{2}\b", ipo_research_text)
                 year_text = year.group(0) if year else str(datetime.now().year)
                 ipo_query = (
-                    "Jio Platforms Limited IPO RHP SEBI listing status issue price "
+                    "Jio IPO Jio Platforms Limited IPO RHP SEBI listing status issue price "
                     + year_text
                 )
                 return ipo_query
