@@ -468,8 +468,6 @@ def init_db() -> None:
                 ON goals(user_id);
             CREATE INDEX IF NOT EXISTS idx_recurring_items_user_due
                 ON recurring_items(user_id, is_active, next_due_date);
-            CREATE INDEX IF NOT EXISTS idx_recurring_items_user_archive_due
-                ON recurring_items(user_id, is_archived, is_active, next_due_date);
             CREATE INDEX IF NOT EXISTS idx_transactions_created
                 ON transactions(created DESC, id DESC);
             CREATE TABLE IF NOT EXISTS ai_conversations (
