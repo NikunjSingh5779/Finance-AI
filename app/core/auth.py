@@ -187,6 +187,7 @@ async def sign_up(
     email: str,
     password: str,
     name: str | None = None,
+    redirect_to: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "email": email,
@@ -194,7 +195,10 @@ async def sign_up(
     }
     if name:
         payload["data"] = {"name": name}
-    return await _supabase_request("POST", "/signup", payload=payload)
+    path = "/signup"
+    if redirect_to:
+        path += "?redirect_to=" + quote(redirect_to, safe="")
+    return await _supabase_request("POST", path, payload=payload)
 
 
 async def sign_in(email: str, password: str) -> dict[str, Any]:
