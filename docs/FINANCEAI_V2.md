@@ -2,7 +2,7 @@
 
 ## What changed
 
-FinanceAI V2 adds a recurring payments manager across the web dashboard and native mobile client.
+FinanceAI V2 adds a recurring payments manager in the FinanceAI PWA.
 
 - Create weekly, monthly and yearly schedules for expenses or income.
 - Optionally associate a schedule with one of the user's own accounts.

@@ -8,9 +8,6 @@ venv/
 
 # JavaScript dependencies / build output
 node_modules/
-mobile/node_modules/
-mobile/.expo/
-mobile/dist/
 dist/
 build/
 

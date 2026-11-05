@@ -9,12 +9,21 @@
   "orientation": "any",
   "background_color": "#002314",
   "theme_color": "#00C84C",
-  "categories": ["finance", "productivity"],
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "icons": [
     {
-      "src": "icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "icons/icon-192.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "128x128",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
