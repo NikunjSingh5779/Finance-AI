@@ -19,7 +19,8 @@ from app.controllers.goal_controller import router as goal_router
 from app.controllers.insights_controller import router as insights_router
 from app.controllers.market_controller import router as market_router
 from app.controllers.net_worth_controller import router as net_worth_router
-from app.controllers.report_controller import router as report_router\nfrom app.controllers.recurring_controller import router as recurring_router
+from app.controllers.report_controller import router as report_router
+from app.controllers.recurring_controller import router as recurring_router
 from app.controllers.transaction_controller import router as transaction_router
 from app.core.auth import auth_required, reset_user_id, set_user_id, user_id_from_request
 from app.core.database import init_db
