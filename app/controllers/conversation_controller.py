@@ -7,11 +7,14 @@ from app.repositories.conversation_repository import ConversationRepository
 
 router = APIRouter(prefix="/api/conversations", tags=["AI conversations"])
 
+
 class NewConversation(BaseModel):
     title: str = Field(default="New chat", min_length=1, max_length=72)
 
+
 class RenameConversation(BaseModel):
     title: str = Field(min_length=1, max_length=72)
+
 
 class NewMessage(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
