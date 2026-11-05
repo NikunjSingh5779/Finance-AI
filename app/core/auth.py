@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from urllib.parse import quote
 from contextvars import ContextVar, Token
 from typing import Any
 
