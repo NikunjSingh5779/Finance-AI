@@ -511,11 +511,13 @@
     const oauthError = params.get("error_description") || params.get("error");
     const tokenHash = params.get("token_hash");
     const verificationType = params.get("type");
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const fragmentRefreshToken = fragment.get("refresh_token");
+    const fragmentType = fragment.get("type") || verificationType;
 
-    if (!oauthCode && !oauthError && !tokenHash) return false;
+    if (!oauthCode && !oauthError && !tokenHash && !fragmentRefreshToken) return false;
 
-    const cleanUrl = window.location.pathname + window.location.hash;
-    window.history.replaceState({}, document.title, cleanUrl);
+    window.history.replaceState({}, document.title, window.location.pathname);
 
     if (oauthError) {
       sessionStorage.removeItem("financeai.google.pkce.verifier");
