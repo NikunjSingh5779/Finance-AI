@@ -2798,10 +2798,16 @@
         body: JSON.stringify({question: message}),
       });
       typing.remove();
-      appendSavedChatMessage("ai", result.reply || "No response");
+      if (generation === aiChatGeneration && activeAIConversationId === targetConversationId) {
+        appendSavedChatMessage("ai", result.reply || "No response");
+      }
     } catch (error) {
       typing.remove();
-      appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
+      if (generation === aiChatGeneration) {
+        appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
+      }
+    } finally {
+      aiSending = false;
     }
   }
 
