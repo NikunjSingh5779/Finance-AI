@@ -135,6 +135,23 @@ export function AuthScreen({ onLogin, onSignup, onGoogleSignIn }: AuthScreenProp
         />
 
         {busy ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+        {onGoogleSignIn && Platform.OS !== "web" ? (
+          <Pressable
+            onPress={() => {
+              setBusy(true);
+              setError("");
+              void onGoogleSignIn().catch((err) => {
+                setError(err instanceof Error ? err.message : "Google sign-in failed.");
+              }).finally(() => setBusy(false));
+            }}
+            disabled={busy}
+            accessibilityRole="button"
+            style={styles.googleButton}
+          >
+            <Text style={styles.googleSymbol}>G</Text>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => {
