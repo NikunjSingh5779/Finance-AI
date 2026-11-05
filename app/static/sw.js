@@ -19,6 +19,7 @@ const SHELL_URLS = [
   "/static/icons/icon-maskable.svg",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
+  "/static/icons/icon-maskable.svg",
   "/static/icons/apple-touch-icon.png"
 ];
 const STATIC_PATHS = new Set(SHELL_URLS.filter(path => path !== "/"));

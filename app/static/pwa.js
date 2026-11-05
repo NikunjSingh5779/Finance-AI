@@ -58,54 +58,82 @@
   window.addEventListener("offline", updateConnectivity);
   updateConnectivity();
 
+  const installButton = document.getElementById("pwa-install-button");
   let deferredInstallPrompt = null;
   const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches ||
     window.navigator.standalone === true;
   const userAgent = window.navigator.userAgent || "";
   const isIOS = /iphone|ipad|ipod/i.test(userAgent) ||
     (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(userAgent);
+
+  const showInstallButton = () => {
+    if (installButton && !isStandalone) installButton.hidden = false;
+  };
+  const hideInstallButton = () => {
+    if (installButton) installButton.hidden = true;
+  };
+  const showManualInstallHelp = () => {
+    let message = "Open your browser menu and choose “Install app” or “Add to Home screen”.";
+    if (isIOS) {
+      message = "In Safari, tap Share, choose “Add to Home Screen”, then tap Add.";
+    } else if (isAndroid) {
+      message = "In Chrome, tap ⋮, choose “Add to home screen” or “Install app”, then confirm.";
+    } else {
+      message = "In Chrome or Edge, open the browser menu and choose “Install FinanceAI” or “Apps → Install this site as an app”.";
+    }
+    makeBanner({id:"pwa-install-help",message,dismissLabel:"Got it"});
+  };
+
+  if (!isStandalone) showInstallButton();
+
+  const runInstall = async () => {
+    if (!deferredInstallPrompt) {
+      showManualInstallHelp();
+      return;
+    }
+    const promptEvent = deferredInstallPrompt;
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      if (choice?.outcome === "accepted") {
+        hideInstallButton();
+        document.getElementById("pwa-install-prompt")?.remove();
+      }
+    } catch (error) {
+      console.warn("FinanceAI installation could not be started:", error);
+      showManualInstallHelp();
+    } finally {
+      deferredInstallPrompt = null;
+    }
+  };
+
+  installButton?.addEventListener("click", runInstall);
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
     deferredInstallPrompt = event;
     if (isStandalone) return;
+    showInstallButton();
 
     makeBanner({
       id: "pwa-install-prompt",
       message: "Install FinanceAI for quick access from your home screen.",
       actionLabel: "Install",
-      onAction: async () => {
-        if (!deferredInstallPrompt) return;
-        try {
-          await deferredInstallPrompt.prompt();
-          await deferredInstallPrompt.userChoice;
-        } catch (error) {
-          console.warn("FinanceAI install prompt was not completed:", error);
-        } finally {
-          deferredInstallPrompt = null;
-          document.getElementById("pwa-install-prompt")?.remove();
-        }
-      }
+      onAction: runInstall
     });
   });
 
-  if (isIOS && !isStandalone) {
-    makeBanner({
-      id: "pwa-install-prompt",
-      message: "Add FinanceAI to your Home Screen: tap Share, then “Add to Home Screen”."
-    });
-  }
-
   window.addEventListener("appinstalled", () => {
     deferredInstallPrompt = null;
+    hideInstallButton();
     document.getElementById("pwa-install-prompt")?.remove();
+    document.getElementById("pwa-install-help")?.remove();
   });
 
   let reloadAfterUpdate = false;
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    // The first install also triggers controllerchange. Reload only after
-    // the user explicitly accepts an available update.
     if (!reloadAfterUpdate || refreshing) return;
     refreshing = true;
     window.location.reload();

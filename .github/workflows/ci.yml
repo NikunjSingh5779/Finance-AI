@@ -41,6 +41,8 @@ jobs:
           node -e "JSON.parse(require('node:fs').readFileSync('netlify-dist/manifest.webmanifest', 'utf8'))"
           test -s netlify-dist/icons/icon-192.png
           test -s netlify-dist/icons/icon-512.png
+          node -e "const fs=require('fs');for(const [file,size] of [['netlify-dist/icons/icon-192.png',192],['netlify-dist/icons/icon-512.png',512]]){const b=fs.readFileSync(file);if(b.readUInt32BE(16)!==size||b.readUInt32BE(20)!==size)throw new Error(file+' must be '+size+'x'+size);}"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('netlify-dist/manifest.webmanifest','utf8'));for(const icon of m.icons){const f='netlify-dist/'+icon.src;if(!fs.existsSync(f))throw new Error('Missing PWA icon '+f);}"
           grep -q '"purpose": "any maskable"' netlify-dist/manifest.webmanifest
           test -s netlify-dist/icons/apple-touch-icon.png
           test -s netlify-dist/offline.html
