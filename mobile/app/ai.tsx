@@ -85,15 +85,13 @@ export default function AIScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   }, [messages, sending]);
 
-  const startNewChat = useCallback(async () => {
+  const startNewChat = useCallback(() => {
     setHistoryOpen(false);
     setError("");
     setQuestion("");
     setMessages([{ role: "assistant", content: START_MESSAGE }]);
     setConversationId(null);
-    // Create the persisted row on the first message, avoiding empty history entries.
-    if (!ready) setConversationId(null);
-  }, [api, ready]);
+  }, []);
 
   const openHistory = useCallback(async () => {
     setHistoryOpen(true);
