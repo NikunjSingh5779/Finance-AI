@@ -303,12 +303,14 @@
     }
 
     const response = await fetch(API + path, { ...options, headers });
-    if (response.status === 401 && retryOnUnauthorized && !path.startsWith("/auth/")) {
-      if (await refreshAuthSession()) {
-        return apiResponse(path, options, false);
-      }
-      showAuthScreen("Your session expired. Please sign in again.");
-      throw new Error("Authentication required");
+    const canRefresh = !path.startsWith("/auth/") || path === "/auth/me";
+    if (response.status === 401 && retryOnUnauthorized && canRefresh && authSession?.refresh_token) {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) return apiResponse(path, options, false);
+      showAuthScreen("Your session has expired. Please sign in again.");
+      const error = new Error("Authentication required");
+      error.status = 401;
+      throw error;
     }
     return response;
   }
