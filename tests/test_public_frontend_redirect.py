@@ -1,4 +1,5 @@
 from app.controllers.general_controller import serve_index
+from app.main import serve_service_worker
 
 
 def test_production_root_redirects_to_netlify(monkeypatch):
@@ -21,3 +22,11 @@ def test_local_root_keeps_serving_static_frontend(monkeypatch):
 
     assert response.status_code == 200
     assert "FinanceAI" in response.body.decode("utf-8")
+
+
+def test_service_worker_is_served_with_root_scope():
+    response = serve_service_worker()
+
+    assert response.media_type == "application/javascript"
+    assert response.headers["service-worker-allowed"] == "/"
+    assert response.headers["cache-control"] == "no-cache"

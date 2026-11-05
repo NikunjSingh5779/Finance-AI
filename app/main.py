@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.controllers.account_controller import router as account_router
@@ -53,6 +53,20 @@ app = FastAPI(
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+
+@app.get("/sw.js", include_in_schema=False)
+def serve_service_worker():
+    """Serve the service worker at the origin root so it can control the app."""
+    return FileResponse(
+        static_dir / "sw.js",
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
 origins = [
     origin.strip()
     for origin in os.getenv(
@@ -83,6 +97,7 @@ app.add_middleware(
 
 AUTH_PUBLIC_PATHS = {
     "/",
+    "/sw.js",
     "/health",
     "/docs",
     "/redoc",
