@@ -3038,7 +3038,8 @@
     });
 
     $("r-next-date").value = localDateValue();
-    populateAccountSelect("r-account");\n    $("t-date").value = new Date().toISOString().slice(0, 10);
+    populateAccountSelect("r-account");
+    $("t-date").value = new Date().toISOString().slice(0, 10);
     $("m-date").value = new Date().toISOString().slice(0, 10);
     $("search-input")?.addEventListener("keydown", event => {
       if (event.key === "Escape") {
