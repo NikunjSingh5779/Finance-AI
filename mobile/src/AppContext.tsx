@@ -134,55 +134,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     const bootstrap = async () => {
+      let saved: AuthSession | null = null;
       try {
+        const stored = await readStoredSession();
+        if (stored) {
+          saved = JSON.parse(stored) as AuthSession;
+          api.setSession(saved);
+        }
+
         const config = await api.authConfig();
         if (!mounted) return;
-
         setAuthRequired(config.required);
         if (!config.required) {
           setChecked(true);
           return;
         }
-
-        const stored = await readStoredSession();
-        if (!stored) {
+        if (!saved) {
           setChecked(true);
           return;
         }
 
-        const saved = JSON.parse(stored) as AuthSession;
-        api.setSession(saved);
-
-        let activeSession = saved;
+        let me: { id: string };
         try {
-          await api.me();
-        } catch {
-          const refreshed = await api.refreshSession();
-          if (!refreshed) {
-            api.clearSession();
-            await removeStoredSession();
-            setChecked(true);
+          me = await api.me();
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 401) {
+            // A connection issue must not erase a valid saved session.
+            setSession(saved);
+            setUser({
+              id: saved.user?.id || "",
+              email: saved.user?.email,
+              name: saved.user?.user_metadata?.name || saved.user?.user_metadata?.full_name,
+            });
             return;
           }
-          activeSession = refreshed;
-          await writeStoredSession(JSON.stringify(refreshed));
+          const refreshed = await api.refreshSession();
+          if (!refreshed) return;
+          saved = refreshed;
+          me = await api.me();
         }
 
-        const me = await api.me();
         if (!mounted) return;
-
-        setSession(activeSession);
+        setSession(saved);
         setUser({
           id: me.id,
-          email: activeSession.user?.email,
-          name: activeSession.user?.user_metadata?.name,
+          email: saved.user?.email,
+          name: saved.user?.user_metadata?.name || saved.user?.user_metadata?.full_name,
         });
       } catch {
         if (mounted) {
-          api.clearSession();
-          setSession(null);
-          setUser(null);
-          setAuthRequired(false);
+          // Keep saved credentials for retry when auth/backend is temporarily offline.
+          setAuthRequired(true);
+          if (saved) {
+            setSession(saved);
+            setUser({
+              id: saved.user?.id || "",
+              email: saved.user?.email,
+              name: saved.user?.user_metadata?.name || saved.user?.user_metadata?.full_name,
+            });
+          }
         }
       } finally {
         if (mounted) setChecked(true);
