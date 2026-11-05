@@ -389,11 +389,12 @@ class AIService:
         if AIService._is_travel_planning_query(question):
             return "general_research"
 
+        if AIService._needs_personal_context(question):
+            return "personal_finance"
+
         if not AIService._is_finance_related(question, conversation):
             return "general_knowledge"
 
-        if AIService._needs_personal_context(question):
-            return "personal_finance"
         return "finance_education"
 
     @staticmethod
