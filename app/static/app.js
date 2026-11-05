@@ -577,6 +577,8 @@
     if (await handleGoogleOAuthCallback()) return;
 
     try {
+      const storedAtStartup = localStorage.getItem("financeai.auth.session");
+      if (storedAtStartup) authSession = JSON.parse(storedAtStartup);
       const response = await fetch(API + "/auth/config");
       if (!response.ok) throw new Error("Cannot load authentication configuration.");
       const config = await response.json();
@@ -612,7 +614,15 @@
 
       showAuthScreen();
     } catch (error) {
-      showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+      if (authSession?.refresh_token) {
+        // Do not turn a temporary backend outage into an apparent logout.
+        updateUserUI();
+        showAppShell();
+        init();
+        showToast("FinanceAI is offline. Your saved session is still available.", "error");
+      } else {
+        showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+      }
     }
   }
 
