@@ -231,13 +231,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const randomBytes = await Crypto.getRandomBytesAsync(32);
     let binary = "";
     randomBytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-    const verifier = btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+    const verifier = btoa(binary).split("+").join("-").split("/").join("_").replace(/=+$/g, "");
     const digest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       verifier,
       { encoding: Crypto.CryptoEncoding.BASE64 },
     );
-    const challenge = digest.replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+    const challenge = digest.split("+").join("-").split("/").join("_").replace(/=+$/g, "");
     const { url } = await api.googleNativeStart(challenge);
     const redirectUrl = Linking.createURL("auth/callback");
     const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
