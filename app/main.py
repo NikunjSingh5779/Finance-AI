@@ -115,6 +115,7 @@ AUTH_PUBLIC_PATHS = {
     "/auth/google/native/start",
     "/auth/google/exchange",
     "/auth/password/recovery",
+    "/auth/password/recovery/native",
     "/auth/email/verify",
 }
 

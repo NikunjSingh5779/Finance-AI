@@ -112,6 +112,33 @@ def test_v3_conversation_messages_persist_and_are_owner_scoped(
     assert v3_client.delete(f"/api/conversations/{conversation_id}").status_code == 404
 
 
+def test_v3_native_password_recovery_uses_financeai_deep_link(v3_client, monkeypatch):
+    captured = {}
+
+    async def fake_recovery(email, redirect_to):
+        captured["email"] = email
+        captured["redirect_to"] = redirect_to
+        return {}
+
+    monkeypatch.setenv("MOBILE_AUTH_REDIRECT_URL", "financeai://auth/callback")
+    monkeypatch.setattr(
+        "app.controllers.auth_controller.request_password_reset",
+        fake_recovery,
+    )
+
+    response = v3_client.post(
+        "/auth/password/recovery/native",
+        json={"email": "native@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert captured == {
+        "email": "native@example.com",
+        "redirect_to": "financeai://auth/callback",
+    }
+
+
 def test_v3_conversation_rename_and_delete_are_persistent(v3_client):
     created = v3_client.post("/api/conversations", json={"title": "First chat"})
     conversation_id = created.json()["conversation"]["id"]
