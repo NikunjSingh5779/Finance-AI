@@ -2613,6 +2613,51 @@
     }
   }
 
+  function renderAIHistory(items) {
+    const list = $("ai-history-list");
+    if (!list) return;
+    list.replaceChildren();
+    const query = ($("ai-history-search")?.value || "").trim().toLowerCase();
+    const filtered = items.filter(item =>
+      String(item.title || "").toLowerCase().includes(query)
+      || String(item.last_message || "").toLowerCase().includes(query)
+    );
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "ai-history-empty";
+      empty.textContent = query ? "No matching conversations." : "No saved conversations yet.";
+      list.appendChild(empty);
+      return;
+    }
+    filtered.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "ai-history-item";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "ai-history-open";
+      const title = document.createElement("span");
+      title.className = "ai-history-item-title";
+      title.textContent = item.title || "New chat";
+      const preview = document.createElement("span");
+      preview.className = "ai-history-item-preview";
+      preview.textContent = item.last_message || "No messages yet";
+      open.append(title, preview);
+      open.addEventListener("click", () => void resumeAIConversation(item.id));
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "ai-history-item-action";
+      rename.textContent = "Rename";
+      rename.addEventListener("click", () => void renameAIConversation(item));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ai-history-item-action";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => void deleteAIConversation(item.id));
+      row.append(open, rename, remove);
+      list.appendChild(row);
+    });
+  }
+
   function appendSavedChatMessage(role, content) {
     const chat = $("chat-msgs");
     if (!chat) return;
