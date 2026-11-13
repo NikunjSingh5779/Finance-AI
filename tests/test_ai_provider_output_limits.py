@@ -72,6 +72,26 @@ def test_openrouter_retries_when_completion_hits_token_limit(monkeypatch):
     ]
 
 
+def test_openrouter_stops_model_fallback_after_unauthorized_response(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    provider = OpenRouterProvider("test-key")
+    provider.available_models = ["google/lyria-3-clip-preview"]
+    provider.session = FakeSession([
+        FakeResponse(
+            {},
+            status_code=401,
+            text='{"error":{"message":"User not found.","code":401}}',
+        ),
+    ])
+
+    with pytest.raises(RuntimeError, match="Create a fresh key.*OPENROUTER_API_KEY"):
+        provider.generate_response("Explain a monthly budget.")
+
+    # A 401 invalidates the shared credential, so no fallback model is tried.
+    assert len(provider.session.payloads) == 1
+    assert provider.session.payloads[0]["model"] == "openrouter/free"
+
+
 def test_opencode_retries_when_completion_hits_token_limit(monkeypatch):
     monkeypatch.setenv("OPENCODE_MAX_OUTPUT_TOKENS", "2048")
     provider = OpenCodeProvider("test-key")
