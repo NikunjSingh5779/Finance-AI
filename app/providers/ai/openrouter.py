@@ -14,6 +14,10 @@ from .base import (
 logger = logging.getLogger(__name__)
 
 
+class OpenRouterAuthenticationError(RuntimeError):
+    """Raised when OpenRouter rejects the configured API key."""
+
+
 class OpenRouterProvider(AIProvider):
     """OpenAI-compatible OpenRouter client restricted to free models."""
 
@@ -91,6 +95,12 @@ class OpenRouterProvider(AIProvider):
                 },
                 timeout=45,
             )
+            if response.status_code == 401:
+                raise OpenRouterAuthenticationError(
+                    "OpenRouter rejected OPENROUTER_API_KEY (HTTP 401). "
+                    "Create a fresh key at https://openrouter.ai/keys and update "
+                    "OPENROUTER_API_KEY in the Render service environment."
+                )
             if not response.ok:
                 body = response.text[:300].replace("\n", " ")
                 raise RuntimeError(
@@ -135,6 +145,10 @@ class OpenRouterProvider(AIProvider):
                             f"{model} -> response still reached the {token_budget}-token output limit"
                         )
                         break
+                except OpenRouterAuthenticationError:
+                    # Authentication is shared across all models. Retrying other
+                    # model IDs cannot recover from an invalid or revoked API key.
+                    raise
                 except Exception as exc:
                     logger.warning("OpenRouter model %s failed: %s", model, exc)
                     failures.append(f"{model} -> {exc}")
