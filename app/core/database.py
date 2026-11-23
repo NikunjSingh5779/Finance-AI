@@ -168,7 +168,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_user_created
     ON ai_messages(conversation_id, user_id, created_at);
 
 -- Server-only shared quota state. It intentionally has no grants for the
--- authenticated application role; the API process consumes it through its
+-- authenticated application role. The API process consumes it through its
 -- database connection before AI generation begins.
 CREATE TABLE IF NOT EXISTS ai_rate_limit_windows (
     scope           TEXT NOT NULL,

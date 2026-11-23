@@ -1,8 +1,26 @@
+import re
+
 import pytest
 
 from app.controllers.ai_controller import ChatRequest
 from app.core import auth, rate_limiter
+from app.core.database import POSTGRES_SCHEMA
 from app.core.exceptions import RateLimitError
+
+
+def test_postgres_startup_schema_splits_only_at_statement_boundaries():
+    for statement in POSTGRES_SCHEMA.split(";"):
+        sql_lines = [
+            line.strip()
+            for line in statement.splitlines()
+            if line.strip() and not line.lstrip().startswith("--")
+        ]
+        if sql_lines:
+            assert re.match(
+                r"^(CREATE|ALTER|DROP|GRANT|REVOKE)\b",
+                sql_lines[0],
+                flags=re.IGNORECASE,
+            ), sql_lines[0]
 
 
 def test_render_identity_overrides_local_app_env_for_production_safety(monkeypatch):
