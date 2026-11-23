@@ -113,6 +113,48 @@ def test_v3_conversation_messages_persist_and_are_owner_scoped(
     assert v3_client.delete(f"/api/conversations/{conversation_id}").status_code == 404
 
 
+def test_v3_streaming_conversation_persists_one_complete_assistant_reply(
+    v3_client,
+    monkeypatch,
+):
+    class FakeAIService:
+        def build_context(self, *_args):
+            return {}
+
+        async def get_financial_advice(self, *_args, **_kwargs):
+            return "Streamed answer."
+
+        async def stream_financial_advice(self, **_kwargs):
+            yield "Streamed "
+            yield "answer."
+
+    monkeypatch.setattr(
+        "app.controllers.conversation_chat_controller.AIService",
+        FakeAIService,
+    )
+
+    created = v3_client.post("/api/conversations", json={"title": "New chat"})
+    conversation_id = created.json()["conversation"]["id"]
+    response = v3_client.post(
+        f"/api/conversations/{conversation_id}/messages/stream",
+        json={"question": "How can I improve savings?"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert 'event: delta\ndata: {"text":"Streamed "}' in response.text
+    assert 'event: delta\ndata: {"text":"answer."}' in response.text
+    assert 'event: done\ndata: ' in response.text
+    assert "\"reply\":\"Streamed answer.\"" in response.text
+
+    restored = v3_client.get(f"/api/conversations/{conversation_id}")
+    assert [item["role"] for item in restored.json()["messages"]] == [
+        "user",
+        "assistant",
+    ]
+    assert restored.json()["messages"][1]["content"] == "Streamed answer."
+
+
 def test_v3_conversation_rename_and_delete_are_persistent(v3_client):
     created = v3_client.post("/api/conversations", json={"title": "First chat"})
     conversation_id = created.json()["conversation"]["id"]
@@ -254,7 +296,7 @@ def test_new_transactions_appear_before_older_entries_by_creation_time(v3_client
 def test_auth_unauthorized_response_includes_cors_headers(v3_client, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("AUTH_REQUIRED", "true")
-    origin = "https://finance-ai-61h.pages.dev"
+    origin = "http://localhost:3000"
 
     response = v3_client.get(
         "/transactions",

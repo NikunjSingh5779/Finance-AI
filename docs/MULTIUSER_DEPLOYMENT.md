@@ -9,7 +9,7 @@ FinanceAI is delivered as a PWA, with a separate FastAPI backend and Supabase-ma
 - Auth: Supabase Auth
 - Database: Supabase PostgreSQL
 - Isolation: PostgreSQL Row Level Security (RLS)
-- AI: OpenRouter, OpenCode Zen, or another configured server-side provider
+- AI: explicitly verified free OpenRouter, OpenCode Zen, or OmniRoute routes
 
 Every finance record has a `user_id`. Production requests are authenticated with a Supabase access token, the backend verifies the token, and PostgreSQL policies restrict rows to the authenticated user.
 
@@ -31,6 +31,10 @@ DATABASE_URL=YOUR_SUPABASE_POSTGRES_CONNECTION_STRING
 
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
 OPENROUTER_MODEL=openrouter/free
+# Optional exact free model IDs for metadata outages or additional verified fallbacks.
+# If OpenRouter pricing metadata is available, configured models must still be
+# listed at zero input and output price by its /models endpoint.
+OPENROUTER_FREE_MODELS=
 
 PORT=8000
 RATE_LIMIT_PER_MINUTE=10
@@ -38,6 +42,37 @@ CORS_ORIGINS=https://finance-ai-61h.pages.dev
 ```
 
 Do not commit any of these secrets.
+
+### Free-only AI routes
+
+The API never falls back to a paid model. OpenRouter checks the configured model
+against current input and output pricing metadata before sending a completion.
+If its pricing endpoint is unavailable, set `OPENROUTER_FREE_MODELS` to the
+exact model ID only after verifying that route is free. A model listed as paid
+or absent from available pricing metadata is rejected.
+
+For providers without a pricing endpoint, the operator must declare the exact
+free route. `OPENCODE_MODEL` must match an entry in `OPENCODE_FREE_MODELS`, and
+`OMNIROUTE_COMBO_NAME` (or `OMNIROUTE_MODEL`) must match an entry in
+`OMNIROUTE_FREE_COMBOS`. Use comma-separated exact IDs when listing more than
+one route. These allowlists are your assertion that each configured route is
+free; the app disables providers with no matching entry. If no verified free
+provider is available, chat returns an unavailable message instead of using a
+paid route.
+
+### Streaming and shared limits
+
+Chat clients use `POST /api/conversations/{conversation_id}/messages/stream`
+for Server-Sent Events. The existing JSON endpoint remains available for older
+clients. A streamed assistant message is saved only after generation completes.
+PostgreSQL stores atomic per-user and per-IP request windows in the server-only
+`ai_rate_limit_windows` table, which is created during startup. Production
+startup requires Supabase Auth configuration and a PostgreSQL `DATABASE_URL`.
+
+Research work is bounded by `AI_RESEARCH_MAX_QUERIES` (default 2, maximum 3)
+and `AI_RESEARCH_TIMEOUT_SECONDS` (default 10 seconds). Provider generation is
+bounded by `AI_PROVIDER_TOTAL_TIMEOUT_SECONDS` (default 30 seconds) and
+`AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS` (default 15 seconds).
 
 ## Migrate the existing personal database
 

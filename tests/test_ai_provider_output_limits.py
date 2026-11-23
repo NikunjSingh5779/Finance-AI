@@ -56,8 +56,11 @@ def test_output_budget_is_configurable_and_bounded(monkeypatch):
 
 def test_openrouter_retries_when_completion_hits_token_limit(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("OPENROUTER_MODEL", "test/free")
+    monkeypatch.setenv("OPENROUTER_FREE_MODELS", "test/free")
     provider = OpenRouterProvider("test-key")
     provider.available_models = []
+    provider._pricing_metadata_available = False
     provider.session = FakeSession([
         FakeResponse(completion("Partial answer", "length")),
         FakeResponse(completion("Complete answer.", "stop")),
@@ -74,8 +77,10 @@ def test_openrouter_retries_when_completion_hits_token_limit(monkeypatch):
 
 def test_openrouter_stops_model_fallback_after_unauthorized_response(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.setenv("OPENROUTER_FREE_MODELS", "openrouter/free")
     provider = OpenRouterProvider("test-key")
     provider.available_models = ["google/lyria-3-clip-preview"]
+    provider._pricing_metadata_available = False
     provider.session = FakeSession([
         FakeResponse(
             {},
@@ -94,6 +99,7 @@ def test_openrouter_stops_model_fallback_after_unauthorized_response(monkeypatch
 
 def test_opencode_retries_when_completion_hits_token_limit(monkeypatch):
     monkeypatch.setenv("OPENCODE_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("OPENCODE_FREE_MODELS", "mimo-v2.6-flash-free")
     provider = OpenCodeProvider("test-key")
     provider.session = FakeSession([
         FakeResponse(completion("Partial answer", "length")),
@@ -111,6 +117,7 @@ def test_opencode_retries_when_completion_hits_token_limit(monkeypatch):
 
 def test_omniroute_retries_when_response_is_incomplete(monkeypatch):
     monkeypatch.setenv("OMNIROUTE_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("OMNIROUTE_FREE_COMBOS", "free-combo")
     provider = OmniRouteProvider("test-key", "http://localhost:20128/v1", "free-combo")
     provider.session = FakeSession([
         FakeResponse({
@@ -134,6 +141,7 @@ def test_omniroute_retries_when_response_is_incomplete(monkeypatch):
 
 def test_opencode_fails_clearly_when_retry_is_still_truncated(monkeypatch):
     monkeypatch.setenv("OPENCODE_MAX_OUTPUT_TOKENS", "2048")
+    monkeypatch.setenv("OPENCODE_FREE_MODELS", "mimo-v2.6-flash-free")
     provider = OpenCodeProvider("test-key")
     provider.session = FakeSession([
         FakeResponse(completion("Partial answer", "length")),

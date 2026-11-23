@@ -24,7 +24,13 @@ from app.controllers.net_worth_controller import router as net_worth_router
 from app.controllers.report_controller import router as report_router
 from app.controllers.recurring_controller import router as recurring_router
 from app.controllers.transaction_controller import router as transaction_router
-from app.core.auth import auth_required, reset_user_id, set_user_id, user_id_from_request
+from app.core.auth import (
+    auth_required,
+    reset_user_id,
+    set_user_id,
+    user_id_from_request,
+    validate_runtime_configuration,
+)
 from app.core.database import init_db
 from app.core.exceptions import (
     AccountDeletionError,
@@ -42,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_runtime_configuration()
     init_db()
     yield
 
@@ -193,9 +200,11 @@ async def provider_error_handler(request: Request, exc: ProviderError):
 
 @app.exception_handler(RateLimitError)
 async def rate_limit_handler(request: Request, exc: RateLimitError):
+    retry_after = (exc.details or {}).get("retry_after")
     return JSONResponse(
         status_code=429,
         content={"detail": exc.message, "errors": exc.details},
+        headers={"Retry-After": str(retry_after)} if retry_after else None,
     )
 
 

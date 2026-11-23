@@ -6,14 +6,18 @@ requests to the exact combo configured by the user.
 
 import logging
 import os
+import json
+from collections.abc import Iterator
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
 from .base import (
     AIProvider,
+    configured_free_routes,
     expanded_output_token_limit,
     get_output_token_limit,
+    require_free_route,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,12 +86,20 @@ class OmniRouteProvider(AIProvider):
                     chunks.append(text.strip())
         return "\n".join(chunks).strip()
 
+    def _require_free_combo(self) -> None:
+        require_free_route(
+            self.combo_name,
+            allowlist_env="OMNIROUTE_FREE_COMBOS",
+            provider_name="OmniRoute",
+        )
+
     def generate_response(self, prompt: str) -> str:
         if not self.combo_name:
             raise RuntimeError(
                 "OMNIROUTE_COMBO_NAME (or OMNIROUTE_MODEL) must contain "
                 "the exact OmniRoute combo name"
             )
+        self._require_free_combo()
 
         reasoning_effort = os.getenv(
             "OMNIROUTE_REASONING_EFFORT", "low"
@@ -107,7 +119,7 @@ class OmniRouteProvider(AIProvider):
             response = self.session.post(
                 self.responses_url,
                 json=payload,
-                timeout=60,
+                timeout=(5, 15),
             )
             if not response.ok:
                 raise RuntimeError(
@@ -153,9 +165,87 @@ class OmniRouteProvider(AIProvider):
 
         raise RuntimeError("OmniRoute could not produce a complete response")
 
+    def stream_response(self, prompt: str) -> Iterator[str]:
+        """Yield Responses API SSE output from an explicitly free combo."""
+        if not self.combo_name:
+            raise RuntimeError(
+                "OMNIROUTE_COMBO_NAME (or OMNIROUTE_MODEL) must contain "
+                "the exact OmniRoute combo name"
+            )
+        self._require_free_combo()
+
+        reasoning_effort = os.getenv(
+            "OMNIROUTE_REASONING_EFFORT", "low"
+        ).strip().lower()
+        payload: dict[str, object] = {
+            "model": self.combo_name,
+            "input": prompt,
+            "stream": True,
+            "max_output_tokens": get_output_token_limit(
+                "OMNIROUTE_MAX_OUTPUT_TOKENS"
+            ),
+        }
+        if reasoning_effort in {"none", "minimal", "low", "medium", "high", "max"}:
+            payload["reasoning"] = {"effort": reasoning_effort}
+
+        response = self.session.post(
+            self.responses_url,
+            json=payload,
+            timeout=(5, 15),
+            stream=True,
+        )
+        try:
+            if not response.ok:
+                raise RuntimeError(
+                    f"OmniRoute returned HTTP {response.status_code}: "
+                    f"{response.text[:500]}"
+                )
+
+            event_name = ""
+            emitted = False
+            for raw_line in response.iter_lines(decode_unicode=True):
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                if not line:
+                    continue
+                if line.startswith("event:"):
+                    event_name = line[6:].strip()
+                    continue
+                if not line.startswith("data:"):
+                    continue
+
+                raw_payload = line[5:].strip()
+                if raw_payload == "[DONE]":
+                    return
+                try:
+                    data = json.loads(raw_payload)
+                except (TypeError, ValueError):
+                    continue
+
+                event_type = str(data.get("type") or event_name).lower()
+                delta = data.get("delta")
+                if (
+                    isinstance(delta, str)
+                    and delta
+                    and ("output_text.delta" in event_type or "text.delta" in event_type)
+                ):
+                    emitted = True
+                    yield delta
+                if "incomplete" in event_type:
+                    raise RuntimeError("OmniRoute streamed an incomplete response")
+                if "completed" in event_type:
+                    return
+
+            if not emitted:
+                raise RuntimeError("OmniRoute stream contained no text")
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+
     def is_available(self) -> bool:
-        # Availability is configuration-based here. Some OmniRoute deployments
-        # intentionally expose /v1/responses without a /v1/models endpoint.
-        # The actual Responses request remains the authoritative health check,
-        # and AIService will fall back if that request fails.
-        return bool(self.api_key and self.combo_name and self.responses_url)
+        return bool(
+            self.api_key
+            and self.combo_name
+            and self.responses_url
+            and self.combo_name in configured_free_routes("OMNIROUTE_FREE_COMBOS")
+        )

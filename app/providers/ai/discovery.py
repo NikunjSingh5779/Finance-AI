@@ -20,11 +20,14 @@ def _config_key() -> tuple[str, ...]:
         os.getenv("OMNIROUTE_BASE_URL", ""),
         os.getenv("OMNIROUTE_COMBO_NAME", ""),
         os.getenv("OMNIROUTE_MODEL", ""),
+        os.getenv("OMNIROUTE_FREE_COMBOS", ""),
         os.getenv("OPENCODE_ZEN_API_KEY", ""),
         os.getenv("OPENCODE_BASE_URL", ""),
         os.getenv("OPENCODE_MODEL", ""),
+        os.getenv("OPENCODE_FREE_MODELS", ""),
         os.getenv("OPENROUTER_API_KEY", ""),
         os.getenv("OPENROUTER_MODEL", ""),
+        os.getenv("OPENROUTER_FREE_MODELS", ""),
     )
 
 
@@ -106,10 +109,27 @@ def _try_openrouter() -> AIProvider | None:
 
 def get_provider_info() -> dict:
     """Report configuration and selected provider without exposing secrets."""
+    from .base import configured_free_routes
+
     info = {
-        "omniroute": {"configured": bool(os.getenv("OMNIROUTE_API_KEY"))},
-        "opencode": {"configured": bool(os.getenv("OPENCODE_ZEN_API_KEY"))},
-        "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY"))},
+        "omniroute": {
+            "configured": bool(os.getenv("OMNIROUTE_API_KEY")),
+            "free_route_configured": bool(
+                configured_free_routes("OMNIROUTE_FREE_COMBOS")
+            ),
+        },
+        "opencode": {
+            "configured": bool(os.getenv("OPENCODE_ZEN_API_KEY")),
+            "free_route_configured": bool(
+                configured_free_routes("OPENCODE_FREE_MODELS")
+            ),
+        },
+        "openrouter": {
+            "configured": bool(os.getenv("OPENROUTER_API_KEY")),
+            "model_configured": bool(
+                os.getenv("OPENROUTER_MODEL", "").strip()
+            ),
+        },
     }
     providers = get_ai_providers()
     info["selected"] = (

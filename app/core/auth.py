@@ -17,17 +17,81 @@ from jwt import PyJWKClient
 _user_id: ContextVar[str | None] = ContextVar("financeai_user_id", default=None)
 _jwks_client: PyJWKClient | None = None
 
+_LOCAL_ENVIRONMENTS = frozenset({"development", "dev", "local", "test", "testing"})
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
 
 class AuthProviderError(RuntimeError):
     """Raised when Supabase Auth cannot complete an operation."""
 
 
+def is_production() -> bool:
+    """Return whether this process is running in a deployment environment.
+
+    Explicit local/test values are the only environments permitted to use the
+    shared development identity. Render's deployment variables are also
+    treated as production when APP_ENV has not been set.
+    """
+    environment = (
+        os.getenv("APP_ENV")
+        or os.getenv("ENVIRONMENT")
+        or os.getenv("DEPLOYMENT_ENV")
+        or ""
+    ).strip().lower()
+    if any(
+        os.getenv(name)
+        for name in ("RENDER", "RENDER_SERVICE_ID", "RENDER_EXTERNAL_URL")
+    ):
+        return True
+    return bool(environment and environment not in _LOCAL_ENVIRONMENTS)
+
+
+def _env_flag(name: str) -> bool | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    return value.strip().lower() in _TRUTHY
+
+
 def auth_required() -> bool:
     configured = bool(os.getenv("SUPABASE_URL"))
-    value = os.getenv("AUTH_REQUIRED")
-    if value is None:
+    configured_value = _env_flag("AUTH_REQUIRED")
+    if is_production():
+        # The startup validation below will give an actionable error if the
+        # deployment did not configure Supabase correctly. Never fall back to
+        # the shared development user in a hosted environment.
+        return True
+    if configured_value is None:
         return configured
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return configured_value
+
+
+def validate_runtime_configuration() -> None:
+    """Fail closed when a production process lacks multi-user safeguards."""
+    if not is_production():
+        return
+
+    errors: list[str] = []
+    if _env_flag("AUTH_REQUIRED") is False:
+        errors.append("AUTH_REQUIRED cannot be false")
+    if not os.getenv("SUPABASE_URL", "").strip():
+        errors.append("SUPABASE_URL is required")
+    if not (
+        os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+        or os.getenv("SUPABASE_ANON_KEY", "").strip()
+    ):
+        errors.append("SUPABASE_PUBLISHABLE_KEY (or SUPABASE_ANON_KEY) is required")
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        errors.append("DATABASE_URL is required")
+    elif not database_url.lower().startswith(("postgres://", "postgresql://")):
+        errors.append("DATABASE_URL must use a PostgreSQL connection URL")
+
+    if errors:
+        raise RuntimeError(
+            "Production configuration is unsafe: " + "; ".join(errors)
+        )
 
 
 def set_user_id(user_id: str) -> Token:
@@ -43,6 +107,11 @@ def get_current_user_id() -> str | None:
 
 
 def _dev_user_id() -> str:
+    if is_production():
+        raise RuntimeError(
+            "The development identity is disabled in production. "
+            "Configure Supabase authentication instead."
+        )
     raw = os.getenv("DEV_USER_ID", "00000000-0000-0000-0000-000000000001")
     try:
         return str(uuid.UUID(raw))

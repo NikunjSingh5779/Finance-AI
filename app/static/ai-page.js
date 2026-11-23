@@ -1,4 +1,4 @@
-export function createAIPage({ $, apiFetch, showToast }) {
+export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
   let activeAIConversationId = null;
   let aiHistoryItems = [];
   let aiChatGeneration = 0;
@@ -291,6 +291,73 @@ export function createAIPage({ $, apiFetch, showToast }) {
     chat.scrollTop = chat.scrollHeight;
   }
 
+  async function streamConversationReply(conversationId, question, onDelta) {
+    const response = await apiResponse("/api/conversations/" + conversationId + "/messages/stream", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "text/event-stream"},
+      body: JSON.stringify({question}),
+    });
+    if (!response.ok) {
+      let payload = {};
+      try { payload = await response.json(); } catch (_) {}
+      const error = new Error(payload.detail || response.statusText || "AI is unavailable.");
+      error.status = response.status;
+      throw error;
+    }
+    if (!response.body) {
+      throw new Error("The browser could not read the AI response stream.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let donePayload = null;
+
+    const consumeEvent = block => {
+      let eventName = "message";
+      const dataLines = [];
+      block.split("\n").forEach(line => {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      });
+      if (!dataLines.length) return;
+
+      let payload;
+      try { payload = JSON.parse(dataLines.join("\n")); } catch (_) { return; }
+      if (eventName === "delta" && typeof payload.text === "string") {
+        onDelta(payload.text);
+      } else if (eventName === "done") {
+        donePayload = payload;
+      } else if (eventName === "error") {
+        throw new Error(payload.detail || "AI is unavailable.");
+      }
+    };
+
+    const consumeBufferedEvents = () => {
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        consumeEvent(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+    };
+
+    while (true) {
+      const {value, done} = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, {stream: !done}).replace(/\r/g, "");
+        consumeBufferedEvents();
+      }
+      if (done) break;
+    }
+    buffer += decoder.decode().replace(/\r/g, "");
+    if (buffer.trim()) consumeEvent(buffer);
+    if (!donePayload) {
+      throw new Error("The AI response ended before it was complete.");
+    }
+    return donePayload;
+  }
+
   async function sendChat() {
     const input = $("chat-input");
     const chat = $("chat-msgs");
@@ -324,14 +391,45 @@ export function createAIPage({ $, apiFetch, showToast }) {
           activeAIConversationId = targetConversationId;
         }
       }
-      const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({question: message}),
-      });
-      typing.remove();
+      let reply = "";
+      let animationFrame = 0;
+      const renderStream = () => {
+        animationFrame = 0;
+        bubble.textContent = reply;
+        chat.scrollTop = chat.scrollHeight;
+      };
+      const appendDelta = delta => {
+        reply += delta;
+        if (!animationFrame) animationFrame = requestAnimationFrame(renderStream);
+      };
+
+      try {
+        const result = await streamConversationReply(
+          targetConversationId,
+          message,
+          appendDelta,
+        );
+        if (!reply && typeof result.reply === "string") reply = result.reply;
+      } catch (streamError) {
+        // During a rolling deployment, an already cached frontend can briefly
+        // reach an API version without the stream route. Keep the old endpoint
+        // usable for that case.
+        if (streamError?.status !== 404) throw streamError;
+        const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({question: message}),
+        });
+        reply = result.reply || "No response";
+      }
+
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      if (reply) renderAiMarkdown(bubble, reply);
       if (generation === aiChatGeneration && activeAIConversationId === targetConversationId) {
-        appendSavedChatMessage("ai", result.reply || "No response");
+        typing.removeAttribute("id");
+        chat.scrollTop = chat.scrollHeight;
+      } else {
+        typing.remove();
       }
     } catch (error) {
       typing.remove();

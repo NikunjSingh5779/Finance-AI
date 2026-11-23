@@ -1,5 +1,6 @@
 """Authentication endpoints backed by Supabase Auth."""
 
+import asyncio
 import os
 from urllib.parse import urlsplit
 
@@ -112,7 +113,7 @@ async def google_oauth_start(
     raw_request: Request,
 ) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
-    check_rate_limit(client_ip)
+    await asyncio.to_thread(check_rate_limit, client_ip)
 
     origin = raw_request.headers.get("origin", "").strip().rstrip("/")
     allowed_origins = {
@@ -151,7 +152,7 @@ async def google_oauth_exchange(
     raw_request: Request,
 ) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
-    check_rate_limit(client_ip)
+    await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         result = await exchange_google_oauth_code(
             request.auth_code,
@@ -171,7 +172,7 @@ async def google_oauth_exchange(
 @router.post("/signup")
 async def signup(request: SignUpRequest, raw_request: Request) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
-    check_rate_limit(client_ip)
+    await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         redirect_to = _allowed_redirect_origin(raw_request)
         result = await sign_up(request.email, request.password, request.name, redirect_to)
@@ -190,7 +191,7 @@ async def signup(request: SignUpRequest, raw_request: Request) -> dict:
 @router.post("/login")
 async def login(request: SignInRequest, raw_request: Request) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
-    check_rate_limit(client_ip)
+    await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         result = await sign_in(request.email, request.password)
         session = result.get("session") or result
@@ -207,7 +208,7 @@ async def login(request: SignInRequest, raw_request: Request) -> dict:
 @router.post("/refresh")
 async def refresh(request: RefreshRequest, raw_request: Request) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
-    check_rate_limit(client_ip)
+    await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         result = await refresh_session(request.refresh_token)
         session = result.get("session") or result
@@ -265,7 +266,10 @@ async def password_recovery(
     request: PasswordRecoveryRequest,
     raw_request: Request,
 ) -> dict:
-    check_rate_limit(raw_request.client.host if raw_request.client else "unknown")
+    await asyncio.to_thread(
+        check_rate_limit,
+        raw_request.client.host if raw_request.client else "unknown",
+    )
     redirect_to = _allowed_redirect_origin(raw_request)
     try:
         await request_password_reset(request.email, redirect_to)
@@ -276,7 +280,10 @@ async def password_recovery(
 
 @router.post("/email/verify")
 async def verify_email(request: VerifyEmailRequest, raw_request: Request) -> dict:
-    check_rate_limit(raw_request.client.host if raw_request.client else "unknown")
+    await asyncio.to_thread(
+        check_rate_limit,
+        raw_request.client.host if raw_request.client else "unknown",
+    )
     try:
         result = await verify_email_token(request.token_hash, request.type)
         session = result.get("session") or result

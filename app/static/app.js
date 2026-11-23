@@ -2615,7 +2615,7 @@
   function getAIPage() {
     if (!aiPagePromise) {
       aiPagePromise = import(chunkUrl("ai-page.js"))
-        .then(module => module.createAIPage({ $, apiFetch, showToast }))
+        .then(module => module.createAIPage({ $, apiFetch, apiResponse, showToast }))
         .catch(error => {
           aiPagePromise = null;
           throw error;

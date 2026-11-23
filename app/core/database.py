@@ -166,6 +166,20 @@ CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_updated
     ON ai_conversations(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation_user_created
     ON ai_messages(conversation_id, user_id, created_at);
+
+-- Server-only shared quota state. It intentionally has no grants for the
+-- authenticated application role; the API process consumes it through its
+-- database connection before AI generation begins.
+CREATE TABLE IF NOT EXISTS ai_rate_limit_windows (
+    scope           TEXT NOT NULL,
+    window_start    TIMESTAMPTZ NOT NULL,
+    request_count   INTEGER NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+    PRIMARY KEY (scope, window_start)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_rate_limit_windows_expiry
+    ON ai_rate_limit_windows(window_start);
+ALTER TABLE ai_rate_limit_windows ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON ai_rate_limit_windows FROM PUBLIC, anon, authenticated;
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id
     ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id
