@@ -1,0 +1,18 @@
+<div class="page" id="page-budgets">
+        <div class="full-card" style="margin-bottom:16px">
+          <div class="full-header budget-header-actions">
+            <h1 class="full-title">Budgets</h1>
+            <div class="budget-actions">
+              <button type="button" class="add-btn compact-action secondary-action" onclick="document.getElementById('budget-csv-input').click()" aria-label="Import budget CSV" title="Import budget CSV">📁 Import CSV</button>
+              <button type="button" class="add-btn compact-action secondary-action" onclick="exportBudgetsCSV()" aria-label="Export budgets CSV" title="Export budgets CSV">⬇ Export CSV</button>
+              <input type="file" id="budget-csv-input" accept=".csv,text/csv" style="display:none" onchange="importBudgetsCSV(this)">
+            </div>
+          </div>
+          <div class="add-form-grid" style="grid-template-columns:1fr 1fr auto">
+            <div class="fg"><label>Category</label><input type="text" id="b-cat" placeholder="Food & Drink…"></div>
+            <div class="fg"><label>Monthly Limit (₹)</label><input type="number" id="b-limit" placeholder="5000"></div>
+            <button type="button" class="btn-add" onclick="addBudget()">Set Budget</button>
+          </div>
+        </div>
+        <div class="budget-page-grid" id="budget-page-list"><div class="empty-state" style="grid-column:1/-1">No budgets yet</div></div>
+      </div>

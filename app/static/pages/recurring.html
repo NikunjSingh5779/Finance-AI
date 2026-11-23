@@ -1,0 +1,32 @@
+<div class="page" id="page-recurring">
+        <div class="full-card recurring-intro-card">
+          <div class="full-header">
+            <div>
+              <h1 class="full-title">Recurring payments</h1>
+              <p class="recurring-intro">Track subscriptions, bills and regular income. FinanceAI only records a transaction when you mark an occurrence as paid or received.</p>
+            </div>
+          </div>
+          <div class="add-form-grid recurring-form-grid">
+            <div class="fg"><label for="r-name">Name</label><input id="r-name" type="text" maxlength="100" placeholder="Netflix, Rent, Salary"></div>
+            <div class="fg"><label for="r-amount">Amount (₹)</label><input id="r-amount" type="number" min="0.01" step="0.01" placeholder="499"></div>
+            <div class="fg"><label for="r-type">Type</label><select id="r-type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+            <div class="fg"><label for="r-category">Category</label><input id="r-category" type="text" maxlength="50" placeholder="Subscriptions"></div>
+            <div class="fg"><label for="r-frequency">Frequency</label><select id="r-frequency"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select></div>
+            <div class="fg"><label for="r-next-date">Next due date</label><input id="r-next-date" type="date"></div>
+            <div class="fg"><label for="r-account">Account (optional)</label><select id="r-account"><option value="">No account</option></select></div>
+            <button type="button" class="btn-add recurring-add-button" onclick="createRecurringItem()">Add schedule</button>
+          </div>
+        </div>
+        <div class="recurring-list-toolbar">
+          <div class="recurring-list-heading" id="recurring-list-heading">Active schedules</div>
+          <button
+            type="button"
+            id="recurring-archive-toggle"
+            class="recurring-archive-toggle"
+            onclick="toggleRecurringArchiveView()"
+            aria-pressed="false"
+          >Show archived</button>
+        </div>
+        <div class="recurring-summary-row" id="recurring-summary"></div>
+        <div class="recurring-card-grid" id="recurring-items"><div class="empty-state">No recurring schedules yet. Add a bill, subscription or regular income above.</div></div>
+      </div>

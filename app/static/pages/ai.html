@@ -1,0 +1,48 @@
+<div class="page" id="page-ai-page">
+  <div class="ai-container">
+    <div class="ai-history-toolbar">
+      <div class="ai-history-heading">AI Assistant</div>
+      <div class="ai-history-actions">
+        <button type="button" id="ai-history-toggle" class="ai-history-button">History</button>
+        <button type="button" id="ai-new-chat" class="ai-new-chat-button">＋ New chat</button>
+      </div>
+    </div>
+    <div id="ai-history-panel" class="ai-history-panel" hidden>
+      <div class="ai-history-panel-header">
+        <div>
+          <div class="ai-history-panel-title">Saved conversations</div>
+          <div class="ai-history-panel-subtitle">Your chats are private to your account.</div>
+        </div>
+        <button type="button" id="ai-history-close" class="ai-history-close" aria-label="Close history">×</button>
+      </div>
+      <input id="ai-history-search" class="ai-history-search" type="search" placeholder="Search conversations…">
+      <div id="ai-history-list" class="ai-history-list"></div>
+    </div>
+
+    <!-- CHAT AREA -->
+    <div class="chat-area" id="chat-msgs">
+      <div class="chat-msg ai">
+        <div class="chat-bubble ai">
+          👋 Hi! I'm your Finance AI.<br>
+          How can I help you today?
+        </div>
+      </div>
+    </div>
+
+    <!-- QUICK BUTTONS -->
+    <div class="quick-row">
+      <button type="button" class="quick-btn" onclick="quickAsk('How is my financial health?', this)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.5-7.5-10A4.2 4.2 0 0 1 12 7.5 4.2 4.2 0 0 1 19.5 10C19.5 15.5 12 20 12 20Z"/></svg>Health</button>
+      <button type="button" class="quick-btn" onclick="quickAsk('Show my spending analysis', this)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V4.5M4 19.5h16"/><path d="M7 15v-3M12 15V8M17 15V5.5"/></svg>Spending</button>
+      <button type="button" class="quick-btn" onclick="quickAsk('How can I improve savings?', this)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M15 8.5c-.7-.6-1.6-.9-2.8-.9-1.6 0-2.7.8-2.7 2s1 1.8 2.8 2.2 2.8 1 2.8 2.3-1.2 2.2-3 2.2c-1.2 0-2.3-.4-3.1-1.1M12 6.5v11"/></svg>Savings</button>
+    </div>
+
+    <!-- INPUT BAR -->
+    <div class="chat-input-bar">
+      <span class="attach">📎</span>
+      <input type="text" id="chat-input" placeholder="Ask FinanceAI anything — money, travel, technology…"
+        onkeydown="if(event.key==='Enter')sendChat()">
+      <button type="button" class="send-btn" onclick="sendChat()">↑</button>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,361 @@
+export function createAIPage({ $, apiFetch, showToast }) {
+  let activeAIConversationId = null;
+  let aiHistoryItems = [];
+  let aiChatGeneration = 0;
+  let aiSending = false;
+  let initialized = false;
+  function appendInlineMarkdown(parent, text) {
+    const source = String(text ?? "")
+      .replace(/\\\\([*_])/g, "$1")
+      .replace(/\\\*\\\*/g, "**")
+      .replace(/\\\*/g, "*");
+
+    const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\x60[^\x60]+\x60)/g;
+    let last = 0;
+    let match;
+
+    while ((match = pattern.exec(source))) {
+      if (match.index > last) {
+        parent.appendChild(document.createTextNode(source.slice(last, match.index)));
+      }
+
+      const token = match[0];
+      let node;
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      if (link) {
+        node = document.createElement("a");
+        node.className = "ai-source-link";
+        node.href = link[2];
+        node.target = "_blank";
+        node.rel = "noopener noreferrer";
+        node.textContent = link[1];
+      } else if (token.startsWith("**") || token.startsWith("__")) {
+        node = document.createElement("strong");
+        node.className = "ai-highlight";
+        node.textContent = token.slice(2, -2);
+      } else if (token.startsWith("\x60")) {
+        node = document.createElement("code");
+        node.textContent = token.slice(1, -1);
+      } else {
+        node = document.createElement("em");
+        node.textContent = token.slice(1, -1);
+      }
+
+      parent.appendChild(node);
+      last = pattern.lastIndex;
+    }
+
+    if (last < source.length) {
+      parent.appendChild(document.createTextNode(source.slice(last)));
+    }
+  }
+
+  function parseTableRow(line) {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
+  }
+
+  function renderAiMarkdown(container, markdown) {
+    container.classList.add("ai-markdown");
+    while (container.firstChild) container.removeChild(container.firstChild);
+    const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
+    let list = null;
+    let listType = null;
+
+    const resetList = () => { list = null; listType = null; };
+    const ensureList = (ordered) => {
+      if (list && listType === (ordered ? "ol" : "ul")) return list;
+      resetList();
+      list = document.createElement(ordered ? "ol" : "ul");
+      list.className = "ai-list";
+      container.appendChild(list);
+      listType = ordered ? "ol" : "ul";
+      return list;
+    };
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) { resetList(); continue; }
+
+      if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+        resetList();
+        const table = document.createElement("table");
+        table.className = "ai-table";
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        parseTableRow(line).forEach(cellText => {
+          const cell = document.createElement("th");
+          appendInlineMarkdown(cell, cellText);
+          headerRow.appendChild(cell);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        i += 1;
+        const tbody = document.createElement("tbody");
+        while (i + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i + 1].trim())) {
+          i += 1;
+          const row = document.createElement("tr");
+          parseTableRow(lines[i]).forEach(cellText => {
+            const cell = document.createElement("td");
+            appendInlineMarkdown(cell, cellText);
+            row.appendChild(cell);
+          });
+          tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        container.appendChild(table);
+        continue;
+      }
+
+      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) {
+        resetList();
+        const level = Math.min(3, heading[1].length);
+        const element = document.createElement("h" + level);
+        appendInlineMarkdown(element, heading[2]);
+        container.appendChild(element);
+        continue;
+      }
+
+      if (/^-{3,}$/.test(trimmed)) {
+        resetList();
+        container.appendChild(document.createElement("hr"));
+        continue;
+      }
+
+      const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        const currentList = ensureList(false);
+        const item = document.createElement("li");
+        appendInlineMarkdown(item, bullet[1]);
+        currentList.appendChild(item);
+        continue;
+      }
+
+      const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+      if (ordered) {
+        const currentList = ensureList(true);
+        const item = document.createElement("li");
+        appendInlineMarkdown(item, ordered[1]);
+        currentList.appendChild(item);
+        continue;
+      }
+
+      const quote = trimmed.match(/^>\s?(.*)$/);
+      if (quote) {
+        resetList();
+        const blockquote = document.createElement("blockquote");
+        appendInlineMarkdown(blockquote, quote[1]);
+        container.appendChild(blockquote);
+        continue;
+      }
+
+      resetList();
+      const paragraph = document.createElement("p");
+      appendInlineMarkdown(paragraph, trimmed);
+      container.appendChild(paragraph);
+    }
+  }
+
+  function quickAsk(text) {
+    $("chat-input").value = text;
+    sendChat();
+  }
+
+  async function startNewAIChat() {
+    aiChatGeneration += 1;
+    activeAIConversationId = null;
+    const chat = $("chat-msgs");
+    if (chat) {
+      chat.replaceChildren();
+      appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
+    }
+    if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+  }
+
+  function renderAIHistory(items) {
+    const list = $("ai-history-list");
+    if (!list) return;
+    list.replaceChildren();
+    const query = ($("ai-history-search")?.value || "").trim().toLowerCase();
+    const filtered = items.filter(item =>
+      String(item.title || "").toLowerCase().includes(query)
+      || String(item.last_message || "").toLowerCase().includes(query)
+    );
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "ai-history-empty";
+      empty.textContent = query ? "No matching conversations." : "No saved conversations yet.";
+      list.appendChild(empty);
+      return;
+    }
+    filtered.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "ai-history-item";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "ai-history-open";
+      const title = document.createElement("span");
+      title.className = "ai-history-item-title";
+      title.textContent = item.title || "New chat";
+      const preview = document.createElement("span");
+      preview.className = "ai-history-item-preview";
+      preview.textContent = item.last_message || "No messages yet";
+      open.append(title, preview);
+      open.addEventListener("click", () => void resumeAIConversation(item.id));
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "ai-history-item-action";
+      rename.textContent = "Rename";
+      rename.addEventListener("click", () => void renameAIConversation(item));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ai-history-item-action";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", () => void deleteAIConversation(item.id));
+      row.append(open, rename, remove);
+      list.appendChild(row);
+    });
+  }
+
+  async function openAIHistory() {
+    const panel = $("ai-history-panel");
+    if (!panel) return;
+    panel.hidden = false;
+    try {
+      const result = await apiFetch("/api/conversations");
+      aiHistoryItems = result.items || [];
+      renderAIHistory(aiHistoryItems);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not load chat history.", "error");
+    }
+  }
+
+  async function resumeAIConversation(conversationId) {
+    const generation = ++aiChatGeneration;
+    try {
+      const result = await apiFetch("/api/conversations/" + conversationId);
+      if (generation !== aiChatGeneration) return;
+      activeAIConversationId = result.conversation.id;
+      const chat = $("chat-msgs");
+      if (chat) chat.replaceChildren();
+      (result.messages || []).forEach(message => {
+        appendSavedChatMessage(message.role === "user" ? "user" : "ai", message.content);
+      });
+      if (!result.messages?.length) appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
+      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not open this conversation.", "error");
+    }
+  }
+
+  async function renameAIConversation(item) {
+    const title = window.prompt("Rename conversation", item.title || "New chat");
+    if (!title || !title.trim()) return;
+    try {
+      await apiFetch("/api/conversations/" + item.id, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({title: title.trim()}),
+      });
+      await openAIHistory();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not rename this conversation.", "error");
+    }
+  }
+
+  async function deleteAIConversation(conversationId) {
+    if (!window.confirm("Delete this conversation and all its messages?")) return;
+    try {
+      await apiFetch("/api/conversations/" + conversationId, {method: "DELETE"});
+      aiHistoryItems = aiHistoryItems.filter(item => item.id !== conversationId);
+      renderAIHistory(aiHistoryItems);
+      if (activeAIConversationId === conversationId) await startNewAIChat();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not delete this conversation.", "error");
+    }
+  }
+
+  function appendSavedChatMessage(role, content) {
+    const chat = $("chat-msgs");
+    if (!chat) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-msg " + role;
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + role;
+    if (role === "ai") renderAiMarkdown(bubble, content);
+    else bubble.textContent = content;
+    wrapper.appendChild(bubble);
+    chat.appendChild(wrapper);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  async function sendChat() {
+    const input = $("chat-input");
+    const chat = $("chat-msgs");
+    const message = input?.value.trim() || "";
+    if (!message || !chat || aiSending) return;
+    aiSending = true;
+    const generation = aiChatGeneration;
+    appendSavedChatMessage("user", message);
+    input.value = "";
+
+    const typing = document.createElement("div");
+    typing.className = "chat-msg ai";
+    typing.id = "typing";
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble ai";
+    bubble.textContent = "I'm working on your question...";
+    typing.appendChild(bubble);
+    chat.appendChild(typing);
+    chat.scrollTop = chat.scrollHeight;
+
+    try {
+      let targetConversationId = activeAIConversationId;
+      if (!targetConversationId) {
+        const created = await apiFetch("/api/conversations", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({title: "New chat"}),
+        });
+        targetConversationId = created.conversation.id;
+        if (generation === aiChatGeneration) {
+          activeAIConversationId = targetConversationId;
+        }
+      }
+      const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question: message}),
+      });
+      typing.remove();
+      if (generation === aiChatGeneration && activeAIConversationId === targetConversationId) {
+        appendSavedChatMessage("ai", result.reply || "No response");
+      }
+    } catch (error) {
+      typing.remove();
+      if (generation === aiChatGeneration) {
+        appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
+      }
+    } finally {
+      aiSending = false;
+    }
+  }
+
+
+  function activateAIPage({ startNewChat: resetChat = true } = {}) {
+    if (!initialized) {
+      $("ai-history-toggle")?.addEventListener("click", openAIHistory);
+      $("ai-history-close")?.addEventListener("click", () => {
+        if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
+      });
+      $("ai-new-chat")?.addEventListener("click", () => void startNewAIChat());
+      $("ai-history-search")?.addEventListener("input", () => renderAIHistory(aiHistoryItems));
+      initialized = true;
+    }
+    if (resetChat) void startNewAIChat();
+  }
+
+  return { activateAIPage, quickAsk, sendChat };
+}

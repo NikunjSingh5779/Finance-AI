@@ -2,6 +2,7 @@
   "use strict";
 
   let currentPage = "dashboard";
+  let pageNavigationGeneration = 0;
   let selectedRange = "1Y";
   let isAllView = false;
   let editingTxnId = null;
@@ -14,28 +15,109 @@
   let showArchivedRecurring = false;
   let budgetCategoryTotals = {};
   let accountsData = [];
+  let accountsLoadPromise = null;
   let pendingCSVImport = null;
   let summaryData = {};
   let summaryAll = {};
 
-  let cashflowChart = null;
-  let catChartInst = null;
-  const sparkCharts = {};
-
   const API = window.FINANCEAI_API_URL || "";
+  const APP_SCRIPT_URL = document.currentScript?.src || window.location.href;
+  const APP_VERSION = new URL(APP_SCRIPT_URL, window.location.href).searchParams.get("v");
+  let chartModulePromise = null;
+  let chartWarningShown = false;
   let authSession = null;
   let authRefreshPromise = null;
-  let activeAIConversationId = null;
-  let aiHistoryItems = [];
-  let aiChatGeneration = 0;
-  let aiSending = false;
   let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
     "#a855f7", "#f97316", "#06b6d4", "#84cc16"
   ];
+  const PAGE_FRAGMENTS = Object.freeze({
+    transactions: "pages/transactions.html",
+    budgets: "pages/budgets.html",
+    recurring: "pages/recurring.html",
+    "ai-page": "pages/ai.html"
+  });
+  const pageFragmentPromises = new Map();
+  const integerNumberFormatter = new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0
+  });
+  const decimalNumberFormatter = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 
   const $ = id => document.getElementById(id);
+
+  function chunkUrl(filename) {
+    const url = new URL("./" + filename, APP_SCRIPT_URL);
+    if (APP_VERSION) url.searchParams.set("v", APP_VERSION);
+    return url.href;
+  }
+
+  async function ensurePageLoaded(name) {
+    const mountedPage = $("page-" + name);
+    if (mountedPage) return mountedPage;
+    const fragmentPath = PAGE_FRAGMENTS[name];
+    if (!fragmentPath) return null;
+
+    let pagePromise = pageFragmentPromises.get(name);
+    if (!pagePromise) {
+      pagePromise = fetch(chunkUrl(fragmentPath))
+        .then(response => {
+          if (!response.ok) throw new Error(`Page request failed (${response.status}).`);
+          return response.text();
+        })
+        .then(markup => {
+          const template = document.createElement("template");
+          template.innerHTML = markup.trim();
+          const page = template.content.querySelector(".page");
+          if (!page || page.id !== "page-" + name) {
+            throw new Error("The page fragment has an invalid root element.");
+          }
+          $("content").appendChild(page);
+          initializeLazyPage(name);
+          return page;
+        })
+        .catch(error => {
+          pageFragmentPromises.delete(name);
+          throw error;
+        });
+      pageFragmentPromises.set(name, pagePromise);
+    }
+    return pagePromise;
+  }
+
+  function initializeLazyPage(name) {
+    if (name === "transactions") {
+      const date = $("t-date");
+      if (date) date.value = new Date().toISOString().slice(0, 10);
+    } else if (name === "recurring") {
+      const nextDate = $("r-next-date");
+      if (nextDate) nextDate.value = localDateValue();
+    }
+  }
+
+  function loadChartModule() {
+    if (!chartModulePromise) {
+      chartModulePromise = import(chunkUrl("charts.js"))
+        .catch(error => {
+          chartModulePromise = null;
+          throw error;
+        });
+    }
+    return chartModulePromise;
+  }
+
+  function renderChartWhenReady(render) {
+    void loadChartModule()
+      .then(render)
+      .catch(error => {
+        if (chartWarningShown) return;
+        chartWarningShown = true;
+        console.warn("Charts are unavailable", error);
+      });
+  }
 
   const UI_ICONS = Object.freeze({
     transaction: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-2.75-1.7L12 20.5l-2.75-1.7-2.75 1.7v-17Z"/><path d="M9 8h6M9 11.5h6M9 15h4"/></svg>',
@@ -112,17 +194,12 @@
 
   function fmt(value) {
     const n = Number(value);
-    return "₹" + (Number.isFinite(n) ? n : 0).toLocaleString("en-IN", {
-      maximumFractionDigits: 0
-    });
+    return "₹" + integerNumberFormatter.format(Number.isFinite(n) ? n : 0);
   }
 
   function fmtDec(value) {
     const n = Number(value);
-    return "₹" + (Number.isFinite(n) ? n : 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
+    return "₹" + decimalNumberFormatter.format(Number.isFinite(n) ? n : 0);
   }
 
   function hasUsableAuthSession(session) {
@@ -715,160 +792,6 @@
     }, 3200);
   }
 
-  function appendInlineMarkdown(parent, text) {
-    const source = String(text ?? "")
-      .replace(/\\\\([*_])/g, "$1")
-      .replace(/\\\*\\\*/g, "**")
-      .replace(/\\\*/g, "*");
-
-    const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|\x60[^\x60]+\x60)/g;
-    let last = 0;
-    let match;
-
-    while ((match = pattern.exec(source))) {
-      if (match.index > last) {
-        parent.appendChild(document.createTextNode(source.slice(last, match.index)));
-      }
-
-      const token = match[0];
-      let node;
-      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
-      if (link) {
-        node = document.createElement("a");
-        node.className = "ai-source-link";
-        node.href = link[2];
-        node.target = "_blank";
-        node.rel = "noopener noreferrer";
-        node.textContent = link[1];
-      } else if (token.startsWith("**") || token.startsWith("__")) {
-        node = document.createElement("strong");
-        node.className = "ai-highlight";
-        node.textContent = token.slice(2, -2);
-      } else if (token.startsWith("\x60")) {
-        node = document.createElement("code");
-        node.textContent = token.slice(1, -1);
-      } else {
-        node = document.createElement("em");
-        node.textContent = token.slice(1, -1);
-      }
-
-      parent.appendChild(node);
-      last = pattern.lastIndex;
-    }
-
-    if (last < source.length) {
-      parent.appendChild(document.createTextNode(source.slice(last)));
-    }
-  }
-
-  function parseTableRow(line) {
-    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
-  }
-
-  function renderAiMarkdown(container, markdown) {
-    container.classList.add("ai-markdown");
-    while (container.firstChild) container.removeChild(container.firstChild);
-    const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
-    let list = null;
-    let listType = null;
-
-    const resetList = () => { list = null; listType = null; };
-    const ensureList = (ordered) => {
-      if (list && listType === (ordered ? "ol" : "ul")) return list;
-      resetList();
-      list = document.createElement(ordered ? "ol" : "ul");
-      list.className = "ai-list";
-      container.appendChild(list);
-      listType = ordered ? "ol" : "ul";
-      return list;
-    };
-
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i];
-      const trimmed = line.trim();
-
-      if (!trimmed) { resetList(); continue; }
-
-      if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
-        resetList();
-        const table = document.createElement("table");
-        table.className = "ai-table";
-        const thead = document.createElement("thead");
-        const headerRow = document.createElement("tr");
-        parseTableRow(line).forEach(cellText => {
-          const cell = document.createElement("th");
-          appendInlineMarkdown(cell, cellText);
-          headerRow.appendChild(cell);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        i += 1;
-        const tbody = document.createElement("tbody");
-        while (i + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i + 1].trim())) {
-          i += 1;
-          const row = document.createElement("tr");
-          parseTableRow(lines[i]).forEach(cellText => {
-            const cell = document.createElement("td");
-            appendInlineMarkdown(cell, cellText);
-            row.appendChild(cell);
-          });
-          tbody.appendChild(row);
-        }
-        table.appendChild(tbody);
-        container.appendChild(table);
-        continue;
-      }
-
-      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-      if (heading) {
-        resetList();
-        const level = Math.min(3, heading[1].length);
-        const element = document.createElement("h" + level);
-        appendInlineMarkdown(element, heading[2]);
-        container.appendChild(element);
-        continue;
-      }
-
-      if (/^-{3,}$/.test(trimmed)) {
-        resetList();
-        container.appendChild(document.createElement("hr"));
-        continue;
-      }
-
-      const bullet = trimmed.match(/^[-*]\s+(.+)$/);
-      if (bullet) {
-        const currentList = ensureList(false);
-        const item = document.createElement("li");
-        appendInlineMarkdown(item, bullet[1]);
-        currentList.appendChild(item);
-        continue;
-      }
-
-      const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
-      if (ordered) {
-        const currentList = ensureList(true);
-        const item = document.createElement("li");
-        appendInlineMarkdown(item, ordered[1]);
-        currentList.appendChild(item);
-        continue;
-      }
-
-      const quote = trimmed.match(/^>\s?(.*)$/);
-      if (quote) {
-        resetList();
-        const blockquote = document.createElement("blockquote");
-        appendInlineMarkdown(blockquote, quote[1]);
-        container.appendChild(blockquote);
-        continue;
-      }
-
-      resetList();
-      const paragraph = document.createElement("p");
-      appendInlineMarkdown(paragraph, trimmed);
-      container.appendChild(paragraph);
-    }
-  }
-
   function syncTopbarRangeButtons() {
     const monthButton = $("topbar-month-btn");
     const allButton = $("topbar-all-btn");
@@ -931,94 +854,13 @@
   }
 
   function makeSparkline(id, values, color) {
-    const canvas = $(id);
-    if (!canvas || typeof Chart === "undefined") return;
-    if (sparkCharts[id]) sparkCharts[id].destroy();
-    canvas.width = canvas.parentElement?.offsetWidth || 180;
-    canvas.height = 40;
-    sparkCharts[id] = new Chart(canvas.getContext("2d"), {
-      type: "line",
-      data: {
-        labels: values.map((_, index) => index),
-        datasets: [{
-          data: values,
-          borderColor: color,
-          borderWidth: 1.5,
-          fill: false,
-          tension: 0.35,
-          pointRadius: 0
-        }]
-      },
-      options: {
-        responsive: false,
-        plugins: { legend: { display: false } },
-        scales: { x: { display: false }, y: { display: false } },
-        animation: false
-      }
-    });
+    renderChartWhenReady(charts => charts.renderSparkline(id, values, color));
   }
 
   function renderCashflowChart(monthly) {
     const canvas = $("cashflowChart");
-    if (!canvas || typeof Chart === "undefined") return;
-    const months = Object.keys(monthly || {}).sort();
-    const labels = months.map(month => {
-      const [year, monthNumber] = month.split("-");
-      return new Date(Number(year), Number(monthNumber) - 1).toLocaleDateString(
-        "en-US", { month: "short", year: "2-digit" }
-      );
-    });
-    const income = months.map(month => Number(monthly[month]?.income || 0));
-    const expense = months.map(month => Number(monthly[month]?.expense || 0));
-
-    if (cashflowChart) cashflowChart.destroy();
-    cashflowChart = new Chart(canvas.getContext("2d"), {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Income",
-            data: income,
-            borderColor: "#22c55e",
-            backgroundColor: "rgba(34,197,94,.08)",
-            fill: true,
-            tension: .35,
-            borderWidth: 2,
-            pointRadius: 0
-          },
-          {
-            label: "Expenses",
-            data: expense,
-            borderColor: "#ef4444",
-            backgroundColor: "rgba(239,68,68,.06)",
-            fill: true,
-            tension: .35,
-            borderWidth: 2,
-            pointRadius: 0
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: { label: context => " " + fmt(context.parsed.y) }
-          }
-        },
-        scales: {
-          x: { grid: { color: "rgba(255,255,255,.04)" } },
-          y: {
-            beginAtZero: true,
-            grid: { color: "rgba(255,255,255,.04)" },
-            ticks: { callback: value => fmt(value) }
-          }
-        }
-      }
-    });
+    if (!canvas) return;
+    renderChartWhenReady(charts => charts.renderCashflow(canvas, monthly, fmt));
   }
 
   function getFilteredTransactions() {
@@ -1083,26 +925,8 @@
       }
     }
 
-    if (!canvas || !entries.length || typeof Chart === "undefined") return;
-    if (catChartInst) catChartInst.destroy();
-    catChartInst = new Chart(canvas.getContext("2d"), {
-      type: "doughnut",
-      data: {
-        labels: entries.map(([category]) => category),
-        datasets: [{
-          data: entries.map(([, amount]) => amount),
-          backgroundColor: CAT_COLORS.slice(0, entries.length),
-          borderWidth: 0,
-          hoverOffset: 5
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: "72%",
-        plugins: { legend: { display: false } }
-      }
-    });
+    if (!canvas || !entries.length) return;
+    renderChartWhenReady(charts => charts.renderCategories(canvas, entries, CAT_COLORS));
   }
 
   function renderInsightsCard() {
@@ -1499,8 +1323,9 @@
 
   async function loadTransactions() {
     try {
+      const limit = currentPage === "transactions" || currentPage === "budgets" ? 5000 : 10;
       const [transactions, countResult] = await Promise.all([
-        apiFetch("/transactions?skip=0&limit=5000"),
+        apiFetch("/transactions?skip=0&limit=" + limit),
         apiFetch("/transactions/count")
       ]);
       txnsData = transactions;
@@ -1531,7 +1356,10 @@
         item => item.is_active && !item.is_archived
       ).length;
       const badge = $("recurring-count-badge");
-      if (badge) badge.textContent = String(activeCount);
+      if (badge) {
+        badge.textContent = String(activeCount);
+        badge.hidden = activeCount === 0;
+      }
       renderRecurringItems();
     } catch (error) {
       showToast("Could not load recurring schedules: " + error.message, "error");
@@ -1812,12 +1640,23 @@
   }
 
   async function loadAccounts() {
+    if (accountsLoadPromise) return accountsLoadPromise;
+
+    accountsLoadPromise = (async () => {
+      try {
+        accountsData = await apiFetch("/accounts");
+        renderAccounts();
+        populateAccountSelect("r-account");
+        populateAccountSelect("m-account");
+        populateAccountSelect("me-account");
+      } catch (error) {
+        showToast("Could not load accounts: " + error.message, "error");
+      }
+    })();
     try {
-      accountsData = await apiFetch("/accounts");
-      renderAccounts();
-      populateAccountSelect("r-account");
-    } catch (error) {
-      showToast("Could not load accounts: " + error.message, "error");
+      await accountsLoadPromise;
+    } finally {
+      accountsLoadPromise = null;
     }
   }
 
@@ -1902,6 +1741,11 @@
     await loadSummary();
   }
 
+  async function refreshDashboard() {
+    await Promise.all([loadTransactions(), loadBudgets()]);
+    await loadSummary();
+  }
+
   function refreshCurrentPage() {
     if (currentPage === "transactions") {
       Promise.all([loadTransactions(), loadAccounts(), loadSummary()]);
@@ -1915,17 +1759,20 @@
       loadInsightsPage();
     } else if (currentPage === "planning") {
       loadPlanningPage();
+    } else if (currentPage === "ai-page") {
+      return;
     } else {
       Promise.all([loadTransactions(), loadBudgets(), loadSummary()]);
     }
   }
 
-  function openModal() {
+  async function openModal() {
     $("modal").classList.add("open");
     $("m-date").value = new Date().toISOString().slice(0, 10);
     $("m-amount").value = "";
     $("m-category").value = "";
     $("m-desc").value = "";
+    await loadAccounts();
     populateAccountSelect("m-account");
   }
 
@@ -1966,9 +1813,10 @@
     }
   }
 
-  function openEditModal(id) {
+  async function openEditModal(id) {
     const txn = txnsData.find(item => item.id === id);
     if (!txn) return;
+    await loadAccounts();
     editingTxnId = id;
     $("me-type").value = txn.type;
     $("me-amount").value = txn.amount;
@@ -2763,637 +2611,88 @@
     document.body.classList.toggle("sidebar-open");
   }
 
-  function quickAsk(text) {
-    $("chat-input").value = text;
-    sendChat();
-  }
-
-  async function startNewAIChat() {
-    aiChatGeneration += 1;
-    activeAIConversationId = null;
-    const chat = $("chat-msgs");
-    if (chat) {
-      chat.replaceChildren();
-      appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
-    }
-    if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
-  }
-
-  function renderAIHistory(items) {
-    const list = $("ai-history-list");
-    if (!list) return;
-    list.replaceChildren();
-    const query = ($("ai-history-search")?.value || "").trim().toLowerCase();
-    const filtered = items.filter(item =>
-      String(item.title || "").toLowerCase().includes(query)
-      || String(item.last_message || "").toLowerCase().includes(query)
-    );
-    if (!filtered.length) {
-      const empty = document.createElement("div");
-      empty.className = "ai-history-empty";
-      empty.textContent = query ? "No matching conversations." : "No saved conversations yet.";
-      list.appendChild(empty);
-      return;
-    }
-    filtered.forEach(item => {
-      const row = document.createElement("div");
-      row.className = "ai-history-item";
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "ai-history-open";
-      const title = document.createElement("span");
-      title.className = "ai-history-item-title";
-      title.textContent = item.title || "New chat";
-      const preview = document.createElement("span");
-      preview.className = "ai-history-item-preview";
-      preview.textContent = item.last_message || "No messages yet";
-      open.append(title, preview);
-      open.addEventListener("click", () => void resumeAIConversation(item.id));
-      const rename = document.createElement("button");
-      rename.type = "button";
-      rename.className = "ai-history-item-action";
-      rename.textContent = "Rename";
-      rename.addEventListener("click", () => void renameAIConversation(item));
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "ai-history-item-action";
-      remove.textContent = "Delete";
-      remove.addEventListener("click", () => void deleteAIConversation(item.id));
-      row.append(open, rename, remove);
-      list.appendChild(row);
-    });
-  }
-
-  async function openAIHistory() {
-    const panel = $("ai-history-panel");
-    if (!panel) return;
-    panel.hidden = false;
-    try {
-      const result = await apiFetch("/api/conversations");
-      aiHistoryItems = result.items || [];
-      renderAIHistory(aiHistoryItems);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not load chat history.", "error");
-    }
-  }
-
-  async function resumeAIConversation(conversationId) {
-    const generation = ++aiChatGeneration;
-    try {
-      const result = await apiFetch("/api/conversations/" + conversationId);
-      if (generation !== aiChatGeneration) return;
-      activeAIConversationId = result.conversation.id;
-      const chat = $("chat-msgs");
-      if (chat) chat.replaceChildren();
-      (result.messages || []).forEach(message => {
-        appendSavedChatMessage(message.role === "user" ? "user" : "ai", message.content);
-      });
-      if (!result.messages?.length) appendSavedChatMessage("ai", "👋 Hi! I'm FinanceAI. How can I help you today?");
-      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not open this conversation.", "error");
-    }
-  }
-
-  async function renameAIConversation(item) {
-    const title = window.prompt("Rename conversation", item.title || "New chat");
-    if (!title || !title.trim()) return;
-    try {
-      await apiFetch("/api/conversations/" + item.id, {
-        method: "PATCH",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({title: title.trim()}),
-      });
-      await openAIHistory();
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not rename this conversation.", "error");
-    }
-  }
-
-  async function deleteAIConversation(conversationId) {
-    if (!window.confirm("Delete this conversation and all its messages?")) return;
-    try {
-      await apiFetch("/api/conversations/" + conversationId, {method: "DELETE"});
-      aiHistoryItems = aiHistoryItems.filter(item => item.id !== conversationId);
-      renderAIHistory(aiHistoryItems);
-      if (activeAIConversationId === conversationId) await startNewAIChat();
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not delete this conversation.", "error");
-    }
-  }
-
-  function appendSavedChatMessage(role, content) {
-    const chat = $("chat-msgs");
-    if (!chat) return;
-    const wrapper = document.createElement("div");
-    wrapper.className = "chat-msg " + role;
-    const bubble = document.createElement("div");
-    bubble.className = "chat-bubble " + role;
-    if (role === "ai") renderAiMarkdown(bubble, content);
-    else bubble.textContent = content;
-    wrapper.appendChild(bubble);
-    chat.appendChild(wrapper);
-    chat.scrollTop = chat.scrollHeight;
-  }
-
-  async function sendChat() {
-    const input = $("chat-input");
-    const chat = $("chat-msgs");
-    const message = input?.value.trim() || "";
-    if (!message || !chat || aiSending) return;
-    aiSending = true;
-    const generation = aiChatGeneration;
-    appendSavedChatMessage("user", message);
-    input.value = "";
-
-    const typing = document.createElement("div");
-    typing.className = "chat-msg ai";
-    typing.id = "typing";
-    const bubble = document.createElement("div");
-    bubble.className = "chat-bubble ai";
-    bubble.textContent = "I'm working on your question...";
-    typing.appendChild(bubble);
-    chat.appendChild(typing);
-    chat.scrollTop = chat.scrollHeight;
-
-    try {
-      let targetConversationId = activeAIConversationId;
-      if (!targetConversationId) {
-        const created = await apiFetch("/api/conversations", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({title: "New chat"}),
+  let aiPagePromise;
+  function getAIPage() {
+    if (!aiPagePromise) {
+      aiPagePromise = import(chunkUrl("ai-page.js"))
+        .then(module => module.createAIPage({ $, apiFetch, showToast }))
+        .catch(error => {
+          aiPagePromise = null;
+          throw error;
         });
-        targetConversationId = created.conversation.id;
-        if (generation === aiChatGeneration) {
-          activeAIConversationId = targetConversationId;
-        }
-      }
-      const result = await apiFetch("/api/conversations/" + targetConversationId + "/messages", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({question: message}),
-      });
-      typing.remove();
-      if (generation === aiChatGeneration && activeAIConversationId === targetConversationId) {
-        appendSavedChatMessage("ai", result.reply || "No response");
-      }
-    } catch (error) {
-      typing.remove();
-      if (generation === aiChatGeneration) {
-        appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
-      }
-    } finally {
-      aiSending = false;
     }
+    return aiPagePromise;
   }
 
-  function createInsightsPage() {
-    if ($("page-insights")) return;
+  function activateAIPage() {
+    void getAIPage()
+      .then(page => page.activateAIPage())
+      .catch(error => showToast("Could not load the AI assistant: " + error.message, "error"));
+  }
 
-    const content = $("content");
-    const page = document.createElement("div");
-    page.className = "page";
-    page.id = "page-insights";
+  function quickAsk(text) {
+    void getAIPage()
+      .then(page => {
+        page.activateAIPage({ startNewChat: false });
+        page.quickAsk(text);
+      })
+      .catch(error => showToast("Could not load the AI assistant: " + error.message, "error"));
+  }
 
-    const hero = document.createElement("div");
-    hero.className = "insights-hero";
-
-    const heroText = document.createElement("div");
-    const title = document.createElement("h1");
-    title.className = "insights-title";
-    title.textContent = "Financial Health & Insights";
-    const subtitle = document.createElement("div");
-    subtitle.className = "insights-subtitle";
-    subtitle.textContent = "Explainable signals calculated from your recorded finances.";
-    heroText.append(title, subtitle);
-
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "insights-refresh";
-    refresh.textContent = "↻ Refresh";
-    refresh.addEventListener("click", loadInsightsPage);
-    hero.append(heroText, refresh);
-
-    const health = document.createElement("div");
-    health.className = "health-grid";
-    health.id = "health-grid";
-
-    const columns = document.createElement("div");
-    columns.className = "insights-columns";
-
-    const recurring = document.createElement("section");
-    recurring.className = "insight-panel";
-    recurring.innerHTML = '<div class="panel-heading"><span>Recurring expenses</span><span class="panel-count" id="recurring-count">0</span></div><div id="recurring-list"></div>';
-
-    const anomalies = document.createElement("section");
-    anomalies.className = "insight-panel";
-    anomalies.innerHTML = '<div class="panel-heading"><span>Unusual spending</span><span class="panel-count" id="anomaly-count">0</span></div><div id="anomaly-list"></div>';
-
-    columns.append(recurring, anomalies);
-
-    const note = document.createElement("div");
-    note.className = "insight-note";
-    note.textContent = "These are analytical signals, not investment or financial advice.";
-
-    page.append(hero, health, columns, note);
-    content.appendChild(page);
+  function sendChat() {
+    void getAIPage()
+      .then(page => page.sendChat())
+      .catch(error => showToast("Could not load the AI assistant: " + error.message, "error"));
+  }
+  let optionalPagesPromise;
+  function getOptionalPages() {
+    if (!optionalPagesPromise) {
+      optionalPagesPromise = import(chunkUrl("optional-pages.js"))
+        .then(module => module.createOptionalPages({
+          $,
+          apiFetch,
+          fmt,
+          fmtDec,
+          showToast,
+          setCurrentPage: page => { currentPage = page; },
+          loadNetWorthChart: (canvas, history) => loadChartModule()
+            .then(charts => charts.renderNetWorth(canvas, history))
+        }))
+        .catch(error => {
+          optionalPagesPromise = null;
+          throw error;
+        });
+    }
+    return optionalPagesPromise;
   }
 
   function activateInsights() {
-    currentPage = "insights";
-    document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
-    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
-    $("page-insights").classList.add("active");
-    $("insights-nav-item").classList.add("active");
-    $("topbar-title").textContent = "Financial Insights";
-    $("content").style.overflow = "";
-    $("content").style.padding = "";
-    loadInsightsPage();
-  }
-
-  async function loadInsightsPage() {
-    createInsightsPage();
-    try {
-      const payload = await apiFetch("/api/insights/dashboard");
-      renderHealth(payload.health);
-      renderRecurring(payload.recurring || [], payload.counts?.recurring || 0);
-      renderAnomalies(payload.anomalies || [], payload.counts?.anomalies || 0);
-    } catch (error) {
-      const grid = $("health-grid");
-      while (grid.firstChild) grid.removeChild(grid.firstChild);
-      const err = document.createElement("div");
-      err.className = "insight-error";
-      err.textContent = "Could not load insights: " + error.message;
-      grid.appendChild(err);
-    }
-  }
-
-  function renderHealth(health) {
-    const grid = $("health-grid");
-    if (!grid) return;
-    while (grid.firstChild) grid.removeChild(grid.firstChild);
-
-    const scoreCard = document.createElement("div");
-    scoreCard.className = "health-score-card";
-    const score = document.createElement("div");
-    score.className = "health-score";
-    score.textContent = Number(health.score || 0);
-    const grade = document.createElement("div");
-    grade.className = "health-grade";
-    grade.textContent = health.grade || "Needs attention";
-    const metrics = document.createElement("div");
-    metrics.className = "health-metrics";
-    metrics.textContent =
-      `Savings ${Number(health.metrics?.savings_rate || 0).toFixed(1)}%, cash buffer ${Number(health.metrics?.months_of_buffer || 0).toFixed(1)} months`;
-    scoreCard.append(score, grade, metrics);
-
-    const details = document.createElement("div");
-    details.className = "health-details";
-    const heading = document.createElement("div");
-    heading.className = "panel-heading";
-    heading.textContent = "Score breakdown";
-    details.appendChild(heading);
-
-    Object.entries(health.components || {}).forEach(([key, value]) => {
-      const row = document.createElement("div");
-      row.className = "score-row";
-      const name = document.createElement("span");
-      name.textContent = key.replaceAll("_", " ");
-      const val = document.createElement("strong");
-      val.textContent = Number(value).toFixed(1);
-      row.append(name, val);
-      details.appendChild(row);
-    });
-
-    grid.append(scoreCard, details);
-  }
-
-  function renderRecurring(items, count) {
-    const list = $("recurring-list");
-    const badge = $("recurring-count");
-    if (!list) return;
-    while (list.firstChild) list.removeChild(list.firstChild);
-    if (badge) badge.textContent = count;
-
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.className = "insight-empty";
-      empty.textContent = "No recurring monthly expenses detected yet.";
-      list.appendChild(empty);
-      return;
-    }
-
-    items.forEach(item => {
-      const row = document.createElement("div");
-      row.className = "signal-row";
-      const left = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = item.description || item.category;
-      const meta = document.createElement("div");
-      meta.className = "signal-meta";
-      meta.textContent =
-        `${item.occurrences} occurrences · every ~${item.median_interval_days} days · last ${item.last_date}`;
-      left.append(title, meta);
-      const amount = document.createElement("strong");
-      amount.textContent = fmt(item.estimated_monthly_cost);
-      row.append(left, amount);
-      list.appendChild(row);
-    });
-  }
-
-  function renderAnomalies(items, count) {
-    const list = $("anomaly-list");
-    const badge = $("anomaly-count");
-    if (!list) return;
-    while (list.firstChild) list.removeChild(list.firstChild);
-    if (badge) badge.textContent = count;
-
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.className = "insight-empty";
-      empty.textContent = "No unusually large expenses detected.";
-      list.appendChild(empty);
-      return;
-    }
-
-    items.forEach(item => {
-      const row = document.createElement("div");
-      row.className = "signal-row";
-      const left = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = item.description || item.category;
-      const meta = document.createElement("div");
-      meta.className = "signal-meta";
-      meta.textContent =
-        `${item.category} · ${item.date} · ${item.multiple_of_average}× category average`;
-      left.append(title, meta);
-      const amount = document.createElement("strong");
-      amount.textContent = fmt(item.amount);
-      if (item.severity === "high") amount.className = "signal-danger";
-      row.append(left, amount);
-      list.appendChild(row);
-    });
-  }
-
-  let goalsData = [];
-  let netWorthData = {};
-  let netWorthHistory = [];
-  let monthlyReportData = {};
-  let netWorthChart = null;
-
-  function createPlanningPage() {
-    if ($("page-planning")) return;
-    const page = document.createElement("div");
-    page.className = "page";
-    page.id = "page-planning";
-
-    const hero = document.createElement("div");
-    hero.className = "planning-hero";
-    const heroText = document.createElement("div");
-    const title = document.createElement("h1");
-    title.className = "planning-title";
-    title.textContent = "Goals, Net Worth & Monthly Report";
-    const subtitle = document.createElement("div");
-    subtitle.className = "planning-subtitle";
-    subtitle.textContent = "Track what you are building, what you own, and how the month went.";
-    heroText.append(title, subtitle);
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "planning-refresh";
-    refresh.textContent = "↻ Refresh";
-    refresh.addEventListener("click", loadPlanningPage);
-    hero.append(heroText, refresh);
-
-    const wealth = document.createElement("section");
-    wealth.className = "wealth-card";
-    wealth.id = "net-worth-card";
-
-    const goalsPanel = document.createElement("section");
-    goalsPanel.className = "planning-panel";
-    const goalsHeader = document.createElement("div");
-    goalsHeader.className = "planning-panel-header";
-    const goalsTitle = document.createElement("div");
-    goalsTitle.className = "planning-panel-title";
-    goalsTitle.textContent = "Financial goals";
-    goalsHeader.appendChild(goalsTitle);
-    const form = document.createElement("div");
-    form.className = "goal-form";
-    [["goal-name","text","Goal name"],["goal-target","number","Target ₹"],["goal-current","number","Current ₹"],["goal-date","date","Target date"],["goal-category","text","Category"]].forEach(([id,type,placeholder]) => {
-      const input = document.createElement("input");
-      input.id = id; input.type = type; input.placeholder = placeholder;
-      input.setAttribute("aria-label", placeholder);
-      if (id === "goal-category") input.value = "Savings";
-      if (type === "number") { input.min = id === "goal-target" ? "0.01" : "0"; input.step = "0.01"; }
-      form.appendChild(input);
-    });
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.className = "btn-add";
-    addButton.textContent = "Add goal";
-    addButton.addEventListener("click", createGoal);
-    form.appendChild(addButton);
-    const goalsList = document.createElement("div");
-    goalsList.id = "goals-list";
-    goalsPanel.append(goalsHeader, form, goalsList);
-
-    const reportPanel = document.createElement("section");
-    reportPanel.className = "planning-panel";
-    const reportHeader = document.createElement("div");
-    reportHeader.className = "planning-panel-header";
-    const reportTitle = document.createElement("div");
-    reportTitle.className = "planning-panel-title";
-    reportTitle.textContent = "Monthly report";
-    const month = document.createElement("input");
-    month.id = "report-month"; month.type = "month";
-    month.setAttribute("aria-label", "Report month");
-    month.addEventListener("change", loadMonthlyReport);
-    reportHeader.append(reportTitle, month);
-    const report = document.createElement("div"); report.id = "monthly-report";
-    reportPanel.append(reportHeader, report);
-
-    const columns = document.createElement("div");
-    columns.className = "planning-columns";
-    columns.append(goalsPanel, reportPanel);
-    page.append(hero, wealth, columns);
-    $("content").appendChild(page);
+    pageNavigationGeneration += 1;
+    void getOptionalPages()
+      .then(pages => pages.activateInsights())
+      .catch(error => showToast("Could not load insights: " + error.message, "error"));
   }
 
   function activatePlanning() {
-    currentPage = "planning";
-    document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
-    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
-    $("page-planning").classList.add("active");
-    $("planning-nav-item").classList.add("active");
-    $("topbar-title").textContent = "Planning & Wealth";
-    $("content").style.overflow = "";
-    $("content").style.padding = "";
-    loadPlanningPage();
+    pageNavigationGeneration += 1;
+    void getOptionalPages()
+      .then(pages => pages.activatePlanning())
+      .catch(error => showToast("Could not load planning: " + error.message, "error"));
   }
 
-  async function loadPlanningPage() {
-    createPlanningPage();
-    if (!$("report-month").value) $("report-month").value = new Date().toISOString().slice(0, 7);
-    try {
-      const [goals, netWorth, history] = await Promise.all([
-        apiFetch("/goals"),
-        apiFetch("/api/net-worth"),
-        apiFetch("/api/net-worth/history?months=12")
-      ]);
-      goalsData = goals;
-      netWorthData = netWorth;
-      netWorthHistory = history.history || [];
-      renderGoals();
-      renderNetWorth();
-      await loadMonthlyReport();
-    } catch (error) { showToast("Could not load planning data: " + error.message, "error"); }
+  function loadInsightsPage() {
+    return getOptionalPages()
+      .then(pages => pages.loadInsightsPage())
+      .catch(error => showToast("Could not load insights: " + error.message, "error"));
   }
 
-  function renderNetWorth() {
-    const card = $("net-worth-card"); if (!card) return;
-    while (card.firstChild) card.removeChild(card.firstChild);
-    const header = document.createElement("div"); header.className = "wealth-header";
-    const title = document.createElement("div"); title.className = "planning-panel-title"; title.textContent = "Current net worth";
-    const note = document.createElement("span"); note.className = "wealth-note"; note.textContent = "Derived from account balances";
-    header.append(title, note);
-    const summary = document.createElement("div"); summary.className = "wealth-summary";
-    [["Net worth",netWorthData.net_worth,"net"],["Assets",netWorthData.asset_total,"asset"],["Liabilities",netWorthData.liability_total,"liability"]].forEach(([label,value,type]) => {
-      const metric = document.createElement("div"); metric.className = "wealth-metric";
-      const l = document.createElement("div"); l.className = "wealth-metric-label"; l.textContent = label;
-      const v = document.createElement("div"); v.className = "wealth-metric-value " + type; v.textContent = fmtDec(value);
-      metric.append(l,v); summary.appendChild(metric);
-    });
-    let trendSection;
-    if (netWorthHistory.length) {
-      trendSection = document.createElement("div");
-      trendSection.className = "wealth-trend-wrap";
-      const trendTitle = document.createElement("div");
-      trendTitle.className = "report-list-title";
-      trendTitle.textContent = "Net worth trend";
-      const canvas = document.createElement("canvas");
-      canvas.id = "net-worth-chart";
-      canvas.height = 90;
-      canvas.setAttribute("role", "img");
-      canvas.setAttribute("aria-label", "Net worth trend for the last twelve months");
-      trendSection.append(trendTitle, canvas);
-    } else {
-      trendSection = document.createElement("div");
-      trendSection.className = "wealth-trend-empty";
-      trendSection.textContent = "Your net worth trend will appear after you add financial accounts and record balances over time.";
-    }
-
-    const breakdown = document.createElement("div"); breakdown.className = "wealth-breakdown";
-    [...(netWorthData.assets || []), ...(netWorthData.liabilities || [])].forEach(item => {
-      const row=document.createElement("div"); row.className="wealth-row";
-      const name=document.createElement("span"); name.textContent=item.name;
-      const kind=document.createElement("span"); kind.className="wealth-type"; kind.textContent=item.type;
-      const amount=document.createElement("strong"); amount.textContent=fmtDec(item.type === "credit" ? -item.balance : item.balance);
-      row.append(name,kind,amount); breakdown.appendChild(row);
-    });
-    if (netWorthChart) netWorthChart.destroy();
-    const chart = $("net-worth-chart");
-    if (chart && typeof Chart !== "undefined" && netWorthHistory.length) {
-      netWorthChart = new Chart(chart.getContext("2d"), {
-        type: "line",
-        data: {
-          labels: netWorthHistory.map(item => item.month),
-          datasets: [{
-            data: netWorthHistory.map(item => item.net_worth),
-            borderColor: "#22c55e",
-            backgroundColor: "rgba(34,197,94,.08)",
-            borderWidth: 2,
-            fill: true,
-            tension: .35,
-            pointRadius: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { display: false },
-            y: { display: false }
-          }
-        }
-      });
-    }
-
-    card.append(header,summary,trendSection,breakdown);
+  function loadPlanningPage() {
+    return getOptionalPages()
+      .then(pages => pages.loadPlanningPage())
+      .catch(error => showToast("Could not load planning: " + error.message, "error"));
   }
-
-  function renderGoals() {
-    const list=$("goals-list"); if(!list) return;
-    while(list.firstChild) list.removeChild(list.firstChild);
-    if(!goalsData.length){ const empty=document.createElement("div"); empty.className="planning-empty"; empty.textContent="No financial goals yet. Add your first target above."; list.appendChild(empty); return; }
-    goalsData.forEach(goal => {
-      const item=document.createElement("div"); item.className="goal-item";
-      const top=document.createElement("div"); top.className="goal-top";
-      const info=document.createElement("div");
-      const name=document.createElement("strong"); name.textContent=goal.name;
-      const meta=document.createElement("div"); meta.className="goal-meta"; meta.textContent=goal.category+" · "+(goal.target_date ? "Target "+goal.target_date : "No target date");
-      info.append(name,meta);
-      const status=document.createElement("span"); status.className="goal-status "+goal.status; status.textContent=goal.status;
-      top.append(info,status);
-      const pr=document.createElement("div"); pr.className="goal-progress-row";
-      const amount=document.createElement("span"); amount.textContent=fmtDec(goal.current_amount)+" / "+fmtDec(goal.target_amount);
-      const pct=document.createElement("strong"); pct.textContent=Number(goal.progress_percent).toFixed(0)+"%"; pr.append(amount,pct);
-      const bar=document.createElement("div"); bar.className="goal-bar"; const fill=document.createElement("div"); fill.className="goal-fill"; fill.style.width=Math.min(100,Number(goal.progress_percent)||0).toFixed(1)+"%"; bar.appendChild(fill);
-      const footer=document.createElement("div"); footer.className="goal-footer";
-      const plan=document.createElement("span"); plan.textContent=goal.monthly_required ? fmtDec(goal.monthly_required)+"/month needed" : (goal.status==="completed" ? "Goal completed" : "Set a target date for a monthly plan");
-      const actions=document.createElement("div");
-      const update=document.createElement("button");
-      update.type = "button"; update.className="goal-action"; update.textContent="Update"; update.addEventListener("click",()=>updateGoalPrompt(goal));
-      const remove=document.createElement("button");
-      remove.type = "button"; remove.className="goal-action danger"; remove.textContent="Delete"; remove.addEventListener("click",()=>deleteGoal(goal.id));
-      actions.append(update,remove); footer.append(plan,actions);
-      item.append(top,pr,bar,footer); list.appendChild(item);
-    });
-  }
-
-  async function createGoal(){
-    const name=$("goal-name").value.trim(); const target=Number($("goal-target").value); const current=Number($("goal-current").value||0);
-    const targetDate=$("goal-date").value||null; const category=$("goal-category").value.trim()||"Savings";
-    if(!name||!Number.isFinite(target)||target<=0||!Number.isFinite(current)||current<0||current>target){showToast("Enter a valid goal and keep current amount at or below target.","error");return;}
-    try{
-      await apiFetch("/goals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,target_amount:target,current_amount:current,target_date:targetDate,category})});
-      ["goal-name","goal-target","goal-current","goal-date"].forEach(id=>$(id).value=""); $("goal-category").value="Savings";
-      await loadPlanningPage(); showToast("Goal created.");
-    }catch(error){showToast(error.message,"error");}
-  }
-
-  async function updateGoalPrompt(goal){
-    const raw=prompt("Update saved amount for "+goal.name+" (current: "+goal.current_amount+").",String(goal.current_amount));
-    if(raw===null)return; const current=Number(raw);
-    if(!Number.isFinite(current)||current<0||current>goal.target_amount){showToast("Enter a valid saved amount.","error");return;}
-    try{await apiFetch("/goals/"+goal.id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({current_amount:current})}); await loadPlanningPage(); showToast("Goal updated.");}catch(error){showToast(error.message,"error");}
-  }
-
-  async function deleteGoal(id){
-    try{await apiFetch("/goals/"+id,{method:"DELETE"}); await loadPlanningPage(); showToast("Goal deleted.");}catch(error){showToast(error.message,"error");}
-  }
-
-  async function loadMonthlyReport(){
-    const month=$("report-month")?.value; if(!month)return;
-    try{monthlyReportData=await apiFetch("/api/reports/monthly?month="+encodeURIComponent(month)); renderMonthlyReport();}catch(error){showToast("Could not load monthly report: "+error.message,"error");}
-  }
-
-  function renderMonthlyReport(){
-    const container=$("monthly-report"); if(!container)return; while(container.firstChild)container.removeChild(container.firstChild);
-    const metrics=document.createElement("div"); metrics.className="report-metrics";
-    [["Income",monthlyReportData.income],["Expenses",monthlyReportData.expense],["Net cash flow",monthlyReportData.net_cash_flow],["Savings rate",Number(monthlyReportData.savings_rate||0).toFixed(1)+"%"]].forEach(([label,value])=>{
-      const metric=document.createElement("div"); metric.className="report-metric";
-      const l=document.createElement("div"); l.className="report-label"; l.textContent=label;
-      const v=document.createElement("div"); v.className="report-value"; v.textContent=typeof value==="number"?fmtDec(value):String(value); metric.append(l,v); metrics.appendChild(metric);
-    });
-    const compare=document.createElement("div"); compare.className="report-compare";
-    compare.textContent="Previous month: "+fmt(monthlyReportData.previous_month?.income||0)+" income · "+fmt(monthlyReportData.previous_month?.expense||0)+" expenses · "+fmt(monthlyReportData.previous_month?.net_cash_flow||0)+" net";
-    const list=document.createElement("div"); list.className="report-list"; const title=document.createElement("div"); title.className="report-list-title"; title.textContent="Top spending categories"; list.appendChild(title);
-    (monthlyReportData.top_categories||[]).forEach(item=>{const row=document.createElement("div");row.className="report-row";const l=document.createElement("span");l.textContent=item.category;const v=document.createElement("strong");v.textContent=fmt(item.amount);row.append(l,v);list.appendChild(row);});
-    const recurring=document.createElement("div"); recurring.className="report-recurring"; recurring.textContent=(monthlyReportData.recurring_expenses||[]).length ? "Recurring signals detected: "+monthlyReportData.recurring_expenses.length : "No recurring expense signals detected.";
-    container.append(metrics,compare,list,recurring);
-  }
-  function goPage(name, element) {
+  async function goPage(name, element) {
+    const navigationGeneration = ++pageNavigationGeneration;
     if (name === "insights") {
       activateInsights();
       return;
@@ -3402,6 +2701,14 @@
       activatePlanning();
       return;
     }
+
+    try {
+      await ensurePageLoaded(name);
+    } catch (error) {
+      showToast("Could not load page: " + error.message, "error");
+      return;
+    }
+    if (navigationGeneration !== pageNavigationGeneration) return;
 
     currentPage = name;
     document.querySelectorAll(".page").forEach(page => page.classList.remove("active"));
@@ -3426,7 +2733,7 @@
     if (name === "ai-page") {
       content.style.overflow = "hidden";
       content.style.padding = "0";
-      void startNewAIChat();
+      activateAIPage();
     } else {
       content.style.overflow = "";
       content.style.padding = "";
@@ -3441,17 +2748,8 @@
     const savedTheme = localStorage.getItem("theme") || "dark";
     applyTheme(savedTheme);
 
-    createInsightsPage();
-    createPlanningPage();
-
     $("planning-nav-item")?.addEventListener("click", activatePlanning);
     $("insights-nav-item")?.addEventListener("click", activateInsights);
-    $("ai-history-toggle")?.addEventListener("click", openAIHistory);
-    $("ai-history-close")?.addEventListener("click", () => {
-      if ($("ai-history-panel")) $("ai-history-panel").hidden = true;
-    });
-    $("ai-new-chat")?.addEventListener("click", () => void startNewAIChat());
-    $("ai-history-search")?.addEventListener("input", () => renderAIHistory(aiHistoryItems));
 
     $("modal")?.addEventListener("click", event => {
       if (event.target === $("modal")) closeModal();
@@ -3488,18 +2786,15 @@
       }
     });
     $("search-input")?.addEventListener("input", renderTransactions);
-    document.querySelector(".transaction-filter-row")?.addEventListener("click", event => {
+    $("content")?.addEventListener("click", event => {
       const button = event.target.closest(".txn-filter-btn");
       if (button?.dataset.filter) setTransactionTypeFilter(button.dataset.filter);
-    });
-    $("view-all-expenses")?.addEventListener("click", () => {
-      if (selectedRange === "1M") showAllExpenses();
-      else showMonthlyExpenses();
+      if (event.target.closest("#view-all-expenses")) {
+        if (selectedRange === "1M") showAllExpenses();
+        else showMonthlyExpenses();
+      }
     });
 
-    $("r-next-date").value = localDateValue();
-    populateAccountSelect("r-account");
-    $("t-date").value = new Date().toISOString().slice(0, 10);
     $("m-date").value = new Date().toISOString().slice(0, 10);
     $("search-input")?.addEventListener("keydown", event => {
       if (event.key === "Escape") {
@@ -3508,7 +2803,7 @@
       }
     });
 
-    refreshAll();
+    refreshDashboard();
   }
 
   // Preserve the existing inline onclick API.

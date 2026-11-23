@@ -14,8 +14,7 @@
   border-radius:14px;
   background:rgba(24,24,27,.97);
   color:#f4f4f5;
-  box-shadow:0 12px 36px rgba(0,0,0,.35);
-  backdrop-filter:blur(14px);
+  box-shadow:0 4px 16px rgba(0,0,0,.22);
 }
 .pwa-banner-message{margin:0;font-size:13px;line-height:1.45;flex:1;min-width:0}
 .pwa-banner-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}

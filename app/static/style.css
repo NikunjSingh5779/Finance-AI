@@ -479,7 +479,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
   padding:28px;
   width:440px;
   max-width:90vw;
-  box-shadow:0 10px 40px rgba(0,0,0,0.4);
+  box-shadow:0 6px 24px rgba(0,0,0,0.28);
 }
 
 .modal-title{
@@ -952,7 +952,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
   border: 1px solid var(--border, #29292e);
   border-radius: 20px;
   background: var(--bg2, #131315);
-  box-shadow: 0 24px 80px rgba(0,0,0,.32);
+  box-shadow: 0 12px 36px rgba(0,0,0,.24);
 }
 
 .auth-brand {
@@ -1072,7 +1072,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
   border: 1px solid var(--border2);
   border-radius: 14px;
   background: var(--bg2);
-  box-shadow: 0 18px 50px rgba(0,0,0,.42);
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
 }
 .profile-menu-heading { padding: 10px 10px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .profile-menu-kicker { display:block; font-size:9px; font-weight:700; letter-spacing:.12em; color:var(--text3); margin-bottom:4px; }
@@ -2477,7 +2477,7 @@ textarea:focus-visible {
 .ai-history-button,.ai-new-chat-button{min-height:36px;padding:7px 13px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}
 .ai-history-button:hover{border-color:var(--green);color:var(--green)}
 .ai-new-chat-button{border-color:var(--green);background:var(--green);color:#06140b}
-.ai-history-panel{position:absolute;z-index:250;top:88px;right:20px;width:min(390px,calc(100vw - 32px));max-height:min(70vh,620px);padding:14px;border:1px solid var(--border2);border-radius:16px;background:var(--bg2);box-shadow:0 20px 60px rgba(0,0,0,.42);display:flex;flex-direction:column;gap:12px}
+.ai-history-panel{position:absolute;z-index:250;top:88px;right:20px;width:min(390px,calc(100vw - 32px));max-height:min(70vh,620px);padding:14px;border:1px solid var(--border2);border-radius:16px;background:var(--bg2);box-shadow:0 8px 24px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:12px}
 .ai-history-panel[hidden]{display:none!important}
 .ai-history-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .ai-history-panel-title{font-size:14px;font-weight:750;color:var(--text)}
