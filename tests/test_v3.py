@@ -155,9 +155,9 @@ def test_recurring_schedule_can_be_created_and_listed(v3_client):
     assert [entry["id"] for entry in listed.json()] == [item["id"]]
 
 
-def test_recurring_inline_handler_is_exported_to_the_pwa():
+def test_recurring_inline_handler_is_exported_to_the_lazy_pwa_page():
     root = Path(__file__).resolve().parents[1]
-    html = (root / "app" / "static" / "index.html").read_text(
+    html = (root / "app" / "static" / "pages" / "recurring.html").read_text(
         encoding="utf-8"
     )
     script = (root / "app" / "static" / "app.js").read_text(
