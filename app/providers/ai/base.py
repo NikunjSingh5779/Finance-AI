@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
 
-DEFAULT_OUTPUT_TOKENS = 1024
+DEFAULT_OUTPUT_TOKENS = 2048
 MAX_OUTPUT_TOKENS = 8192
 MIN_OUTPUT_TOKENS = 512
 
