@@ -159,7 +159,7 @@ def test_openrouter_empty_free_router_completion_falls_back_to_verified_free_mod
     )
 
 
-def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypatch):
+def test_openrouter_free_router_streams_with_verified_free_catalogue_fallback(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
     monkeypatch.delenv("OPENROUTER_FREE_MODELS", raising=False)
     provider = OpenRouterProvider("test-key")
@@ -184,7 +184,9 @@ def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypat
 
         def get(self, url, timeout):
             self.get_calls += 1
-            raise AssertionError("The dedicated free router must not need /models metadata")
+            return FakeResponse({"data": [
+                {"id": "verified/free", "pricing": {"prompt": "0", "completion": "0"}},
+            ]})
 
         def post(self, url, json, timeout, **kwargs):
             assert json["model"] == "openrouter/free"
@@ -193,4 +195,4 @@ def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypat
     session = FreeRouterSession()
     provider.session = session
     assert "".join(provider.stream_response("Explain savings.")) == "Free response"
-    assert session.get_calls == 0
+    assert session.get_calls == 1
