@@ -47,10 +47,16 @@ def test_partial_stream_failure_does_not_duplicate_completion(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER_TOTAL_TIMEOUT_SECONDS", "60")
     monkeypatch.setenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "30")
     service = AIService.__new__(AIService)
+    received = []
+
+    async def on_delta(value):
+        received.append(value)
 
     with pytest.raises(Exception, match="ended early"):
         asyncio.run(service._generate_with_budget(
             [PartialStreamFailureProvider()],
             "How can I improve savings?",
-            None,
+            on_delta,
         ))
+
+    assert received == ["Partial answer"]
