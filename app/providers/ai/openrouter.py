@@ -181,9 +181,9 @@ class OpenRouterProvider(AIProvider):
             if response.status_code in {401, 403}:
                 raise OpenRouterAuthenticationError(
                     "OpenRouter rejected OPENROUTER_API_KEY "
-                    f"(HTTP {response.status_code}). Create or verify an active key "
-                    "at https://openrouter.ai/keys and update "
-                    "OPENROUTER_API_KEY in the Render service environment."
+                    f"(HTTP {response.status_code}). Create a fresh key at "
+                    "https://openrouter.ai/keys and update OPENROUTER_API_KEY "
+                    "in the Render service environment."
                 )
             if not response.ok:
                 body = response.text[:300].replace("\n", " ")
