@@ -61,7 +61,7 @@ class OpenCodeProvider(AIProvider):
             response = self.session.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
-                timeout=(5, 15),
+                timeout=(5, 35),
             )
             if not response.ok:
                 raise RuntimeError(
@@ -116,7 +116,7 @@ class OpenCodeProvider(AIProvider):
                 "temperature": 0.7,
                 "stream": True,
             },
-            timeout=(5, 15),
+            timeout=(5, 35),
             stream=True,
         )
         try:
