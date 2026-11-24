@@ -226,6 +226,26 @@
     setAuthSession(null);
   }
 
+  // Keep the in-memory session aligned with the rotating refresh token stored
+  // by another FinanceAI tab or installed PWA window.
+  window.addEventListener("storage", event => {
+    if (event.key !== "financeai.auth.session") return;
+    if (!event.newValue) {
+      authSession = null;
+      updateUserUI();
+      return;
+    }
+    try {
+      const nextSession = JSON.parse(event.newValue);
+      if (hasUsableAuthSession(nextSession)) {
+        authSession = nextSession;
+        updateUserUI();
+      }
+    } catch (_) {
+      // Ignore malformed cross-tab updates; startup validation handles storage.
+    }
+  });
+
   function updateUserUI() {
     const user = authSession?.user || {};
     const metadata = user.user_metadata || {};
@@ -395,49 +415,86 @@
 
   async function refreshAuthSession() {
     if (authRefreshPromise) return authRefreshPromise;
-    const refreshToken = typeof authSession?.refresh_token === "string"
-      ? authSession.refresh_token.trim()
-      : "";
-    if (refreshToken.length < 20) {
-      // A malformed persisted token cannot be refreshed. Clear it locally and
-      // let the caller return the user to sign-in instead of retrying a 422.
-      clearAuthSession();
-      return false;
-    }
     authRefreshPromise = (async () => {
-      let response;
-      try {
-        response = await fetch(API + "/auth/refresh", {
-          method: "POST",
-          headers: { Accept: "application/json", "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-      } catch (_) {
-        const error = new Error("FinanceAI is temporarily unreachable. Your saved session has been kept.");
-        error.status = 0;
-        throw error;
-      }
+      const refreshWithLatestStoredSession = async () => {
+        // Another tab may already have rotated the refresh token. Always prefer
+        // the newest persisted session before attempting a refresh.
+        let latest = authSession;
+        try {
+          const stored = localStorage.getItem("financeai.auth.session");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (hasUsableAuthSession(parsed)) latest = parsed;
+          }
+        } catch (_) {
+          // Fall back to the validated in-memory session.
+        }
+        if (latest && latest.refresh_token !== authSession?.refresh_token) {
+          authSession = latest;
+          updateUserUI();
+        }
+        const refreshToken = typeof latest?.refresh_token === "string"
+          ? latest.refresh_token.trim()
+          : "";
+        if (refreshToken.length < 20) {
+          clearAuthSession();
+          return false;
+        }
 
-      if (response.status === 400 || response.status === 401 || response.status === 422) {
-        clearAuthSession();
-        return false;
-      }
-      if (!response.ok) {
-        let data = {};
-        try { data = await response.json(); } catch (_) {}
-        const error = new Error(readableAuthError(data, response.statusText || "Could not refresh your session."));
-        error.status = response.status;
-        throw error;
-      }
+        let response;
+        try {
+          response = await fetch(API + "/auth/refresh", {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+        } catch (_) {
+          const error = new Error("FinanceAI is temporarily unreachable. Your saved session has been kept.");
+          error.status = 0;
+          throw error;
+        }
 
-      const next = await response.json();
-      if (!next.access_token || !next.refresh_token) {
-        const error = new Error("The session refresh response was incomplete.");
-        error.status = 502;
-        throw error;
+        if (response.status === 400 || response.status === 401 || response.status === 422) {
+          // Do not erase a newer token written by another tab while this request
+          // was in flight.
+          let storedToken = "";
+          try {
+            storedToken = JSON.parse(localStorage.getItem("financeai.auth.session") || "{}").refresh_token || "";
+          } catch (_) {}
+          if (storedToken && storedToken !== refreshToken) {
+            const newer = JSON.parse(localStorage.getItem("financeai.auth.session"));
+            if (hasUsableAuthSession(newer)) {
+              authSession = newer;
+              updateUserUI();
+              return true;
+            }
+          }
+          clearAuthSession();
+          return false;
+        }
+        if (!response.ok) {
+          let data = {};
+          try { data = await response.json(); } catch (_) {}
+          const error = new Error(readableAuthError(data, response.statusText || "Could not refresh your session."));
+          error.status = response.status;
+          throw error;
+        }
+
+        const next = await response.json();
+        if (!next.access_token || !next.refresh_token) {
+          const error = new Error("The session refresh response was incomplete.");
+          error.status = 502;
+          throw error;
+        }
+        setAuthSession(next);
+        return true;
+      };
+
+      // Web Locks serialize refresh-token rotation across same-origin PWA tabs.
+      if (navigator.locks?.request) {
+        return navigator.locks.request("financeai-auth-refresh", refreshWithLatestStoredSession);
       }
-      setAuthSession(next);
-      return true;
+      return refreshWithLatestStoredSession();
     })();
 
     try {
