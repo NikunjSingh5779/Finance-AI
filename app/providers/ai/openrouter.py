@@ -105,7 +105,15 @@ class OpenRouterProvider(AIProvider):
         # to eligible free models, so validating the alias against /models
         # incorrectly rejects this supported zero-cost route.
         if configured_model == "openrouter/free":
-            return [configured_model]
+            # Try the official free router first. If it returns an empty or
+            # failed completion, fall back only to catalogue models whose
+            # prompt AND completion prices are explicitly zero.
+            if self.available_models is None:
+                self.available_models = self._discover_models()
+            verified_free = self.available_models or []
+            return [configured_model, *[
+                model for model in verified_free if model != configured_model
+            ][:5]]
 
         allowlisted = configured_free_routes("OPENROUTER_FREE_MODELS")
         if self.available_models is None:
