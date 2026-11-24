@@ -1060,10 +1060,12 @@ class AIService:
                     # Log provider type and exception class only. Provider
                     # exception bodies can contain upstream diagnostic data;
                     # never log request headers, tokens, or prompt contents.
+                    cause = exc.__cause__
+                    cause_name = type(cause).__name__ if cause is not None else type(exc).__name__
                     logger.warning(
                         "AI provider %s stream attempt failed (%s)",
                         provider_name,
-                        type(exc).__name__,
+                        cause_name,
                     )
                     if getattr(exc, "emitted", False):
                         raise ProviderUnavailableError(
@@ -1071,10 +1073,15 @@ class AIService:
                             "The free AI response ended early. Please retry.",
                         ) from exc
                     if time.monotonic() >= provider_deadline:
-                        failures.append(f"{provider_name}: stream timed out ({type(exc).__name__})")
+                        failures.append(f"{provider_name}: stream timed out ({cause_name})")
                         continue
-                    failures.append(f"{provider_name}: streaming failed ({type(exc).__name__})")
-                    continue
+                    # Streaming is an optimization, not a hard dependency.
+                    # If no text has reached the client, retry this same
+                    # verified-free provider using its regular completion
+                    # endpoint before moving to another provider.
+                    failures.append(
+                        f"{provider_name}: streaming failed ({cause_name}); trying completion fallback"
+                    )
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
