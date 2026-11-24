@@ -119,13 +119,19 @@ def test_openrouter_free_router_is_allowed_without_model_catalog_lookup(monkeypa
     provider = OpenRouterProvider("test-key")
 
     class FreeRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__([])
+            self.get_calls = 0
+
         def get(self, url, timeout):
+            self.get_calls += 1
             raise AssertionError("The dedicated free router must not need /models metadata")
 
-    session = FreeRouterSession([])
+    session = FreeRouterSession()
     provider.session = session
 
     assert provider._free_model_candidates() == ["openrouter/free"]
+    assert session.get_calls == 0
 
 
 def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypatch):
@@ -147,12 +153,19 @@ def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypat
             self.closed = True
 
     class FreeRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__([])
+            self.get_calls = 0
+
         def get(self, url, timeout):
+            self.get_calls += 1
             raise AssertionError("The dedicated free router must not need /models metadata")
 
         def post(self, url, json, timeout, **kwargs):
             assert json["model"] == "openrouter/free"
             return StreamResponse()
 
-    provider.session = FreeRouterSession([])
+    session = FreeRouterSession()
+    provider.session = session
     assert "".join(provider.stream_response("Explain savings.")) == "Free response"
+    assert session.get_calls == 0
