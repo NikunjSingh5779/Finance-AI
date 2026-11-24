@@ -112,6 +112,7 @@ def test_opencode_and_omniroute_fail_closed_without_exact_free_allowlists(monkey
     with pytest.raises(FreeModelConfigurationError):
         list(omniroute.stream_response("Explain a budget."))
 
+
 def test_openrouter_free_router_is_allowed_without_model_catalog_lookup(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
     monkeypatch.delenv("OPENROUTER_FREE_MODELS", raising=False)
