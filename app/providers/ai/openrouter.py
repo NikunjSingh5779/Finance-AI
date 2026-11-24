@@ -26,6 +26,11 @@ class OpenRouterAuthenticationError(RuntimeError):
 class OpenRouterProvider(AIProvider):
     """OpenAI-compatible OpenRouter client restricted to free models."""
 
+    # The free-model router has unreliable SSE streaming on some routed
+    # models. Use the bounded completion path instead of spending the request
+    # budget on a stream that frequently closes without content.
+    supports_streaming = False
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://openrouter.ai/api/v1"
@@ -176,7 +181,7 @@ class OpenRouterProvider(AIProvider):
                     "max_tokens": token_budget,
                     "temperature": 0.7,
                 },
-                timeout=(5, 35),
+                timeout=(5, 55),
             )
             if response.status_code in {401, 403}:
                 raise OpenRouterAuthenticationError(
@@ -252,7 +257,7 @@ class OpenRouterProvider(AIProvider):
                         "temperature": 0.7,
                         "stream": True,
                     },
-                    timeout=(5, 35),
+                    timeout=(5, 55),
                     stream=True,
                 )
                 try:
