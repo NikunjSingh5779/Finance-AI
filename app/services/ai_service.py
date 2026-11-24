@@ -1022,10 +1022,10 @@ class AIService:
     ) -> str:
         """Use a bounded provider fallback chain, yielding real deltas when possible."""
         total_timeout = _bounded_int_setting(
-            "AI_PROVIDER_TOTAL_TIMEOUT_SECONDS", 30, minimum=5, maximum=45
+            "AI_PROVIDER_TOTAL_TIMEOUT_SECONDS", 60, minimum=10, maximum=90
         )
         attempt_timeout = _bounded_int_setting(
-            "AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", 15, minimum=3, maximum=30
+            "AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", 30, minimum=5, maximum=60
         )
         deadline = time.monotonic() + total_timeout
         failures: list[str] = []

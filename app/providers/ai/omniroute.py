@@ -119,7 +119,7 @@ class OmniRouteProvider(AIProvider):
             response = self.session.post(
                 self.responses_url,
                 json=payload,
-                timeout=(5, 15),
+                timeout=(5, 35),
             )
             if not response.ok:
                 raise RuntimeError(
@@ -191,7 +191,7 @@ class OmniRouteProvider(AIProvider):
         response = self.session.post(
             self.responses_url,
             json=payload,
-            timeout=(5, 15),
+            timeout=(5, 35),
             stream=True,
         )
         try:
