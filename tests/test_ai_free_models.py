@@ -113,25 +113,50 @@ def test_opencode_and_omniroute_fail_closed_without_exact_free_allowlists(monkey
         list(omniroute.stream_response("Explain a budget."))
 
 
-def test_openrouter_official_free_router_skips_catalogue_lookup(monkeypatch):
+def test_openrouter_official_free_router_uses_only_catalogue_verified_fallbacks(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
     monkeypatch.delenv("OPENROUTER_FREE_MODELS", raising=False)
     provider = OpenRouterProvider("test-key")
 
     class FreeRouterSession(RouterSession):
-        def __init__(self):
-            super().__init__([])
-            self.get_calls = 0
-
         def get(self, url, timeout):
-            self.get_calls += 1
-            raise AssertionError("The dedicated free router must not need /models metadata")
+            assert url.endswith("/models")
+            return FakeResponse({"data": [
+                {"id": "paid/model", "pricing": {"prompt": "0.001", "completion": "0.002"}},
+                {"id": "verified/free-a", "pricing": {"prompt": "0", "completion": "0"}},
+                {"id": "verified/free-b", "pricing": {"prompt": "0", "completion": "0"}},
+            ]})
 
-    session = FreeRouterSession()
-    provider.session = session
+    provider.session = FreeRouterSession([])
+    assert provider._free_model_candidates() == [
+        "openrouter/free", "verified/free-a", "verified/free-b"
+    ]
 
-    assert provider._free_model_candidates() == ["openrouter/free"]
-    assert session.get_calls == 0
+
+def test_openrouter_empty_free_router_completion_falls_back_to_verified_free_model(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    provider = OpenRouterProvider("test-key")
+
+    class FallbackSession(RouterSession):
+        def get(self, url, timeout):
+            return FakeResponse({"data": [
+                {"id": "paid/model", "pricing": {"prompt": "0.001", "completion": "0.002"}},
+                {"id": "verified/free", "pricing": {"prompt": "0", "completion": "0"}},
+            ]})
+
+        def post(self, url, json, timeout, **kwargs):
+            if json["model"] == "openrouter/free":
+                return FakeResponse({"choices": [{"message": {"content": ""}}]})
+            assert json["model"] == "verified/free"
+            return FakeResponse({"choices": [{
+                "message": {"content": "Start by setting a weekly savings target."},
+                "finish_reason": "stop",
+            }]})
+
+    provider.session = FallbackSession([])
+    assert provider.generate_response("How can I improve savings?") == (
+        "Start by setting a weekly savings target."
+    )
 
 
 def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypatch):
