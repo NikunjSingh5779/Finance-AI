@@ -169,7 +169,7 @@ class OpenRouterProvider(AIProvider):
                     "max_tokens": token_budget,
                     "temperature": 0.7,
                 },
-                timeout=(5, 15),
+                timeout=(5, 35),
             )
             if response.status_code == 401:
                 raise OpenRouterAuthenticationError(
@@ -244,7 +244,7 @@ class OpenRouterProvider(AIProvider):
                         "temperature": 0.7,
                         "stream": True,
                     },
-                    timeout=(5, 15),
+                    timeout=(5, 35),
                     stream=True,
                 )
                 try:
