@@ -1025,10 +1025,10 @@ class AIService:
     ) -> str:
         """Use a bounded provider fallback chain, yielding real deltas when possible."""
         total_timeout = _bounded_int_setting(
-            "AI_PROVIDER_TOTAL_TIMEOUT_SECONDS", 60, minimum=10, maximum=90
+            "AI_PROVIDER_TOTAL_TIMEOUT_SECONDS", 90, minimum=10, maximum=120
         )
         attempt_timeout = _bounded_int_setting(
-            "AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", 30, minimum=5, maximum=60
+            "AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", 60, minimum=5, maximum=80
         )
         deadline = time.monotonic() + total_timeout
         failures: list[str] = []
@@ -1042,7 +1042,7 @@ class AIService:
             provider_name = provider.__class__.__name__
             stream_factory = getattr(provider, "stream_response", None)
 
-            if on_delta and callable(stream_factory):
+            if on_delta and callable(stream_factory) and getattr(provider, "supports_streaming", True):
                 try:
                     reply = await _consume_provider_stream(
                         provider,
