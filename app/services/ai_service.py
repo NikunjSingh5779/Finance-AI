@@ -1,6 +1,7 @@
 """Application service for AI-assisted financial advice."""
 
 import asyncio
+import logging
 import os
 import re
 import threading
@@ -20,6 +21,8 @@ from app.repositories.budget_repository import BudgetRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.services.web_research_service import get_web_researcher
 
+
+logger = logging.getLogger(__name__)
 
 DeltaCallback = Callable[[str], Awaitable[None] | None]
 _STREAM_END = object()
@@ -1054,15 +1057,23 @@ class AIService:
                     # supporting server-sent generation.
                     pass
                 except Exception as exc:
+                    # Log provider type and exception class only. Provider
+                    # exception bodies can contain upstream diagnostic data;
+                    # never log request headers, tokens, or prompt contents.
+                    logger.warning(
+                        "AI provider %s stream attempt failed (%s)",
+                        provider_name,
+                        type(exc).__name__,
+                    )
                     if getattr(exc, "emitted", False):
                         raise ProviderUnavailableError(
                             "ai",
                             "The free AI response ended early. Please retry.",
                         ) from exc
                     if time.monotonic() >= provider_deadline:
-                        failures.append(f"{provider_name}: stream timed out")
+                        failures.append(f"{provider_name}: stream timed out ({type(exc).__name__})")
                         continue
-                    failures.append(f"{provider_name}: streaming failed")
+                    failures.append(f"{provider_name}: streaming failed ({type(exc).__name__})")
                     continue
 
             remaining = deadline - time.monotonic()
@@ -1079,10 +1090,17 @@ class AIService:
                     await self._emit_delta(on_delta, reply)
                     return reply
                 failures.append(f"{provider_name}: empty response")
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "AI provider %s generation attempt failed (%s)",
+                    provider_name,
+                    type(exc).__name__,
+                )
                 # Provider failures can fall through only while the shared
                 # deadline still leaves a useful response window.
-                failures.append(f"{provider_name}: generation failed")
+                failures.append(
+                    f"{provider_name}: generation failed ({type(exc).__name__})"
+                )
 
         if time.monotonic() >= deadline:
             message = "The free AI providers did not respond before the time limit. Please retry."
@@ -1090,6 +1108,10 @@ class AIService:
             message = "No verified free AI provider could complete the request. Please retry shortly."
         else:
             message = "No verified free AI provider is available right now."
+        logger.error(
+            "All configured free AI providers failed: %s",
+            ", ".join(failures) if failures else "no provider candidates",
+        )
         raise ProviderUnavailableError("ai", message)
 
     async def stream_financial_advice(

@@ -95,6 +95,13 @@ class OpenRouterProvider(AIProvider):
                 "OpenRouter is disabled until OPENROUTER_MODEL names a free model."
             )
 
+        # OpenRouter's official free-model router is a server-side alias,
+        # not an ordinary model catalogue entry. It guarantees routing only
+        # to eligible free models, so validating the alias against /models
+        # incorrectly rejects this supported zero-cost route.
+        if configured_model == "openrouter/free":
+            return [configured_model]
+
         allowlisted = configured_free_routes("OPENROUTER_FREE_MODELS")
         if self.available_models is None:
             self.available_models = self._discover_models()
@@ -171,11 +178,12 @@ class OpenRouterProvider(AIProvider):
                 },
                 timeout=(5, 35),
             )
-            if response.status_code == 401:
+            if response.status_code in {401, 403}:
                 raise OpenRouterAuthenticationError(
-                    "OpenRouter rejected OPENROUTER_API_KEY (HTTP 401). "
-                    "Create a fresh key at https://openrouter.ai/keys and update "
-                    "OPENROUTER_API_KEY in the Render service environment."
+                    "OpenRouter rejected OPENROUTER_API_KEY "
+                    f"(HTTP {response.status_code}). Create a fresh key at "
+                    "https://openrouter.ai/keys and update OPENROUTER_API_KEY "
+                    "in the Render service environment."
                 )
             if not response.ok:
                 body = response.text[:300].replace("\n", " ")
@@ -248,9 +256,11 @@ class OpenRouterProvider(AIProvider):
                     stream=True,
                 )
                 try:
-                    if response.status_code == 401:
+                    if response.status_code in {401, 403}:
                         raise OpenRouterAuthenticationError(
-                            "OpenRouter rejected OPENROUTER_API_KEY (HTTP 401)."
+                            "OpenRouter rejected OPENROUTER_API_KEY "
+                            f"(HTTP {response.status_code}). Verify the key is active "
+                            "and belongs to the intended OpenRouter account."
                         )
                     if not response.ok:
                         raise RuntimeError(f"HTTP {response.status_code}")

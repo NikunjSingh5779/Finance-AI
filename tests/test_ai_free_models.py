@@ -111,3 +111,61 @@ def test_opencode_and_omniroute_fail_closed_without_exact_free_allowlists(monkey
         omniroute.generate_response("Explain a budget.")
     with pytest.raises(FreeModelConfigurationError):
         list(omniroute.stream_response("Explain a budget."))
+
+
+def test_openrouter_official_free_router_skips_catalogue_lookup(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.delenv("OPENROUTER_FREE_MODELS", raising=False)
+    provider = OpenRouterProvider("test-key")
+
+    class FreeRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__([])
+            self.get_calls = 0
+
+        def get(self, url, timeout):
+            self.get_calls += 1
+            raise AssertionError("The dedicated free router must not need /models metadata")
+
+    session = FreeRouterSession()
+    provider.session = session
+
+    assert provider._free_model_candidates() == ["openrouter/free"]
+    assert session.get_calls == 0
+
+
+def test_openrouter_free_router_streams_without_pricing_catalog_lookup(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.delenv("OPENROUTER_FREE_MODELS", raising=False)
+    provider = OpenRouterProvider("test-key")
+
+    class StreamResponse(FakeResponse):
+        def __init__(self):
+            super().__init__({}, status_code=200)
+            self.closed = False
+
+        def iter_lines(self, decode_unicode=True):
+            yield 'data: {"choices":[{"delta":{"content":"Free "},"finish_reason":null}]}'
+            yield 'data: {"choices":[{"delta":{"content":"response"},"finish_reason":null}]}'
+            yield "data: [DONE]"
+
+        def close(self):
+            self.closed = True
+
+    class FreeRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__([])
+            self.get_calls = 0
+
+        def get(self, url, timeout):
+            self.get_calls += 1
+            raise AssertionError("The dedicated free router must not need /models metadata")
+
+        def post(self, url, json, timeout, **kwargs):
+            assert json["model"] == "openrouter/free"
+            return StreamResponse()
+
+    session = FreeRouterSession()
+    provider.session = session
+    assert "".join(provider.stream_response("Explain savings.")) == "Free response"
+    assert session.get_calls == 0
