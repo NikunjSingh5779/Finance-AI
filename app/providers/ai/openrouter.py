@@ -95,16 +95,16 @@ class OpenRouterProvider(AIProvider):
                 "OpenRouter is disabled until OPENROUTER_MODEL names a free model."
             )
 
-        allowlisted = configured_free_routes("OPENROUTER_FREE_MODELS")
-        if self.available_models is None:
-            self.available_models = self._discover_models()
-
         # OpenRouter's official free-model router is a server-side alias,
         # not an ordinary model catalogue entry. It guarantees routing only
         # to eligible free models, so validating the alias against /models
         # incorrectly rejects this supported zero-cost route.
         if configured_model == "openrouter/free":
             return [configured_model]
+
+        allowlisted = configured_free_routes("OPENROUTER_FREE_MODELS")
+        if self.available_models is None:
+            self.available_models = self._discover_models()
 
         verified = set(self.available_models)
         if self._pricing_metadata_available:
