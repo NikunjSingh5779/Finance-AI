@@ -1,6 +1,7 @@
 import pytest
 
 from app.providers.ai.base import (
+    DEFAULT_OUTPUT_TOKENS,
     expanded_output_token_limit,
     get_output_token_limit,
 )
@@ -48,7 +49,7 @@ def test_output_budget_is_configurable_and_bounded(monkeypatch):
     assert expanded_output_token_limit(2048) == 4096
 
     monkeypatch.setenv("TEST_OUTPUT_TOKENS", "not-a-number")
-    assert get_output_token_limit("TEST_OUTPUT_TOKENS") == 2048
+    assert get_output_token_limit("TEST_OUTPUT_TOKENS") == DEFAULT_OUTPUT_TOKENS
 
     monkeypatch.setenv("TEST_OUTPUT_TOKENS", "999999")
     assert get_output_token_limit("TEST_OUTPUT_TOKENS") == 8192
