@@ -1,58 +1,58 @@
+function latexToPlainText(value) {
+  let text = String(value ?? "");
+  text = text.replace(/\\text\s*\{([^{}]*)\}/g, "$1");
+  for (let i = 0; i < 5; i += 1) {
+    const next = text.replace(
+      /\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,
+      "($1) / ($2)",
+    );
+    if (next === text) break;
+    text = next;
+  }
+  return text
+    .replace(/\\(?:left|right)\b/g, "")
+    .replace(/\\times\b/g, "×")
+    .replace(/\\cdot\b/g, "·")
+    .replace(/\\div\b/g, "÷")
+    .replace(/\\approx\b/g, "≈")
+    .replace(/\\geq?\b/g, "≥")
+    .replace(/\\leq?\b/g, "≤")
+    .replace(/\\%/g, "%")
+    .replace(/\\,/g, " ")
+    .replace(/\\;/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/\\/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function normalizeAiMarkdown(markdown) {
+  let source = String(markdown ?? "").replace(/\r\n?/g, "\n");
+  source = source
+    .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_, formula) => {
+      return "\n\n" + latexToPlainText(formula) + "\n\n";
+    })
+    .replace(/\\\(([^]*?)\\\)/g, (_, formula) => {
+      return latexToPlainText(formula);
+    });
+  source = source
+    .replace(/[ \t]+---[ \t]+(?=#{1,4}\s)/g, "\n\n---\n\n")
+    .replace(/([^\n])\s+(?=#{1,4}\s)/g, "$1\n\n");
+  return source
+    .split("\n")
+    .map(line => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
   let activeAIConversationId = null;
   let aiHistoryItems = [];
   let aiChatGeneration = 0;
   let aiSending = false;
   let initialized = false;
-  function latexToPlainText(value) {
-    let text = String(value ?? "");
-    text = text.replace(/\\text\\s*\\{([^{}]*)\\}/g, "$1");
-    for (let i = 0; i < 5; i += 1) {
-      const next = text.replace(
-        /\\frac\\s*\\{([^{}]*)\\}\\s*\\{([^{}]*)\\}/g,
-        "($1) / ($2)",
-      );
-      if (next === text) break;
-      text = next;
-    }
-    return text
-      .replace(/\\\\(?:left|right)\\b/g, "")
-      .replace(/\\\\times\\b/g, "×")
-      .replace(/\\\\cdot\\b/g, "·")
-      .replace(/\\\\div\\b/g, "÷")
-      .replace(/\\\\approx\\b/g, "≈")
-      .replace(/\\\\geq?\\b/g, "≥")
-      .replace(/\\\\leq?\\b/g, "≤")
-      .replace(/\\\\%/g, "%")
-      .replace(/\\\\,/g, " ")
-      .replace(/\\\\;/g, " ")
-      .replace(/[{}]/g, "")
-      .replace(/\\\\[a-zA-Z]+/g, "")
-      .replace(/\\\\/g, "")
-      .replace(/\\s+/g, " ")
-      .trim();
-  }
-
-  export function normalizeAiMarkdown(markdown) {
-    let source = String(markdown ?? "").replace(/\\r\\n?/g, "\\n");
-    source = source
-      .replace(/\\\\\\[\\s*([\\s\\S]*?)\\s*\\\\\\]/g, (_, formula) => {
-        return "\\n\\n" + latexToPlainText(formula) + "\\n\\n";
-      })
-      .replace(/\\\\\\(([^\\n]*?)\\\\\\)/g, (_, formula) => {
-        return latexToPlainText(formula);
-      });
-    source = source
-      .replace(/[ \\t]+---[ \\t]+(?=#{1,4}\\s)/g, "\\n\\n---\\n\\n")
-      .replace(/([^\\n])\\s+(?=#{1,4}\\s)/g, "$1\\n\\n");
-    return source
-      .split("\\n")
-      .map(line => line.trimEnd())
-      .join("\\n")
-      .replace(/\\n{3,}/g, "\\n\\n")
-      .trim();
-  }
-
   function appendInlineMarkdown(parent, text) {
     const source = String(text ?? "")
       .replace(/\\\\([*_])/g, "$1")
@@ -461,7 +461,7 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
       let animationFrame = 0;
       const renderStream = () => {
         animationFrame = 0;
-        const wordCount = reply.trim() ? reply.trim().split(/\\s+/).length : 0;
+        const wordCount = reply.trim() ? reply.trim().split(/\s+/).length : 0;
         bubble.textContent = wordCount
           ? `Preparing a formatted answer… ${wordCount} words received`
           : "Preparing a formatted answer…";
