@@ -391,6 +391,7 @@ class AIService:
             "jio platforms": "JPL.NS",
             "jio": "JPL.NS",
             "jpl": "JPL.NS",
+            "anthropic": "ANT",
             "reliance": "RELIANCE.NS",
             "tcs": "TCS.NS",
             "infosys": "INFY.NS",
@@ -421,7 +422,7 @@ class AIService:
         ):
             return False
         has_price = bool(re.search(
-            r"\b(price|quote|trading at|share price|stock price)\b",
+            r"\b(price|quote|value|worth|valuation|trading at|share price|stock price|market value)\b",
             lowered,
         ))
         has_freshness = bool(re.search(
@@ -885,7 +886,7 @@ class AIService:
                 "AI_RESEARCH_MAX_QUERIES", 2, minimum=1, maximum=3
             )
             query_timeout = _bounded_int_setting(
-                "AI_RESEARCH_TIMEOUT_SECONDS", 10, minimum=2, maximum=20
+                "AI_RESEARCH_TIMEOUT_SECONDS", 40, minimum=2, maximum=45
             )
             for candidate_query in candidate_queries[:query_limit]:
                 try:
@@ -899,7 +900,19 @@ class AIService:
                         ),
                         timeout=query_timeout,
                     )
-                except Exception:
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Web research timed out for intent=%s after %ss",
+                        intent,
+                        query_timeout,
+                    )
+                    continue
+                except Exception as exc:
+                    logger.warning(
+                        "Web research failed for intent=%s (%s)",
+                        intent,
+                        type(exc).__name__,
+                    )
                     continue
 
                 if candidate_results or candidate_pages:
@@ -921,21 +934,6 @@ class AIService:
                         + "\n\nI couldn't verify the IPO timeline or issue-price details "
                         "from matching prospectus or exchange records in this request. "
                         "The quote above is the traded share price, not the IPO issue price.",
-                        on_delta,
-                    )
-                previous_fallback = next(
-                    (
-                        str(message.get("content", "")).strip()
-                        for message in reversed(conversation or [])
-                        if message.get("role") == "assistant" and message.get("content")
-                    ),
-                    "",
-                )
-                if "couldn't retrieve enough matching" in previous_fallback.lower():
-                    return await self._deliver_reply(
-                        "I still can't retrieve the official Jio IPO documents from the "
-                        "search providers. I won't guess the dates or issue price. "
-                        "Please retry shortly, or check the issuer's RHP and NSE/BSE notices.",
                         on_delta,
                     )
                 return await self._deliver_reply(
@@ -1244,14 +1242,31 @@ class AIService:
             term in lowered
             for term in ("ipo", "drhp", "prospectus", "sebi filing", "listing date", "ipo date")
         ):
-            return (
-                "jio.com",
-                "ril.com",
+            blocked_issuer_terms = {
+                "when", "is", "the", "and", "what", "its", "value", "now",
+                "on", "market", "ipo", "drhp", "rhp", "sebi", "prospectus",
+                "listing", "listed", "date", "price", "share", "stock", "current",
+                "latest", "today", "public", "issue", "offering", "initial",
+                "official", "announcement", "ticker", "nasdaq", "sec",
+            }
+            issuer_tokens = [
+                token
+                for token in re.findall(r"[a-z0-9]+", lowered)
+                if token not in blocked_issuer_terms
+                and not re.fullmatch(r"20\d{2}", token)
+            ]
+            issuer = issuer_tokens[0] if issuer_tokens else ""
+            issuer_domains = (
+                (f"{issuer}.com", f"{issuer}.ai") if len(issuer) >= 4 else ()
+            )
+            return issuer_domains + (
+                "sec.gov",
+                "nasdaq.com",
                 "sebi.gov.in",
                 "nseindia.com",
                 "bseindia.com",
-                "relianceindustries.com",
                 "reuters.com",
+                "apnews.com",
             )
         if any(term in lowered for term in ("stock", "share", "equity", "ticker", "closing price", "share price")):
             return (
@@ -1304,19 +1319,41 @@ class AIService:
         year = year_match.group(0) if year_match else str(datetime.now().year)
         if re.search(r"\b(jio|jpl)\b", lowered):
             issuer = "Jio Platforms Limited"
+            candidates = (
+                f"{issuer} IPO opening date closing date allotment listing date {year}",
+                f"{issuer} RHP prospectus public issue timeline {year}",
+            )
+            if AIService._is_current_price_request(query):
+                candidates += (
+                    f"{issuer} current NSE BSE share price JPL exchange quote {year}",
+                )
+            original = " ".join(query.lower().split())
+            return tuple(
+                candidate
+                for candidate in candidates
+                if " ".join(candidate.lower().split()) != original
+            )
         else:
-            issuer = re.sub(r"(?i)\b(?:when|is|the|ipo|drhp|rhp|sebi)\b", " ", query)
-            issuer = re.sub(r"\s+", " ", issuer).strip(" ?.,")
+            issuer = re.sub(
+                r"(?i)\b(?:when|is|the|and|what|its|value|now|on|market|"
+                r"ipo|drhp|rhp|sebi|prospectus|listing|listed|date|price|share|"
+                r"stock|current|latest|today|public|issue|offering|initial|"
+                r"official|announcement|ticker|nasdaq|sec)\b",
+                " ",
+                query,
+            )
+            issuer = re.sub(r"\b20\d{2}\b", " ", issuer)
+            issuer = re.sub(r"\s+", " ", issuer).strip(" ?.,-")
             if not issuer:
                 return ()
 
         candidates = (
-            f"{issuer} IPO opening date closing date allotment listing date {year}",
-            f"{issuer} RHP prospectus public issue timeline {year}",
+            f"{issuer} IPO official announcement SEC S-1 prospectus listing date {year}",
+            f"{issuer} initial public offering final prospectus issue price ticker {year}",
         )
         if AIService._is_current_price_request(query):
             candidates += (
-                f"{issuer} current NSE BSE share price JPL exchange quote {year}",
+                f"{issuer} Nasdaq current share price ticker {year}",
             )
         original = " ".join(query.lower().split())
         return tuple(
@@ -1327,7 +1364,9 @@ class AIService:
 
     @staticmethod
     def _research_timelimit(question: str, intent: str) -> str | None:
-        """Use a week for explanatory market moves, but keep factual lookups daily."""
+        """Avoid clipping IPO filings to a one-day window; timelines span weeks."""
+        if intent == "ipo_research":
+            return None
         if not AIService._is_fresh_query(question):
             return None
         lowered = question.lower()
@@ -1375,14 +1414,37 @@ class AIService:
         )
         if any(term in ipo_research_text.lower() for term in ipo_terms):
             issuer_text = ipo_research_text.lower()
+            year = re.search(r"\b20\d{2}\b", ipo_research_text)
+            year_text = year.group(0) if year else str(datetime.now().year)
             if re.search(r"\b(jio|jpl)\b", issuer_text):
-                year = re.search(r"\b20\d{2}\b", ipo_research_text)
-                year_text = year.group(0) if year else str(datetime.now().year)
                 ipo_query = (
                     "Jio IPO Jio Platforms Limited IPO DRHP SEBI RHP listing status issue price "
                     + year_text
                 )
+                if AIService._is_current_price_request(ipo_research_text):
+                    ipo_query += " current NSE BSE share price exchange quote"
                 return ipo_query
+
+            issuer = re.sub(
+                r"(?i)\b(?:when|is|the|and|what|its|value|now|on|market|"
+                r"ipo|drhp|rhp|sebi|prospectus|listing|listed|date|price|share|"
+                r"stock|current|latest|today|public|issue|offering|initial|"
+                r"official|announcement|ticker|nasdaq|sec)\b",
+                " ",
+                ipo_research_text,
+            )
+            issuer = re.sub(r"\b20\d{2}\b", " ", issuer)
+            issuer = re.sub(r"\s+", " ", issuer).strip(" ?.,-")
+            if issuer:
+                query_suffix = (
+                    "listing date ticker current share price market quote"
+                    if AIService._is_current_price_request(ipo_research_text)
+                    else "listing date ticker issue price"
+                )
+                return (
+                    f"{issuer} IPO official announcement SEC S-1 prospectus "
+                    f"{query_suffix} {year_text}"
+                )
 
         travel_question = AIService._is_travel_planning_query(text)
         web_signals = (

@@ -853,3 +853,51 @@ def test_bing_news_rss_parser_unwraps_tracking_link_and_extracts_source():
     assert results[0].source == "bing_news"
     assert "NSE India" in results[0].snippet
     assert "Thu, 05 Nov 2026" in results[0].snippet
+
+
+def test_anthropic_ipo_search_uses_the_issuer_and_current_quote_intent():
+    question = "when is anthropic ipo and the value now on market"
+    query = AIService._extract_web_search_query(question) or ""
+
+    assert AIService._query_intent(question) == "ipo_research"
+    assert "anthropic" in query.lower()
+    assert "SEC S-1" in query
+    assert "value now on market" not in query
+    assert AIService._research_timelimit(question, "ipo_research") is None
+    assert AIService._is_current_price_request(question)
+    assert AIService._market_symbol(question, "stock") == "ANT"
+
+    variants = AIService._research_query_variants(query, "ipo_research")
+    assert variants
+    assert all("anthropic" in item.lower() for item in variants)
+
+    domains = AIService._preferred_domains(question)
+    assert "anthropic.com" in domains
+    assert "sec.gov" in domains
+    assert "nasdaq.com" in domains
+    assert "jio.com" not in domains
+
+
+def test_ipo_retry_fallback_never_mentions_an_unrelated_issuer(monkeypatch):
+    class EmptyResearcher:
+        async def search_and_fetch(self, query, **kwargs):
+            return [], []
+
+    monkeypatch.setattr(
+        "app.services.ai_service.get_web_researcher",
+        lambda: EmptyResearcher(),
+    )
+    previous = (
+        "I couldn't retrieve enough matching, authoritative information "
+        "to confirm the IPO timeline."
+    )
+    reply = asyncio.run(
+        AIService(provider=object()).get_financial_advice(
+            "When is Anthropic IPO?",
+            financial_context={},
+            conversation=[{"role": "assistant", "content": previous}],
+        )
+    )
+
+    assert "Jio" not in reply
+    assert "search-provider limitation" in reply
