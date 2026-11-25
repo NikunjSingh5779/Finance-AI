@@ -1687,6 +1687,8 @@ this clean, structured Markdown layout every time:
 4. Add the heading "## Recent Spending ({period_label})".
 5. Add a Markdown table with exactly these columns:
    | Category | Amount | Monthly Budget | % of Budget Used |
+   | --- | --- | --- | --- |
+   Every table header, separator, and data row must start and end with a pipe.
    Populate it from CATEGORY SPENDING TOTALS. Use the supplied spend, budget,
    and usage values. Use an em dash when no positive budget exists. Do not
    invent categories, amounts, limits, percentages, or missing transactions.

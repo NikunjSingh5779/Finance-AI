@@ -4,8 +4,8 @@ import logging
 import os
 
 from .base import AIProvider
-from .omniroute import OmniRouteProvider
-from .opencode import OpenCodeProvider
+from .groq import GROQ_FREE_MODELS, GroqProvider
+from .nvidia_nim import NVIDIA_NIM_DEVELOPMENT_MODELS, NvidiaNimProvider
 from .openrouter import OpenRouterProvider
 
 logger = logging.getLogger(__name__)
@@ -15,32 +15,40 @@ _provider_cache_key: tuple[str, ...] | None = None
 
 
 def _config_key() -> tuple[str, ...]:
+    """Track non-secret configuration values that change provider instances."""
     return (
-        os.getenv("OMNIROUTE_API_KEY", ""),
-        os.getenv("OMNIROUTE_BASE_URL", ""),
-        os.getenv("OMNIROUTE_COMBO_NAME", ""),
-        os.getenv("OMNIROUTE_MODEL", ""),
-        os.getenv("OMNIROUTE_FREE_COMBOS", ""),
-        os.getenv("OPENCODE_ZEN_API_KEY", ""),
-        os.getenv("OPENCODE_BASE_URL", ""),
-        os.getenv("OPENCODE_MODEL", ""),
-        os.getenv("OPENCODE_FREE_MODELS", ""),
+        os.getenv("NVIDIA_NIM_API_KEY", ""),
+        os.getenv("NVIDIA_NIM_BASE_URL", ""),
+        os.getenv("NVIDIA_NIM_MODEL", ""),
+        os.getenv("NVIDIA_NIM_MODELS", ""),
+        os.getenv("NVIDIA_NIM_PRODUCTION_LICENSED", ""),
+        os.getenv("GROQ_API_KEY", ""),
+        os.getenv("GROQ_BASE_URL", ""),
+        os.getenv("GROQ_MODEL", ""),
         os.getenv("OPENROUTER_API_KEY", ""),
         os.getenv("OPENROUTER_MODEL", ""),
         os.getenv("OPENROUTER_FREE_MODELS", ""),
+        os.getenv("OPENROUTER_MAX_FREE_FALLBACKS", ""),
+        os.getenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", ""),
     )
 
 
 def get_ai_providers(force_refresh: bool = False) -> list[AIProvider]:
-    """Return configured providers, reusing instances to avoid per-request setup."""
+    """Return configured providers in priority order, reusing live clients."""
     global _provider_cache, _provider_cache_key
 
     key = _config_key()
-    if not force_refresh and _provider_cache is not None and _provider_cache_key == key:
+    if (
+        not force_refresh
+        and _provider_cache is not None
+        and _provider_cache_key == key
+    ):
         return _provider_cache
 
     providers: list[AIProvider] = []
-    for factory in (_try_omniroute, _try_opencode, _try_openrouter):
+    # NIM is preferred when available and explicitly licensed for production.
+    # Otherwise Groq Free and OpenRouter form the hosted free fallback chain.
+    for factory in (_try_nvidia_nim, _try_groq, _try_openrouter):
         try:
             provider = factory()
             if provider and provider.is_available():
@@ -70,34 +78,18 @@ def get_ai_provider() -> AIProvider | None:
     return providers[0] if providers else None
 
 
-def _try_omniroute() -> AIProvider | None:
-    api_key = os.getenv("OMNIROUTE_API_KEY")
+def _try_nvidia_nim() -> AIProvider | None:
+    api_key = os.getenv("NVIDIA_NIM_API_KEY")
     if not api_key:
         return None
-    combo_name = (
-        os.getenv("OMNIROUTE_COMBO_NAME")
-        or os.getenv("OMNIROUTE_MODEL")
-        or ""
-    ).strip()
-    if not combo_name or combo_name.lower() == "auto":
-        logger.warning(
-            "OmniRoute is configured but no exact combo name is set; "
-            "set OMNIROUTE_COMBO_NAME to the combo created in OmniRoute."
-        )
-        return None
-
-    return OmniRouteProvider(
-        api_key.strip(),
-        os.getenv("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1"),
-        combo_name,
-    )
+    return NvidiaNimProvider(api_key.strip())
 
 
-def _try_opencode() -> AIProvider | None:
-    api_key = os.getenv("OPENCODE_ZEN_API_KEY")
+def _try_groq() -> AIProvider | None:
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return None
-    return OpenCodeProvider(api_key.strip())
+    return GroqProvider(api_key.strip())
 
 
 def _try_openrouter() -> AIProvider | None:
@@ -108,26 +100,43 @@ def _try_openrouter() -> AIProvider | None:
 
 
 def get_provider_info() -> dict:
-    """Report configuration and selected provider without exposing secrets."""
-    from .base import configured_free_routes
+    """Report configuration and selection without exposing credentials."""
+    nim_model = os.getenv("NVIDIA_NIM_MODEL", "openai/gpt-oss-20b").strip()
+    nim_models = {
+        value.strip()
+        for value in os.getenv(
+            "NVIDIA_NIM_MODELS",
+            "openai/gpt-oss-20b",
+        ).split(",")
+        if value.strip()
+    }
+    groq_model = os.getenv("GROQ_MODEL", GROQ_FREE_MODELS[0]).strip()
+    production = (
+        os.getenv("APP_ENV", "").strip().lower() in {"production", "prod"}
+        or os.getenv("ENVIRONMENT", "").strip().lower() in {"production", "prod"}
+        or os.getenv("AUTH_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    )
+    nim_license = os.getenv(
+        "NVIDIA_NIM_PRODUCTION_LICENSED", ""
+    ).strip().lower() in {"1", "true", "yes"}
 
     info = {
-        "omniroute": {
-            "configured": bool(os.getenv("OMNIROUTE_API_KEY")),
-            "free_route_configured": bool(
-                configured_free_routes("OMNIROUTE_FREE_COMBOS")
-            ),
+        "nvidia_nim": {
+            "configured": bool(os.getenv("NVIDIA_NIM_API_KEY")),
+            "model_configured": nim_model in nim_models,
+            "production_licensed": nim_license,
+            "production_blocked": production and not nim_license,
+            "allowlisted_models": list(NVIDIA_NIM_DEVELOPMENT_MODELS),
         },
-        "opencode": {
-            "configured": bool(os.getenv("OPENCODE_ZEN_API_KEY")),
-            "free_route_configured": bool(
-                configured_free_routes("OPENCODE_FREE_MODELS")
-            ),
+        "groq": {
+            "configured": bool(os.getenv("GROQ_API_KEY")),
+            "model_configured": groq_model in GROQ_FREE_MODELS,
+            "free_models": list(GROQ_FREE_MODELS),
         },
         "openrouter": {
             "configured": bool(os.getenv("OPENROUTER_API_KEY")),
             "model_configured": bool(
-                os.getenv("OPENROUTER_MODEL", "").strip()
+                os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
             ),
         },
     }

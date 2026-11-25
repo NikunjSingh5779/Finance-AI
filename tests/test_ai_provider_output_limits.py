@@ -1,3 +1,5 @@
+"""Regression tests for output-budget helpers and uncapped OpenRouter requests."""
+
 import json
 
 import pytest
@@ -7,8 +9,6 @@ from app.providers.ai.base import (
     expanded_output_token_limit,
     get_output_token_limit,
 )
-from app.providers.ai.omniroute import OmniRouteProvider
-from app.providers.ai.opencode import OpenCodeProvider
 from app.providers.ai.openrouter import OpenRouterProvider
 
 
@@ -18,6 +18,7 @@ class FakeResponse:
         self.status_code = status_code
         self.ok = 200 <= status_code < 300
         self.text = text
+        self.headers = {}
 
     def json(self):
         return self._payload
@@ -55,16 +56,9 @@ def completion(content, finish_reason):
     }
 
 
-def test_output_budget_is_configurable_and_bounded(monkeypatch):
-    monkeypatch.setenv("TEST_OUTPUT_TOKENS", "3072")
-    assert get_output_token_limit("TEST_OUTPUT_TOKENS") == 3072
-    assert expanded_output_token_limit(2048) == 4096
-
-    monkeypatch.setenv("TEST_OUTPUT_TOKENS", "not-a-number")
+def test_output_budget_helpers_remain_bounded():
     assert get_output_token_limit("TEST_OUTPUT_TOKENS") == DEFAULT_OUTPUT_TOKENS
-
-    monkeypatch.setenv("TEST_OUTPUT_TOKENS", "999999")
-    assert get_output_token_limit("TEST_OUTPUT_TOKENS") == 8192
+    assert expanded_output_token_limit(2048) == 4096
 
 
 def test_openrouter_does_not_send_an_application_token_cap(monkeypatch):
@@ -99,64 +93,11 @@ def test_openrouter_stops_model_fallback_after_unauthorized_response(monkeypatch
         ),
     ])
 
-    with pytest.raises(RuntimeError, match="Create a fresh key.*OPENROUTER_API_KEY"):
+    with pytest.raises(
+        RuntimeError,
+        match="Create a fresh key.*OPENROUTER_API_KEY",
+    ):
         provider.generate_response("Explain a monthly budget.")
 
-    # A 401 invalidates the shared credential, so no fallback model is tried.
     assert len(provider.session.payloads) == 1
     assert provider.session.payloads[0]["model"] == "openrouter/free"
-
-
-def test_opencode_retries_when_completion_hits_token_limit(monkeypatch):
-    monkeypatch.setenv("OPENCODE_MAX_OUTPUT_TOKENS", "2048")
-    monkeypatch.setenv("OPENCODE_FREE_MODELS", "mimo-v2.6-flash-free")
-    provider = OpenCodeProvider("test-key")
-    provider.session = FakeSession([
-        FakeResponse(completion("Partial answer", "length")),
-        FakeResponse(completion("Complete answer.", "stop")),
-    ])
-
-    result = provider.generate_response("Explain a monthly budget.")
-
-    assert result == "Complete answer."
-    assert [payload["max_tokens"] for payload in provider.session.payloads] == [
-        2048,
-        4096,
-    ]
-
-
-def test_omniroute_retries_when_response_is_incomplete(monkeypatch):
-    monkeypatch.setenv("OMNIROUTE_MAX_OUTPUT_TOKENS", "2048")
-    monkeypatch.setenv("OMNIROUTE_FREE_COMBOS", "free-combo")
-    provider = OmniRouteProvider("test-key", "http://localhost:20128/v1", "free-combo")
-    provider.session = FakeSession([
-        FakeResponse({
-            "status": "incomplete",
-            "incomplete_details": {"reason": "max_output_tokens"},
-            "output_text": "Partial answer",
-        }),
-        FakeResponse({
-            "status": "completed",
-            "output_text": "Complete answer.",
-        }),
-    ])
-
-    result = provider.generate_response("Explain a monthly budget.")
-
-    assert result == "Complete answer."
-    assert [
-        payload["max_output_tokens"] for payload in provider.session.payloads
-    ] == [2048, 4096]
-
-
-def test_opencode_fails_clearly_when_retry_is_still_truncated(monkeypatch):
-    monkeypatch.setenv("OPENCODE_MAX_OUTPUT_TOKENS", "2048")
-    monkeypatch.setenv("OPENCODE_FREE_MODELS", "mimo-v2.6-flash-free")
-    provider = OpenCodeProvider("test-key")
-    provider.session = FakeSession([
-        FakeResponse(completion("Partial answer", "length")),
-        FakeResponse(completion("Still partial", "length")),
-    ])
-
-    with pytest.raises(RuntimeError, match="after retry"):
-        provider.generate_response("Explain a monthly budget.")

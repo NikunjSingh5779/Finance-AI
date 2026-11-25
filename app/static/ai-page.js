@@ -54,6 +54,13 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
     return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
   }
 
+  function isTableSeparator(line, columnCount) {
+    const cells = parseTableRow(line);
+    return cells.length === columnCount
+      && cells.length >= 2
+      && cells.every(cell => /^:?-{3,}:?$/.test(cell));
+  }
+
   function renderAiMarkdown(container, markdown) {
     container.classList.add("ai-markdown");
     while (container.firstChild) container.removeChild(container.firstChild);
@@ -78,13 +85,18 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
 
       if (!trimmed) { resetList(); continue; }
 
-      if (/^\|.*\|$/.test(trimmed) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+      const headerCells = trimmed.includes("|") ? parseTableRow(trimmed) : [];
+      if (
+        headerCells.length >= 2
+        && i + 1 < lines.length
+        && isTableSeparator(lines[i + 1], headerCells.length)
+      ) {
         resetList();
         const table = document.createElement("table");
         table.className = "ai-table";
         const thead = document.createElement("thead");
         const headerRow = document.createElement("tr");
-        parseTableRow(line).forEach(cellText => {
+        headerCells.forEach(cellText => {
           const cell = document.createElement("th");
           appendInlineMarkdown(cell, cellText);
           headerRow.appendChild(cell);
@@ -93,7 +105,12 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
         table.appendChild(thead);
         i += 1;
         const tbody = document.createElement("tbody");
-        while (i + 1 < lines.length && /^\s*\|.*\|\s*$/.test(lines[i + 1].trim())) {
+        while (
+          i + 1 < lines.length
+          && lines[i + 1].includes("|")
+          && parseTableRow(lines[i + 1]).length === headerCells.length
+          && !isTableSeparator(lines[i + 1], headerCells.length)
+        ) {
           i += 1;
           const row = document.createElement("tr");
           parseTableRow(lines[i]).forEach(cellText => {
