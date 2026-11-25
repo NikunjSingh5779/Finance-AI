@@ -26,14 +26,14 @@ router = APIRouter(prefix="/api/conversations", tags=["AI conversations"])
 
 
 class ChatTurn(BaseModel):
-    question: str = Field(min_length=3, max_length=1000)
+    question: str = Field(min_length=1, max_length=1000)
 
     @field_validator("question")
     @classmethod
     def normalize_question(cls, value: str) -> str:
         value = value.strip()
-        if len(value) < 3:
-            raise ValueError("Question must contain at least 3 characters.")
+        if not value:
+            raise ValueError("Please enter a message.")
         return value
 
 
