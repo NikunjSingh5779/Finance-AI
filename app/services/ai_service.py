@@ -1319,6 +1319,20 @@ class AIService:
         year = year_match.group(0) if year_match else str(datetime.now().year)
         if re.search(r"\b(jio|jpl)\b", lowered):
             issuer = "Jio Platforms Limited"
+            candidates = (
+                f"{issuer} IPO opening date closing date allotment listing date {year}",
+                f"{issuer} RHP prospectus public issue timeline {year}",
+            )
+            if AIService._is_current_price_request(query):
+                candidates += (
+                    f"{issuer} current NSE BSE share price JPL exchange quote {year}",
+                )
+            original = " ".join(query.lower().split())
+            return tuple(
+                candidate
+                for candidate in candidates
+                if " ".join(candidate.lower().split()) != original
+            )
         else:
             issuer = re.sub(
                 r"(?i)\b(?:when|is|the|and|what|its|value|now|on|market|"
@@ -1402,7 +1416,7 @@ class AIService:
             issuer_text = ipo_research_text.lower()
             year = re.search(r"\b20\d{2}\b", ipo_research_text)
             year_text = year.group(0) if year else str(datetime.now().year)
-            if re.search(r"\\b(jio|jpl)\\b", issuer_text):
+            if re.search(r"\b(jio|jpl)\b", issuer_text):
                 ipo_query = (
                     "Jio IPO Jio Platforms Limited IPO DRHP SEBI RHP listing status issue price "
                     + year_text
