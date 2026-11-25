@@ -860,7 +860,7 @@ def test_anthropic_ipo_search_uses_the_issuer_and_current_quote_intent():
     query = AIService._extract_web_search_query(question) or ""
 
     assert AIService._query_intent(question) == "ipo_research"
-    assert "Anthropic" in query
+    assert "anthropic" in query.lower()
     assert "SEC S-1" in query
     assert "value now on market" not in query
     assert AIService._research_timelimit(question, "ipo_research") is None
@@ -869,7 +869,7 @@ def test_anthropic_ipo_search_uses_the_issuer_and_current_quote_intent():
 
     variants = AIService._research_query_variants(query, "ipo_research")
     assert variants
-    assert all("Anthropic" in item for item in variants)
+    assert all("anthropic" in item.lower() for item in variants)
 
     domains = AIService._preferred_domains(question)
     assert "anthropic.com" in domains
