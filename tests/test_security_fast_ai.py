@@ -164,5 +164,5 @@ def test_sse_event_serializes_nested_datetime_values():
     assert event.startswith("event: done\n")
     payload_line = next(line for line in event.splitlines() if line.startswith("data: "))
     payload = json.loads(payload_line[6:])
-    assert payload["message"]["created_at"] == "2026-11-25T09:38:00Z"
-    assert payload["conversation"]["updated_at"] == "2026-11-25T09:38:00Z"
+    assert payload["message"]["created_at"] == "2026-11-25T09:38:00+00:00"
+    assert payload["conversation"]["updated_at"] == "2026-11-25T09:38:00+00:00"
