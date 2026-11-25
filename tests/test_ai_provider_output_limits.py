@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.providers.ai.base import (
@@ -20,6 +22,16 @@ class FakeResponse:
     def json(self):
         return self._payload
 
+    def iter_content(self, chunk_size=1024):
+        body = self.text.encode("utf-8") if self.text else json.dumps(
+            self._payload
+        ).encode("utf-8")
+        for offset in range(0, len(body), chunk_size):
+            yield body[offset:offset + chunk_size]
+
+    def close(self):
+        return None
+
 
 class FakeSession:
     def __init__(self, responses):
@@ -27,7 +39,7 @@ class FakeSession:
         self.payloads = []
         self.headers = {}
 
-    def post(self, url, json, timeout):
+    def post(self, url, json, timeout, **kwargs):
         self.payloads.append(json)
         return self.responses.pop(0)
 
@@ -55,7 +67,7 @@ def test_output_budget_is_configurable_and_bounded(monkeypatch):
     assert get_output_token_limit("TEST_OUTPUT_TOKENS") == 8192
 
 
-def test_openrouter_retries_when_completion_hits_token_limit(monkeypatch):
+def test_openrouter_does_not_send_an_application_token_cap(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MAX_OUTPUT_TOKENS", "2048")
     monkeypatch.setenv("OPENROUTER_MODEL", "test/free")
     monkeypatch.setenv("OPENROUTER_FREE_MODELS", "test/free")
@@ -63,17 +75,14 @@ def test_openrouter_retries_when_completion_hits_token_limit(monkeypatch):
     provider.available_models = []
     provider._pricing_metadata_available = False
     provider.session = FakeSession([
-        FakeResponse(completion("Partial answer", "length")),
         FakeResponse(completion("Complete answer.", "stop")),
     ])
 
     result = provider.generate_response("Explain a monthly budget.")
 
     assert result == "Complete answer."
-    assert [payload["max_tokens"] for payload in provider.session.payloads] == [
-        2048,
-        4096,
-    ]
+    assert len(provider.session.payloads) == 1
+    assert "max_tokens" not in provider.session.payloads[0]
 
 
 def test_openrouter_stops_model_fallback_after_unauthorized_response(monkeypatch):

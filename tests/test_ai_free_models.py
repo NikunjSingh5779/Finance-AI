@@ -1,3 +1,4 @@
+import json
 import time
 
 import pytest
@@ -32,6 +33,16 @@ class FakeResponse:
 
     def json(self):
         return self._payload
+
+    def iter_content(self, chunk_size=1024):
+        body = self.text.encode("utf-8") if self.text else json.dumps(
+            self._payload
+        ).encode("utf-8")
+        for offset in range(0, len(body), chunk_size):
+            yield body[offset:offset + chunk_size]
+
+    def close(self):
+        return None
 
 
 class RouterSession:
@@ -207,6 +218,7 @@ def test_openrouter_free_router_streams_with_verified_free_catalogue_fallback(mo
 
         def post(self, url, json, timeout, **kwargs):
             assert json["model"] == "openrouter/free"
+            assert "max_tokens" not in json
             return StreamResponse()
 
     session = FreeRouterSession()
@@ -366,3 +378,31 @@ def test_openrouter_empty_router_response_is_cooled_down_across_requests(monkeyp
         "A working free response."
     )
     assert "openrouter/free" not in session.attempted[before:]
+
+
+def test_openrouter_completion_has_no_application_token_cap(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_MODEL", "verified/free")
+    session = RouterSession([
+        {
+            "id": "verified/free",
+            "pricing": {"prompt": "0", "completion": "0"},
+        }
+    ])
+    provider = OpenRouterProvider("test-key")
+    provider.session = session
+
+    assert provider.generate_response("Explain savings.") == "Verified free reply."
+    _, request_body, request_kwargs = session.posts[0]
+    assert "max_tokens" not in request_body
+    assert request_kwargs.get("stream") is True
+
+
+def test_openrouter_json_body_reader_enforces_wall_clock_deadline():
+    class SlowBodyResponse:
+        def iter_content(self, chunk_size=1024):
+            time.sleep(0.02)
+            yield b'{"choices": []}'
+
+    deadline = time.monotonic() + 0.01
+    with pytest.raises(TimeoutError, match="wall-clock deadline"):
+        OpenRouterProvider._read_json_response(SlowBodyResponse(), deadline)
