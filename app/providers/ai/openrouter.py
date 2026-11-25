@@ -15,8 +15,6 @@ from .base import (
     AIProvider,
     FreeModelConfigurationError,
     configured_free_routes,
-    expanded_output_token_limit,
-    get_output_token_limit,
     require_free_route,
 )
 
@@ -143,7 +141,7 @@ class OpenRouterProvider(AIProvider):
         if remaining_seconds < 2.5:
             raise TimeoutError("OpenRouter provider attempt budget exhausted")
         connect_timeout = min(2.0, max(1.0, remaining_seconds * 0.2))
-        read_timeout = min(10.0, max(1.0, remaining_seconds - connect_timeout - 0.5))
+        read_timeout = min(5.0, max(1.0, remaining_seconds - connect_timeout - 0.5))
         return (connect_timeout, read_timeout)
 
     @staticmethod
@@ -314,6 +312,25 @@ class OpenRouterProvider(AIProvider):
         return [configured_model]
 
     @staticmethod
+    def _read_json_response(response, deadline: float) -> dict:
+        """Read completion JSON in chunks and enforce a wall-clock deadline."""
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=1024):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "OpenRouter response exceeded its wall-clock deadline"
+                )
+            if chunk:
+                body.extend(chunk)
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                "OpenRouter response exceeded its wall-clock deadline"
+            )
+        if not body:
+            raise RuntimeError("OpenRouter returned an empty response body")
+        return json.loads(body)
+
+    @staticmethod
     def _response_content(data: dict) -> tuple[str, bool]:
         choices = data.get("choices") or []
         if not choices:
@@ -345,37 +362,38 @@ class OpenRouterProvider(AIProvider):
         deadline = self._generation_deadline()
         models = self._free_model_candidates()
         failures: list[str] = []
-        initial_budget = get_output_token_limit(
-            "OPENROUTER_MAX_OUTPUT_TOKENS"
-        )
-
-        def request_model(model: str, token_budget: int) -> tuple[str, bool]:
+        def request_model(model: str) -> tuple[str, bool]:
             response = self.session.post(
                 f"{self.base_url}/chat/completions",
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": token_budget,
                     "temperature": 0.7,
                 },
                 timeout=self._request_timeout(deadline - time.monotonic()),
+                stream=True,
             )
-            if response.status_code in {401, 403}:
-                raise OpenRouterAuthenticationError(
-                    "OpenRouter rejected OPENROUTER_API_KEY "
-                    f"(HTTP {response.status_code}). Create a fresh key at "
-                    "https://openrouter.ai/keys and update OPENROUTER_API_KEY "
-                    "in the Render service environment."
-                )
-            if not response.ok:
-                body = response.text[:300].replace("\n", " ")
-                raise OpenRouterUpstreamError(
-                    f"HTTP {response.status_code}: {body}",
-                    status_code=response.status_code,
-                    retry_after=getattr(response, "headers", {}).get("Retry-After"),
-                )
+            try:
+                if response.status_code in {401, 403}:
+                    raise OpenRouterAuthenticationError(
+                        "OpenRouter rejected OPENROUTER_API_KEY "
+                        f"(HTTP {response.status_code}). Create a fresh key at "
+                        "https://openrouter.ai/keys and update OPENROUTER_API_KEY "
+                        "in the Render service environment."
+                    )
+                if not response.ok:
+                    raise OpenRouterUpstreamError(
+                        f"HTTP {response.status_code}",
+                        status_code=response.status_code,
+                        retry_after=getattr(response, "headers", {}).get("Retry-After"),
+                    )
 
-            return self._response_content(response.json())
+                payload = self._read_json_response(response, deadline)
+                return self._response_content(payload)
+            finally:
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
 
         def try_models(candidates: list[str]) -> str | None:
             for model in candidates:
@@ -383,38 +401,17 @@ class OpenRouterProvider(AIProvider):
                     failures.append("provider attempt budget exhausted")
                     break
                 try:
-                    token_budget = initial_budget
-                    for attempt in range(2):
-                        content, truncated = request_model(model, token_budget)
-                        if not truncated:
-                            self._clear_model_cooldown(model)
-                            return content
-
-                        retry_budget = expanded_output_token_limit(token_budget)
-                        if attempt == 0 and retry_budget > token_budget:
-                            if deadline - time.monotonic() < 3.5:
-                                truncation_error = RuntimeError(
-                                    "response was truncated and no retry "
-                                    "budget remained"
-                                )
-                                self._cooldown_model(model, truncation_error)
-                                failures.append(f"{model} -> {truncation_error}")
-                                break
-                            logger.warning(
-                                "OpenRouter response from %s reached %s tokens; retrying with %s",
-                                model,
-                                token_budget,
-                                retry_budget,
-                            )
-                            token_budget = retry_budget
-                            continue
-
+                    content, truncated = request_model(model)
+                    if truncated:
                         truncation_error = RuntimeError(
-                            f"response still reached the {token_budget}-token output limit"
+                            "model ended at its output boundary without an "
+                            "application token cap"
                         )
                         self._cooldown_model(model, truncation_error)
                         failures.append(f"{model} -> {truncation_error}")
-                        break
+                        continue
+                    self._clear_model_cooldown(model)
+                    return content
                 except OpenRouterAuthenticationError:
                     # Authentication is shared across all models. Retrying other
                     # model IDs cannot recover from an invalid or revoked API key.
@@ -437,7 +434,6 @@ class OpenRouterProvider(AIProvider):
     def stream_response(self, prompt: str) -> Iterator[str]:
         """Stream a response only from the verified free candidate list."""
         deadline = self._generation_deadline()
-        token_budget = get_output_token_limit("OPENROUTER_MAX_OUTPUT_TOKENS")
         failures: list[str] = []
 
         for model in self._free_model_candidates():
@@ -450,7 +446,6 @@ class OpenRouterProvider(AIProvider):
                     json={
                         "model": model,
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": token_budget,
                         "temperature": 0.7,
                         "stream": True,
                     },
