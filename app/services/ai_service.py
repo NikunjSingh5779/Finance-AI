@@ -966,7 +966,7 @@ class AIService:
         search_query = self._extract_web_search_query(question)
         should_search = intent in {
             "ipo_research", "market_research", "market_explainer",
-            "web_research", "general_research",
+            "web_research",
         } or (intent == "market_fact" and market_data is None)
 
         if search_query and should_search:
@@ -1873,6 +1873,15 @@ Formatting rules are mandatory:
   Savings rate = (income - expenses) / income × 100 = 37.8%.
 - Use the rupee symbol ₹ directly for INR values, and use an em dash (—) for
   unavailable or unset budget values.
+"""
+        elif intent == "market_explainer":
+            response_format = """FINANCIAL ASSET / COMMODITY EXPLAINER
+Explain the named asset only in its financial-market context. For a commodity,
+cover its benchmark or contract, quotation unit when verified, spot-versus-
+futures distinction, major price drivers, and investment exposure/risks. Do not
+drift into unrelated material-science, engineering, or encyclopaedia facts.
+Keep it concise and cite only evidence that directly supports the financial
+claims.
 """
         elif intent == "out_of_scope":
             response_format = """OUT-OF-SCOPE REQUEST
