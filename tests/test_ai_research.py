@@ -503,8 +503,6 @@ def test_market_quote_reply_labels_copper_as_a_futures_contract():
     assert "not a live quote" in reply
 
 
-
-
 def test_regulated_finance_questions_trigger_current_research():
     question = "What is the GST rate on restaurant bills?"
     assert AIService._query_intent(question) == "web_research"
