@@ -199,7 +199,6 @@ def test_openrouter_free_router_streams_with_verified_free_catalogue_fallback(mo
     assert session.get_calls == 1
 
 
-
 def test_openrouter_rotates_a_larger_catalogue_of_verified_free_fallbacks(monkeypatch):
     from app.providers.ai import openrouter as openrouter_module
 
