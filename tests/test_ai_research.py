@@ -474,6 +474,37 @@ def test_market_symbol_detection_avoids_partial_word_matches():
     assert AIService._market_type("What is gold?") == "commodity"
 
 
+def test_copper_followup_is_routed_to_commodity_market_price():
+    history = [
+        {"role": "user", "content": "and gold"},
+        {"role": "assistant", "content": "Gold spot price is ₹X per troy ounce."},
+    ]
+
+    assert AIService._market_type("copper?") == "commodity"
+    assert AIService._market_symbol("copper?", "commodity") == "HG=F"
+    assert AIService._query_intent("copper?", history) == "market_fact"
+    assert AIService._query_intent("price of copper") == "market_fact"
+    assert AIService._market_symbol("what is natural gas price", "commodity") == "NG=F"
+    assert AIService._query_intent("Why does copper conduct electricity?") == "out_of_scope"
+
+
+def test_market_quote_reply_labels_copper_as_a_futures_contract():
+    reply = AIService._market_fact_response({
+        "symbol": "HG=F",
+        "price": 4.5,
+        "currency": "USD",
+        "source": "Yahoo Finance",
+        "quote_kind": "latest_daily_close",
+        "date": "2026-11-24",
+    })
+
+    assert "Copper futures (COMEX: HG=F)" in reply
+    assert "$4.50" in reply
+    assert "not a live quote" in reply
+
+
+
+
 def test_regulated_finance_questions_trigger_current_research():
     question = "What is the GST rate on restaurant bills?"
     assert AIService._query_intent(question) == "web_research"
@@ -487,17 +518,13 @@ def test_generic_finance_education_does_not_attach_private_account_context():
     assert AIService._needs_personal_context("How much did I spend on food this month?")
 
 
-def test_general_question_reaches_provider_without_private_financial_context():
-    class CapturingProvider:
-        prompt = ""
-
+def test_nonfinance_question_is_redirected_without_calling_provider():
+    class UnusedProvider:
         def generate_response(self, prompt):
-            self.prompt = prompt
-            return "The ocean is a vast body of salt water."
+            raise AssertionError("Out-of-scope questions must not call an AI provider")
 
-    provider = CapturingProvider()
     reply = asyncio.run(
-        AIService(provider=provider).get_financial_advice(
+        AIService(provider=UnusedProvider()).get_financial_advice(
             "What is the ocean?",
             financial_context={
                 "summary": {"income": 90000, "expense": 50000, "balance": 40000},
@@ -511,92 +538,20 @@ def test_general_question_reaches_provider_without_private_financial_context():
         )
     )
 
-    assert "vast body" in reply
-    assert "Query intent: general_knowledge" in provider.prompt
-    assert "Private purchase" not in provider.prompt
-    assert "CURRENT PERIOD FINANCIAL SUMMARY" not in provider.prompt
-    assert "₹5,000" not in provider.prompt
-    assert "Never refuse a request solely because it is outside finance." in provider.prompt
+    assert AIService._query_intent("What is the ocean?") == "out_of_scope"
+    assert "focused exclusively on finance-related questions" in reply
+    assert "Private purchase" not in reply
+    assert "₹5,000" not in reply
 
 
-def test_train_travel_question_uses_general_research_and_current_rail_search():
-    question = (
-        "How can I travel from Delhi to Himachal by train in 50k, "
-        "and how many days can I travel?"
-    )
-    assert AIService._query_intent(question) == "general_research"
-    query = AIService._extract_web_search_query(question)
-    assert query is not None
-    assert "Delhi to Himachal" in query
-    assert "Indian Railways" in query
-    assert "train timetable" in query
-    assert "IRCTC" in query
-    assert "himachaltourism.gov.in" in AIService._preferred_domains(question)
+def test_travel_only_question_is_out_of_scope():
+    question = "How can I travel from Delhi to Himachal by train?"
+    assert AIService._query_intent(question) == "out_of_scope"
+    assert not AIService._is_finance_related(question)
 
 
-def test_travel_request_uses_current_research_without_private_finance_data(monkeypatch):
-    class FakeResearcher:
-        def __init__(self):
-            self.queries = []
-
-        async def search_and_fetch(self, query, **kwargs):
-            self.queries.append(query)
-            return [
-                SearchResult(
-                    "IRCTC Delhi to Kalka train information",
-                    "https://www.irctc.co.in/",
-                    "Official railway booking and train information.",
-                )
-            ], []
-
-    class CapturingProvider:
-        prompt = ""
-
-        def generate_response(self, prompt):
-            self.prompt = prompt
-            return (
-                "A Delhi-to-Himachal trip can fit a 50k budget. "
-                "The exact duration depends on stay and travel style."
-            )
-
-    researcher = FakeResearcher()
-    provider = CapturingProvider()
-    monkeypatch.setattr(
-        "app.services.ai_service.get_web_researcher",
-        lambda: researcher,
-    )
-
-    reply = asyncio.run(
-        AIService(provider=provider).get_financial_advice(
-            "How can I travel from Delhi to Himachal by train in 50k, "
-            "and how many days can I travel?",
-            financial_context={
-                "summary": {"income": 90000, "expense": 50000, "balance": 40000},
-                "recent_transactions": [{"description": "Private purchase", "amount": 999}],
-                "budgets": [{"category": "Private", "limit_amt": 5000}],
-            },
-            conversation=[
-                {"role": "user", "content": "How much did I spend on groceries?"},
-                {"role": "assistant", "content": "You spent ₹5,000 on groceries."},
-            ],
-        )
-    )
-
-    assert researcher.queries
-    assert "Delhi to Himachal" in researcher.queries[0]
-    assert "Query intent: general_research" in provider.prompt
-    assert "IRCTC Delhi to Kalka train information" in provider.prompt
-    assert "Private purchase" not in provider.prompt
-    assert "₹5,000" not in provider.prompt
-    assert "in 50k" in provider.prompt.lower()
-    assert "how many days" in provider.prompt.lower()
-    assert "50k budget" in reply.lower()
-
-
-def test_travel_budget_question_does_not_attach_personal_account_context():
-    question = "Plan a Himachal trip by train with a 50k budget."
-    assert AIService._query_intent(question) == "general_research"
-    assert not AIService._needs_personal_context(question)
+def test_technology_only_question_is_out_of_scope():
+    assert AIService._query_intent("How do I install Python?") == "out_of_scope"
 
 
 def test_general_finance_question_uses_finance_education_prompt_without_private_data():
@@ -921,7 +876,7 @@ def test_short_greetings_and_acknowledgements_work_without_an_ai_provider(monkey
     assert "What would you like help with today?" in asyncio.run(
         service.get_financial_advice("yo", financial_context={}, conversation=[])
     )
-    assert AIService._query_intent("yo") == "general_knowledge"
+    assert AIService._query_intent("yo") == "finance_education"
 
 
 def test_chat_turn_accepts_short_nonempty_messages_and_rejects_blank_messages():
