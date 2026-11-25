@@ -1,3 +1,83 @@
+function latexToPlainText(value) {
+  let text = String(value ?? "");
+  text = text.replace(/\\text\s*\{([^{}]*)\}/g, "$1");
+  for (let i = 0; i < 5; i += 1) {
+    const next = text.replace(
+      /\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g,
+      "($1) / ($2)",
+    );
+    if (next === text) break;
+    text = next;
+  }
+  return text
+    .replace(/\\(?:left|right)\b/g, "")
+    .replace(/\\times\b/g, "×")
+    .replace(/\\cdot\b/g, "·")
+    .replace(/\\div\b/g, "÷")
+    .replace(/\\approx\b/g, "≈")
+    .replace(/\\geq?\b/g, "≥")
+    .replace(/\\leq?\b/g, "≤")
+    .replace(/\\%/g, "%")
+    .replace(/\\,/g, " ")
+    .replace(/\\;/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\\[a-zA-Z]+/g, "")
+    .replace(/\\/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitInlineTableLine(line) {
+  const separatorPattern = /\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?/;
+  const separator = separatorPattern.exec(line);
+  if (!separator) return [line];
+
+  const separatorCells = separator[0]
+    .split("|")
+    .filter(cell => /^:?-{3,}:?$/.test(cell.trim()));
+  const columnCount = separatorCells.length;
+  if (columnCount < 2) return [line];
+
+  const before = line.slice(0, separator.index);
+  const pipePositions = [...before.matchAll(/\|/g)].map(match => match.index);
+  if (pipePositions.length < columnCount + 1) return [line];
+
+  const headerStart = pipePositions[pipePositions.length - columnCount - 1];
+  const prefix = before.slice(0, headerStart).trimEnd();
+  const header = before.slice(headerStart).trim();
+  const headerCells = header.split("|").filter(cell => cell.trim());
+  if (headerCells.length !== columnCount) return [line];
+
+  const after = line.slice(separator.index + separator[0].length).trim();
+  const rows = after
+    .split(/\s*\|\|\s*/)
+    .map(row => row.trim())
+    .filter(Boolean);
+
+  return [prefix, header, separator[0].trim(), ...rows].filter(Boolean);
+}
+
+export function normalizeAiMarkdown(markdown) {
+  let source = String(markdown ?? "").replace(/\r\n?/g, "\n");
+  source = source
+    .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_, formula) => {
+      return "\n\n" + latexToPlainText(formula) + "\n\n";
+    })
+    .replace(/\\\(([^]*?)\\\)/g, (_, formula) => {
+      return latexToPlainText(formula);
+    });
+  source = source
+    .replace(/[ \t]+---[ \t]+(?=#{1,4}\s)/g, "\n\n---\n\n")
+    .replace(/([^\n])\s+(?=#{1,4}\s)/g, "$1\n\n");
+  return source
+    .split("\n")
+    .flatMap(splitInlineTableLine)
+    .map(line => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
   let activeAIConversationId = null;
   let aiHistoryItems = [];
@@ -64,7 +144,7 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
   function renderAiMarkdown(container, markdown) {
     container.classList.add("ai-markdown");
     while (container.firstChild) container.removeChild(container.firstChild);
-    const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
+    const lines = normalizeAiMarkdown(markdown).split("\n");
     let list = null;
     let listType = null;
 
@@ -125,10 +205,10 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
         continue;
       }
 
-      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+      const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
       if (heading) {
         resetList();
-        const level = Math.min(3, heading[1].length);
+        const level = Math.min(4, heading[1].length);
         const element = document.createElement("h" + level);
         appendInlineMarkdown(element, heading[2]);
         container.appendChild(element);
@@ -412,7 +492,10 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
       let animationFrame = 0;
       const renderStream = () => {
         animationFrame = 0;
-        bubble.textContent = reply;
+        const wordCount = reply.trim() ? reply.trim().split(/\s+/).length : 0;
+        bubble.textContent = wordCount
+          ? `Preparing a formatted answer… ${wordCount} words received`
+          : "Preparing a formatted answer…";
         chat.scrollTop = chat.scrollHeight;
       };
       const appendDelta = delta => {

@@ -1697,15 +1697,34 @@ this clean, structured Markdown layout every time:
 7. Add "## Recommended Actions" with up to three practical actions when useful.
    Do not pad the report with generic advice or repeat the metric list.
 Use Markdown headings, bold text, bullets, and a real pipe-delimited Markdown
-table. Do not return the report as plain paragraphs or as a code block.
+table. Keep the overview concise (normally no more than 300 words). Put every
+heading, list item, table row, and horizontal rule on its own line; separate
+sections with blank lines. Never join a heading or table to the previous
+paragraph. Never output LaTeX or TeX math delimiters. Write formulas in plain
+text, and preserve the rupee symbol ₹ and em dash —. Do not return the report
+as a code block.
 """
         elif include_financial_context:
             response_format = """PERSONAL FINANCE RESPONSE FORMAT
 Use Markdown formatting rather than a wall of prose. Answer the precise
-question first. Present relevant account figures as concise bullets with bold
-labels, show calculations when useful, and use a Markdown table for a genuine
-category or period comparison. Only include personal figures supplied in the
+question first in one or two sentences. For an ordinary question, aim for
+roughly 150-250 words; go longer only when the user explicitly asks for detail
+or the question genuinely needs it. Present relevant account figures as concise
+bullets with bold labels. Use at most one small Markdown table, and only when a
+comparison materially helps. Only include personal figures supplied in the
 financial context; do not add unrelated overview sections to a narrow question.
+
+Formatting rules are mandatory:
+- Put every heading on its own line, with a blank line before it.
+- Put each bullet or numbered step on its own line.
+- Put Markdown table headers, separator rows, and data rows on separate lines.
+- Do not join headings, tables, lists, or horizontal rules to the end of a
+  paragraph. Do not use horizontal rules as section separators.
+- Never output LaTeX, TeX commands, \\( \\), \\[ \\], or raw equation markup.
+- Write calculations in plain readable text, for example:
+  Savings rate = (income - expenses) / income × 100 = 37.8%.
+- Use the rupee symbol ₹ directly for INR values, and use an em dash (—) for
+  unavailable or unset budget values.
 """
         elif intent in {"general_knowledge", "general_research"}:
             response_format = """GENERAL ASSISTANT RESPONSE FORMAT

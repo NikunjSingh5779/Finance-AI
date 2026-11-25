@@ -683,7 +683,10 @@ def test_personal_finance_overview_prompt_uses_structured_markdown_layout():
         "rent: ₹20000.00 spent; monthly budget ₹25000.00; "
         "budget used 80.0%"
     ) in provider.prompt
-    assert "Do not return the report as plain paragraphs" in provider.prompt
+    assert "real pipe-delimited Markdown" in provider.prompt
+    assert "Keep the overview concise" in provider.prompt
+    assert "Never output LaTeX or TeX math delimiters" in provider.prompt
+    assert "Do not return the report\nas a code block" in provider.prompt
 
 
 def test_personal_finance_report_format_does_not_leak_into_general_finance_education():
