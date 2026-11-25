@@ -1402,11 +1402,14 @@ class AIService:
             issuer_text = ipo_research_text.lower()
             year = re.search(r"\b20\d{2}\b", ipo_research_text)
             year_text = year.group(0) if year else str(datetime.now().year)
-            if re.search(r"\b(jio|jpl)\b", issuer_text):
-                return (
+            if re.search(r"\\b(jio|jpl)\\b", issuer_text):
+                ipo_query = (
                     "Jio IPO Jio Platforms Limited IPO DRHP SEBI RHP listing status issue price "
                     + year_text
                 )
+                if AIService._is_current_price_request(ipo_research_text):
+                    ipo_query += " current NSE BSE share price exchange quote"
+                return ipo_query
 
             issuer = re.sub(
                 r"(?i)\b(?:when|is|the|and|what|its|value|now|on|market|"
