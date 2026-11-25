@@ -1,8 +1,11 @@
 """OpenRouter AI provider implementation."""
 
+import email.utils
 import json
 import logging
 import os
+import threading
+import time
 from collections.abc import Iterator
 
 import requests
@@ -18,9 +21,31 @@ from .base import (
 
 logger = logging.getLogger(__name__)
 
+# Process-local cooldowns prevent a rate-limited upstream model from being
+# hammered by every subsequent chat request. The model catalogue is still
+# checked for exact zero input AND output pricing before a model enters this pool.
+_FREE_MODEL_STATE_LOCK = threading.Lock()
+_FREE_MODEL_COOLDOWNS: dict[str, float] = {}
+_FREE_MODEL_ROTATION_INDEX = 0
+
 
 class OpenRouterAuthenticationError(RuntimeError):
     """Raised when OpenRouter rejects the configured API key."""
+
+
+class OpenRouterUpstreamError(RuntimeError):
+    """An upstream HTTP failure with retry metadata, when available."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after: str | None = None,
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
 
 
 class OpenRouterProvider(AIProvider):
@@ -87,6 +112,112 @@ class OpenRouterProvider(AIProvider):
     def _configured_model() -> str:
         return os.getenv("OPENROUTER_MODEL", "openrouter/free").strip()
 
+    @staticmethod
+    def _max_free_fallbacks() -> int:
+        try:
+            configured = int(os.getenv("OPENROUTER_MAX_FREE_FALLBACKS", "10"))
+        except (TypeError, ValueError):
+            configured = 10
+        return max(1, min(configured, 20))
+
+    @staticmethod
+    def _request_timeout() -> tuple[int, int]:
+        """Keep one upstream call within the provider-attempt time budget."""
+        try:
+            attempt_budget = int(os.getenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "30"))
+        except (TypeError, ValueError):
+            attempt_budget = 30
+        read_timeout = max(5, min(attempt_budget - 5, 25))
+        return (5, read_timeout)
+
+    @staticmethod
+    def _retry_after_seconds(retry_after: str | None) -> int | None:
+        if not retry_after:
+            return None
+        try:
+            return max(0, int(float(retry_after)))
+        except (TypeError, ValueError):
+            try:
+                retry_at = email.utils.parsedate_to_datetime(retry_after)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=time.timezone)
+                return max(0, int(retry_at.timestamp() - time.time()))
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+    @classmethod
+    def _order_free_candidates(
+        cls,
+        candidates: list[str],
+        *,
+        primary: str,
+    ) -> list[str]:
+        """Rotate verified free fallbacks and skip models in temporary cooldown."""
+        global _FREE_MODEL_ROTATION_INDEX
+
+        unique = list(dict.fromkeys(candidates))
+        if not unique:
+            return []
+
+        now = time.monotonic()
+        with _FREE_MODEL_STATE_LOCK:
+            expired = [
+                model for model, until in _FREE_MODEL_COOLDOWNS.items()
+                if until <= now
+            ]
+            for model in expired:
+                _FREE_MODEL_COOLDOWNS.pop(model, None)
+
+            available = [
+                model for model in unique
+                if _FREE_MODEL_COOLDOWNS.get(model, 0.0) <= now
+            ]
+            if not available:
+                # All candidates are cooling down. Probe only the one whose
+                # cooldown expires first rather than flooding every provider.
+                earliest = min(
+                    unique,
+                    key=lambda model: _FREE_MODEL_COOLDOWNS.get(model, 0.0),
+                )
+                return [earliest]
+
+            fallbacks = [model for model in available if model != primary]
+            if fallbacks:
+                offset = _FREE_MODEL_ROTATION_INDEX % len(fallbacks)
+                _FREE_MODEL_ROTATION_INDEX += 1
+                fallbacks = fallbacks[offset:] + fallbacks[:offset]
+
+            ordered = ([primary] if primary in available else []) + fallbacks
+            return ordered[: cls._max_free_fallbacks() + (1 if primary in ordered else 0)]
+
+    @staticmethod
+    def _cooldown_model(model: str, error: Exception) -> None:
+        """Temporarily cool down an upstream route after throttling or bad output."""
+        status_code = getattr(error, "status_code", None)
+        retry_after = OpenRouterProvider._retry_after_seconds(
+            getattr(error, "retry_after", None)
+        )
+        if status_code == 429:
+            duration = max(15, min(retry_after or 60, 300))
+        elif isinstance(error, OpenRouterUpstreamError) and status_code and status_code >= 500:
+            duration = 20
+        else:
+            duration = 15
+
+        with _FREE_MODEL_STATE_LOCK:
+            _FREE_MODEL_COOLDOWNS[model] = time.monotonic() + duration
+
+        logger.warning(
+            "OpenRouter model %s placed in a %ss cooldown after an upstream failure",
+            model,
+            duration,
+        )
+
+    @staticmethod
+    def _clear_model_cooldown(model: str) -> None:
+        with _FREE_MODEL_STATE_LOCK:
+            _FREE_MODEL_COOLDOWNS.pop(model, None)
+
     def _free_model_candidates(self) -> list[str]:
         """Choose only models with a zero-price proof or exact operator opt-in.
 
@@ -111,9 +242,13 @@ class OpenRouterProvider(AIProvider):
             if self.available_models is None:
                 self.available_models = self._discover_models()
             verified_free = self.available_models or []
-            return [configured_model, *[
+            catalogue_candidates = [
                 model for model in verified_free if model != configured_model
-            ][:5]]
+            ][: self._max_free_fallbacks()]
+            return self._order_free_candidates(
+                [configured_model, *catalogue_candidates],
+                primary=configured_model,
+            )
 
         allowlisted = configured_free_routes("OPENROUTER_FREE_MODELS")
         if self.available_models is None:
@@ -134,7 +269,10 @@ class OpenRouterProvider(AIProvider):
                 for model in allowlisted
                 if model != configured_model and model in verified
             )
-            return candidates
+            return self._order_free_candidates(
+                candidates,
+                primary=configured_model,
+            )
 
         # When pricing metadata is unavailable, use one exact operator
         # allowlist entry. Never infer free status from a model name.
@@ -189,7 +327,7 @@ class OpenRouterProvider(AIProvider):
                     "max_tokens": token_budget,
                     "temperature": 0.7,
                 },
-                timeout=(5, 55),
+                timeout=self._request_timeout(),
             )
             if response.status_code in {401, 403}:
                 raise OpenRouterAuthenticationError(
@@ -200,8 +338,10 @@ class OpenRouterProvider(AIProvider):
                 )
             if not response.ok:
                 body = response.text[:300].replace("\n", " ")
-                raise RuntimeError(
-                    f"HTTP {response.status_code}: {body}"
+                raise OpenRouterUpstreamError(
+                    f"HTTP {response.status_code}: {body}",
+                    status_code=response.status_code,
+                    retry_after=getattr(response, "headers", {}).get("Retry-After"),
                 )
 
             return self._response_content(response.json())
@@ -213,6 +353,7 @@ class OpenRouterProvider(AIProvider):
                     for attempt in range(2):
                         content, truncated = request_model(model, token_budget)
                         if not truncated:
+                            self._clear_model_cooldown(model)
                             return content
 
                         retry_budget = expanded_output_token_limit(token_budget)
@@ -226,15 +367,18 @@ class OpenRouterProvider(AIProvider):
                             token_budget = retry_budget
                             continue
 
-                        failures.append(
-                            f"{model} -> response still reached the {token_budget}-token output limit"
+                        truncation_error = RuntimeError(
+                            f"response still reached the {token_budget}-token output limit"
                         )
+                        self._cooldown_model(model, truncation_error)
+                        failures.append(f"{model} -> {truncation_error}")
                         break
                 except OpenRouterAuthenticationError:
                     # Authentication is shared across all models. Retrying other
                     # model IDs cannot recover from an invalid or revoked API key.
                     raise
                 except Exception as exc:
+                    self._cooldown_model(model, exc)
                     logger.warning("OpenRouter model %s failed: %s", model, exc)
                     failures.append(f"{model} -> {exc}")
             return None
@@ -265,7 +409,7 @@ class OpenRouterProvider(AIProvider):
                         "temperature": 0.7,
                         "stream": True,
                     },
-                    timeout=(5, 55),
+                    timeout=self._request_timeout(),
                     stream=True,
                 )
                 try:
@@ -276,7 +420,11 @@ class OpenRouterProvider(AIProvider):
                             "and belongs to the intended OpenRouter account."
                         )
                     if not response.ok:
-                        raise RuntimeError(f"HTTP {response.status_code}")
+                        raise OpenRouterUpstreamError(
+                            f"HTTP {response.status_code}",
+                            status_code=response.status_code,
+                            retry_after=getattr(response, "headers", {}).get("Retry-After"),
+                        )
 
                     for raw_line in response.iter_lines(decode_unicode=True):
                         line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
@@ -295,6 +443,7 @@ class OpenRouterProvider(AIProvider):
                         if truncated:
                             raise RuntimeError("OpenRouter streamed a truncated response")
                     if emitted:
+                        self._clear_model_cooldown(model)
                         return
                     raise RuntimeError("OpenRouter stream contained no text")
                 finally:
@@ -304,6 +453,7 @@ class OpenRouterProvider(AIProvider):
             except OpenRouterAuthenticationError:
                 raise
             except Exception as exc:
+                self._cooldown_model(model, exc)
                 if emitted:
                     raise
                 failures.append(f"{model}: {exc}")
