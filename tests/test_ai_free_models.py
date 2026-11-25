@@ -4,8 +4,8 @@ import time
 import pytest
 
 from app.providers.ai.base import FreeModelConfigurationError
-from app.providers.ai.omniroute import OmniRouteProvider
-from app.providers.ai.opencode import OpenCodeProvider
+from app.providers.ai.groq import GROQ_FREE_MODELS, GroqProvider
+from app.providers.ai.nvidia_nim import NvidiaNimProvider
 from app.providers.ai.openrouter import OpenRouterProvider
 
 
@@ -69,6 +69,20 @@ class RouterSession:
         return self.response
 
 
+
+
+
+class SequenceSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.posts = []
+        self.headers = {}
+
+    def post(self, url, json, timeout, **kwargs):
+        self.posts.append((url, json, kwargs))
+        return self.responses.pop(0)
+
+
 def test_openrouter_rejects_paid_configured_model_before_generation_or_stream(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "paid/model")
     provider = OpenRouterProvider("test-key")
@@ -123,22 +137,98 @@ def test_openrouter_needs_exact_allowlist_when_pricing_cannot_be_checked(monkeyp
         provider.generate_response("Explain a budget.")
 
 
-def test_opencode_and_omniroute_fail_closed_without_exact_free_allowlists(monkeypatch):
-    monkeypatch.delenv("OPENCODE_FREE_MODELS", raising=False)
-    opencode = OpenCodeProvider("test-key")
-    assert not opencode.is_available()
-    with pytest.raises(FreeModelConfigurationError):
-        opencode.generate_response("Explain a budget.")
-    with pytest.raises(FreeModelConfigurationError):
-        list(opencode.stream_response("Explain a budget."))
+def test_groq_uses_only_free_models_and_falls_back_after_rate_limit(monkeypatch):
+    monkeypatch.setenv("GROQ_MODEL", GROQ_FREE_MODELS[0])
+    provider = GroqProvider("test-key")
+    provider.session = SequenceSession([
+        FakeResponse({}, status_code=429, text="rate limited", headers={"Retry-After": "60"}),
+        FakeResponse({
+            "choices": [{
+                "message": {"content": "Use a budget and track weekly spending."},
+                "finish_reason": "stop",
+            }]
+        }),
+    ])
 
-    monkeypatch.delenv("OMNIROUTE_FREE_COMBOS", raising=False)
-    omniroute = OmniRouteProvider("test-key", "https://gateway.example/v1", "free-combo")
-    assert not omniroute.is_available()
-    with pytest.raises(FreeModelConfigurationError):
-        omniroute.generate_response("Explain a budget.")
-    with pytest.raises(FreeModelConfigurationError):
-        list(omniroute.stream_response("Explain a budget."))
+    result = provider.generate_response("How should I start budgeting?")
+
+    assert result == "Use a budget and track weekly spending."
+    assert [item[1]["model"] for item in provider.session.posts] == [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+    ]
+    assert all("max_tokens" not in item[1] for item in provider.session.posts)
+    assert provider.session.posts[0][0] == (
+        "https://api.groq.com/openai/v1/chat/completions"
+    )
+
+
+def test_groq_rejects_models_outside_the_free_allowlist(monkeypatch):
+    monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    provider = GroqProvider("test-key")
+
+    assert not provider.is_available()
+    with pytest.raises(FreeModelConfigurationError, match="free-model allowlist"):
+        provider.generate_response("Explain a budget.")
+
+
+def test_nvidia_nim_is_blocked_in_production_without_an_enterprise_license(monkeypatch):
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-key")
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.delenv("NVIDIA_NIM_PRODUCTION_LICENSED", raising=False)
+
+    provider = NvidiaNimProvider("test-key")
+    assert not provider.is_available()
+
+    monkeypatch.setenv("NVIDIA_NIM_PRODUCTION_LICENSED", "true")
+    assert provider.is_available()
+
+
+def test_nvidia_nim_uses_configured_chat_endpoint_without_a_token_cap(monkeypatch):
+    monkeypatch.setenv("NVIDIA_NIM_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setenv("NVIDIA_NIM_MODELS", "openai/gpt-oss-20b")
+    monkeypatch.delenv("AUTH_REQUIRED", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("NVIDIA_NIM_PRODUCTION_LICENSED", raising=False)
+
+    provider = NvidiaNimProvider("test-key")
+    provider.session = SequenceSession([
+        FakeResponse({
+            "choices": [{
+                "message": {"content": "Build an emergency fund first."},
+                "finish_reason": "stop",
+            }]
+        })
+    ])
+
+    assert provider.generate_response("How should I start saving?") == (
+        "Build an emergency fund first."
+    )
+    url, payload, _ = provider.session.posts[0]
+    assert url == "https://integrate.api.nvidia.com/v1/chat/completions"
+    assert payload["model"] == "openai/gpt-oss-20b"
+    assert "max_tokens" not in payload
+
+
+def test_legacy_opencode_and_omniroute_environment_keys_are_ignored(monkeypatch):
+    from app.providers.ai.discovery import get_ai_providers, reset_provider_cache
+
+    for name in (
+        "NVIDIA_NIM_API_KEY",
+        "GROQ_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OPENCODE_ZEN_API_KEY", "legacy-key")
+    monkeypatch.setenv("OMNIROUTE_API_KEY", "legacy-key")
+    providers = get_ai_providers(force_refresh=True)
+
+    assert providers == []
+    reset_provider_cache()
 
 
 def test_openrouter_official_free_router_uses_only_catalogue_verified_fallbacks(monkeypatch):
