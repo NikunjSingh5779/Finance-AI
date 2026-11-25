@@ -391,6 +391,7 @@ class AIService:
             "jio platforms": "JPL.NS",
             "jio": "JPL.NS",
             "jpl": "JPL.NS",
+            "anthropic": "ANT",
             "reliance": "RELIANCE.NS",
             "tcs": "TCS.NS",
             "infosys": "INFY.NS",
@@ -421,7 +422,7 @@ class AIService:
         ):
             return False
         has_price = bool(re.search(
-            r"\b(price|quote|trading at|share price|stock price)\b",
+            r"\b(price|quote|value|worth|valuation|trading at|share price|stock price|market value)\b",
             lowered,
         ))
         has_freshness = bool(re.search(
