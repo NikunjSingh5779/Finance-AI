@@ -163,6 +163,29 @@ def test_groq_uses_only_free_models_and_falls_back_after_rate_limit(monkeypatch)
     )
 
 
+def test_groq_streams_with_the_free_model_and_no_token_cap(monkeypatch):
+    from app.providers.ai.groq import GROQ_FREE_MODELS
+
+    class StreamResponse(FakeResponse):
+        def iter_lines(self, decode_unicode=True):
+            yield 'data: {"choices":[{"delta":{"content":"Groq "},"finish_reason":null}]}'
+            yield 'data: {"choices":[{"delta":{"content":"reply"},"finish_reason":null}]}'
+            yield "data: [DONE]"
+
+    monkeypatch.setenv("GROQ_MODEL", GROQ_FREE_MODELS[0])
+    provider = GroqProvider("test-key")
+    session = SequenceSession([StreamResponse({})])
+    provider.session = session
+
+    assert "".join(provider.stream_response("How can I budget?")) == "Groq reply"
+    url, payload, kwargs = provider.session.posts[0]
+    assert url == "https://api.groq.com/openai/v1/chat/completions"
+    assert payload["model"] == GROQ_FREE_MODELS[0]
+    assert "max_tokens" not in payload
+    assert payload["stream"] is True
+    assert kwargs.get("stream") is True
+
+
 def test_groq_rejects_models_outside_the_free_allowlist(monkeypatch):
     monkeypatch.setenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     provider = GroqProvider("test-key")
