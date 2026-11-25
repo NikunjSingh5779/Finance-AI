@@ -315,7 +315,7 @@ class OpenRouterProvider(AIProvider):
     def _read_json_response(response, deadline: float) -> dict:
         """Read completion JSON in chunks and enforce a wall-clock deadline."""
         body = bytearray()
-        for chunk in response.iter_content(chunk_size=1024):
+        for chunk in response.iter_content(chunk_size=1):
             if time.monotonic() >= deadline:
                 raise TimeoutError(
                     "OpenRouter response exceeded its wall-clock deadline"
