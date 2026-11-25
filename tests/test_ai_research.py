@@ -686,7 +686,7 @@ def test_personal_finance_overview_prompt_uses_structured_markdown_layout():
     assert "real pipe-delimited Markdown" in provider.prompt
     assert "Keep the overview concise" in provider.prompt
     assert "Never output LaTeX or TeX math delimiters" in provider.prompt
-    assert "Do not return the report as a code block" in provider.prompt
+    assert "Do not return the report\nas a code block" in provider.prompt
 
 
 def test_personal_finance_report_format_does_not_leak_into_general_finance_education():
