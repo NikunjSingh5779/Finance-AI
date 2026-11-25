@@ -6,6 +6,20 @@ from app.providers.ai.opencode import OpenCodeProvider
 from app.providers.ai.openrouter import OpenRouterProvider
 
 
+@pytest.fixture(autouse=True)
+def reset_openrouter_runtime_state():
+    from app.providers.ai import openrouter as openrouter_module
+
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    previous_rotation = openrouter_module._FREE_MODEL_ROTATION_INDEX
+    openrouter_module._FREE_MODEL_ROTATION_INDEX = 0
+    yield
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    openrouter_module._FREE_MODEL_ROTATION_INDEX = previous_rotation
+
+
 class FakeResponse:
     def __init__(self, payload, *, status_code=200, text="", headers=None):
         self._payload = payload
