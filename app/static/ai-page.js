@@ -113,7 +113,7 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
   function renderAiMarkdown(container, markdown) {
     container.classList.add("ai-markdown");
     while (container.firstChild) container.removeChild(container.firstChild);
-    const lines = String(markdown ?? "").replace(/\r/g, "").split("\n");
+    const lines = normalizeAiMarkdown(markdown).split("\n");
     let list = null;
     let listType = null;
 
@@ -174,10 +174,10 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
         continue;
       }
 
-      const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+      const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
       if (heading) {
         resetList();
-        const level = Math.min(3, heading[1].length);
+        const level = Math.min(4, heading[1].length);
         const element = document.createElement("h" + level);
         appendInlineMarkdown(element, heading[2]);
         container.appendChild(element);
