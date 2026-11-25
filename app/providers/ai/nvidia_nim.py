@@ -8,7 +8,6 @@ from .openai_compatible import OpenAICompatibleProvider
 # Program API Catalog access is for prototyping/testing, not production use.
 NVIDIA_NIM_DEVELOPMENT_MODELS = (
     "openai/gpt-oss-20b",
-    "meta/llama-3.1-8b-instruct",
 )
 
 
