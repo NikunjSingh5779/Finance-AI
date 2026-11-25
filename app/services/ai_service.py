@@ -128,7 +128,11 @@ class AIService:
     @staticmethod
     def _market_type(question: str) -> str | None:
         lowered = question.lower()
-        if re.search(r"\b(gold|silver|crude oil|oil price|commodity|commodities)\b", lowered):
+        if re.search(
+            r"\b(gold|silver|copper|platinum|palladium|aluminium|aluminum|"
+            r"nickel|zinc|crude oil|oil price|natural gas|commodity|commodities)\b",
+            lowered,
+        ):
             return "commodity"
         if re.search(r"\b(bitcoin|btc|ethereum|eth|crypto|cryptocurrency|solana|sol)\b", lowered):
             return "crypto"
@@ -182,7 +186,9 @@ class AIService:
             (
                 "crypto", "cryptocurrency", "bitcoin", "ethereum", "forex",
                 "foreign exchange", "currency exchange", "exchange rate", "currency",
-                "commodity", "commodities", "gold", "silver", "oil price",
+                "commodity", "commodities", "gold", "silver", "copper", "platinum",
+                "palladium", "aluminium", "aluminum", "nickel", "zinc", "natural gas",
+                "oil price",
             ),
             (
                 "bank", "banking", "bank account", "savings account", "current account",
@@ -298,7 +304,8 @@ class AIService:
         if lowered in greetings:
             return (
                 "Hey! 👋 What would you like help with today? I can help with "
-                "personal finance, investing, technology, travel, or general questions."
+                "budgeting, saving, investing, stocks, crypto, commodities, "
+                "banking, loans, insurance, taxes, and market prices."
             )
         if lowered in thanks:
             return "You're welcome! 😊 What would you like to explore next?"
@@ -440,7 +447,9 @@ class AIService:
             "sol": "SOL-USD",
             "gold": "GC=F",
             "silver": "SI=F",
+            "copper": "HG=F",
             "crude oil": "CL=F",
+            "natural gas": "NG=F",
             "oil": "CL=F",
         }
         for alias, symbol in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
@@ -475,7 +484,7 @@ class AIService:
     ) -> str:
         lowered = question.lower()
         if AIService._is_greeting_or_finance_help(question):
-            return "general_knowledge"
+            return "finance_education"
         ipo_terms = (
             "ipo", "drhp", "prospectus", "sebi filing",
             "listing date", "ipo date", "public issue",
@@ -485,6 +494,31 @@ class AIService:
 
         market_type = AIService._market_type(question)
         if market_type:
+            symbol = AIService._market_symbol(question, market_type)
+            entity_only = bool(
+                symbol
+                and re.fullmatch(
+                    r"(?:what is |who is |and |the )?"
+                    r"[a-z0-9 .'-]+[?!., ]*",
+                    lowered,
+                )
+                and len(lowered.split()) <= 4
+                and not re.search(
+                    r"\b(why|how|explain|conducts|electrical|wiring|uses|used for|"
+                    r"manufacture|manufacturing|chemistry|chemical|properties)\b",
+                    lowered,
+                )
+            )
+            finance_market_terms = (
+                "price", "quote", "market", "commodity", "future", "futures",
+                "spot", "invest", "investment", "trading", "trade", "stock",
+                "share", "valuation", "market cap", "ipo", "earnings", "dividend",
+                "buy", "sell", "portfolio", "contract", "exchange",
+            )
+            if not entity_only and not any(term in lowered for term in finance_market_terms):
+                return "out_of_scope"
+            if entity_only and len(lowered.split()) <= 2:
+                return "market_fact"
             explainer_prefixes = (
                 "what is ", "who is ", "tell me about ", "explain ",
                 "what does ", "how does ",
@@ -514,6 +548,9 @@ class AIService:
                     return "market_fact"
             return "market_research"
 
+        if not AIService._is_finance_related(question, conversation):
+            return "out_of_scope"
+
         if lowered.startswith((
             "search ", "search the web", "web search", "look up ",
             "find online ", "browse ", "fetch ",
@@ -538,9 +575,6 @@ class AIService:
         )
         if any(term in lowered for term in regulated_finance_terms):
             return "web_research"
-
-        if AIService._is_travel_planning_query(question):
-            return "general_research"
 
         if AIService._needs_personal_context(question):
             return "personal_finance"
@@ -720,11 +754,14 @@ class AIService:
                 if part
             )
 
-        company = (
-            "Jio Platforms Limited (NSE: JPL; BSE: 545004)"
-            if clean_symbol == "JPL"
-            else symbol
-        )
+        company = {
+            "JPL": "Jio Platforms Limited (NSE: JPL; BSE: 545004)",
+            "HG=F": "Copper futures (COMEX: HG=F)",
+            "GC=F": "Gold futures (COMEX: GC=F)",
+            "SI=F": "Silver futures (COMEX: SI=F)",
+            "CL=F": "Crude oil futures (NYMEX: CL=F)",
+            "NG=F": "Natural gas futures (NYMEX: NG=F)",
+        }.get(clean_symbol, symbol)
         headline = (
             f"**{company}: {AIService._format_market_money(price, currency)}**"
         )
@@ -856,6 +893,15 @@ class AIService:
         if simple_reply:
             return await self._deliver_reply(simple_reply, on_delta)
         intent = self._query_intent(question, conversation)
+        if intent == "out_of_scope":
+            return await self._deliver_reply(
+                "I'm FinanceAI, focused exclusively on finance-related questions. "
+                "I can help with personal finance, budgeting, saving, investing, "
+                "stocks, crypto, commodities, market prices, banking, loans, "
+                "insurance, taxes, and financial research. Please ask me something "
+                "in one of those areas.",
+                on_delta,
+            )
         market_data = None
         market_evidence = ""
 
@@ -1830,17 +1876,10 @@ Formatting rules are mandatory:
 - Use the rupee symbol ₹ directly for INR values, and use an em dash (—) for
   unavailable or unset budget values.
 """
-        elif intent in {"general_knowledge", "general_research"}:
-            response_format = """GENERAL ASSISTANT RESPONSE FORMAT
-Answer the question directly and helpfully, even when it is unrelated to
-personal finance. Use concise headings, steps, bullets, or a comparison table
-when they make the answer easier to act on. For travel planning, organize the
-answer around route options, journey time, trip length, transport, stay, food,
-local travel, and a realistic budget breakdown. For a fixed budget, estimate
-how many days it can reasonably cover and show transport, accommodation, food,
-local travel, activities, and contingency separately. State assumptions about
-traveller count and trip style. Clearly distinguish sourced live schedules and
-fares from approximate planning estimates.
+        elif intent == "out_of_scope":
+            response_format = """OUT-OF-SCOPE REQUEST
+Politely state that FinanceAI only handles finance-related questions and
+suggest one or two relevant financial topics the user could ask about.
 """
         else:
             response_format = """FINANCE EDUCATION / RESEARCH RESPONSE FORMAT
@@ -1852,14 +1891,20 @@ and supporting sources. Do not force a personal-finance summary into a general
 finance answer.
 """
 
-        return f"""You are FinanceAI, a helpful general-purpose assistant with strong personal-finance expertise.
+        return f"""You are FinanceAI, a specialist assistant for personal finance and financial markets.
 Today is {date.today().isoformat()}.
 Query intent: {intent}.
 
 Rules:
-- Help with general knowledge and practical topics such as travel, technology,
-  education, everyday planning, writing, and personal finance.
-- Never refuse a request solely because it is outside finance.
+- Answer only finance-related questions: personal finance, budgeting, saving,
+  investing, stocks, bonds, ETFs, IPOs, crypto, commodities, market prices,
+  banking, credit, loans, insurance, taxes, accounting, and financial economics.
+- Do not answer unrelated general knowledge, coding, technology tutorials,
+  science, entertainment, writing, or travel-planning questions. Those are
+  outside FinanceAI's scope; briefly redirect the user to a finance question.
+- A named stock, cryptocurrency, or commodity can be a finance question even
+  when the user sends only its name as a short follow-up. Resolve it as a
+  market-price lookup when a quote is the natural conversational intent.
 - Use private financial context only when the user explicitly asks about their
   own or their household's finances. Do not expose account, budget, or
   transaction data in unrelated answers.
