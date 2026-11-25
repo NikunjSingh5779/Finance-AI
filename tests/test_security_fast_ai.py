@@ -151,7 +151,6 @@ def test_shared_rate_limit_checks_user_quota_across_client_addresses(monkeypatch
     assert connection.rollbacks == 1
 
 
-
 def test_sse_event_serializes_nested_datetime_values():
     created_at = datetime(2026, 11, 25, 9, 38, 0, tzinfo=timezone.utc)
     event = _sse_event(
