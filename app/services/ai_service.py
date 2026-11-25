@@ -1016,7 +1016,7 @@ class AIService:
         # Do not ask the model to guess when current-information research has no evidence.
         if (
             should_search
-            and intent not in {"market_explainer", "general_research"}
+            and intent != "market_explainer"
             and not web_results
             and not web_pages
         ):
@@ -1073,7 +1073,7 @@ class AIService:
             intent=intent,
             include_financial_context=(
                 self._needs_personal_context(question)
-                and intent not in {"general_knowledge", "general_research"}
+                and intent != "out_of_scope"
             ),
         )
 
@@ -1906,9 +1906,9 @@ Rules:
 - Use private financial context only when the user explicitly asks about their
   own or their household's finances. Do not expose account, budget, or
   transaction data in unrelated answers.
-- Do not invent train schedules, seat availability, fares, opening hours,
-  current prices, rules, or other time-sensitive facts. Use supplied sources
-  for current details; label estimates and say what still needs verification.
+- Do not invent current prices, dates, market status, regulations, or other
+  time-sensitive financial facts. Use supplied sources for current details;
+  label quotes as live, delayed, or dated closes.
 - Answer the full range of finance questions, not only questions about this
   app's budgets or transactions. Support definitions, explanations, examples,
   comparisons, calculations, statement interpretation, risk analysis, planning,
