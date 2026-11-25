@@ -27,6 +27,36 @@ function latexToPlainText(value) {
     .trim();
 }
 
+function splitInlineTableLine(line) {
+  const separatorPattern = /\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?/;
+  const separator = separatorPattern.exec(line);
+  if (!separator) return [line];
+
+  const separatorCells = separator[0]
+    .split("|")
+    .filter(cell => /^:?-{3,}:?$/.test(cell.trim()));
+  const columnCount = separatorCells.length;
+  if (columnCount < 2) return [line];
+
+  const before = line.slice(0, separator.index);
+  const pipePositions = [...before.matchAll(/\|/g)].map(match => match.index);
+  if (pipePositions.length < columnCount + 1) return [line];
+
+  const headerStart = pipePositions[pipePositions.length - columnCount - 1];
+  const prefix = before.slice(0, headerStart).trimEnd();
+  const header = before.slice(headerStart).trim();
+  const headerCells = header.split("|").filter(cell => cell.trim());
+  if (headerCells.length !== columnCount) return [line];
+
+  const after = line.slice(separator.index + separator[0].length).trim();
+  const rows = after
+    .split(/\s*\|\|\s*/)
+    .map(row => row.trim())
+    .filter(Boolean);
+
+  return [prefix, header, separator[0].trim(), ...rows].filter(Boolean);
+}
+
 export function normalizeAiMarkdown(markdown) {
   let source = String(markdown ?? "").replace(/\r\n?/g, "\n");
   source = source
@@ -41,6 +71,7 @@ export function normalizeAiMarkdown(markdown) {
     .replace(/([^\n])\s+(?=#{1,4}\s)/g, "$1\n\n");
   return source
     .split("\n")
+    .flatMap(splitInlineTableLine)
     .map(line => line.trimEnd())
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
