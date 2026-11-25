@@ -122,14 +122,29 @@ class OpenRouterProvider(AIProvider):
         return max(1, min(configured, 20))
 
     @staticmethod
-    def _request_timeout() -> tuple[int, int]:
-        """Keep one upstream call within the provider-attempt time budget."""
+    def _attempt_budget_seconds() -> int:
+        """Match the application provider-attempt budget."""
         try:
-            attempt_budget = int(os.getenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "30"))
+            configured = int(os.getenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "60"))
         except (TypeError, ValueError):
-            attempt_budget = 30
-        read_timeout = max(5, min(attempt_budget - 5, 25))
-        return (5, read_timeout)
+            configured = 60
+        return max(5, min(configured, 80))
+
+    @classmethod
+    def _generation_deadline(cls) -> float:
+        """Stop this worker before the outer asyncio timeout cancels its await."""
+        budget = cls._attempt_budget_seconds()
+        internal_budget = max(3, min(budget - 8, 50))
+        return time.monotonic() + internal_budget
+
+    @staticmethod
+    def _request_timeout(remaining_seconds: float) -> tuple[float, float]:
+        """Bound each request by the time left in this provider attempt."""
+        if remaining_seconds < 2.5:
+            raise TimeoutError("OpenRouter provider attempt budget exhausted")
+        connect_timeout = min(2.0, max(1.0, remaining_seconds * 0.2))
+        read_timeout = min(10.0, max(1.0, remaining_seconds - connect_timeout - 0.5))
+        return (connect_timeout, read_timeout)
 
     @staticmethod
     def _retry_after_seconds(retry_after: str | None) -> int | None:
@@ -198,12 +213,26 @@ class OpenRouterProvider(AIProvider):
         retry_after = OpenRouterProvider._retry_after_seconds(
             getattr(error, "retry_after", None)
         )
+        error_text = str(error).lower()
         if status_code == 429:
-            duration = max(15, min(retry_after or 60, 300))
+            duration = max(30, min(retry_after or 120, 300))
+        elif isinstance(error, requests.exceptions.Timeout):
+            duration = 90
         elif isinstance(error, OpenRouterUpstreamError) and status_code and status_code >= 500:
-            duration = 20
+            duration = 45
+        elif any(
+            marker in error_text
+            for marker in (
+                "empty response",
+                "no completion choices",
+                "stream contained no text",
+            )
+        ):
+            duration = 120
+        elif "still reached the" in error_text:
+            duration = 60
         else:
-            duration = 15
+            duration = 30
 
         with _FREE_MODEL_STATE_LOCK:
             _FREE_MODEL_COOLDOWNS[model] = time.monotonic() + duration
@@ -313,6 +342,7 @@ class OpenRouterProvider(AIProvider):
         )
 
     def generate_response(self, prompt: str) -> str:
+        deadline = self._generation_deadline()
         models = self._free_model_candidates()
         failures: list[str] = []
         initial_budget = get_output_token_limit(
@@ -328,7 +358,7 @@ class OpenRouterProvider(AIProvider):
                     "max_tokens": token_budget,
                     "temperature": 0.7,
                 },
-                timeout=self._request_timeout(),
+                timeout=self._request_timeout(deadline - time.monotonic()),
             )
             if response.status_code in {401, 403}:
                 raise OpenRouterAuthenticationError(
@@ -349,6 +379,9 @@ class OpenRouterProvider(AIProvider):
 
         def try_models(candidates: list[str]) -> str | None:
             for model in candidates:
+                if deadline - time.monotonic() < 2.5:
+                    failures.append("provider attempt budget exhausted")
+                    break
                 try:
                     token_budget = initial_budget
                     for attempt in range(2):
@@ -359,6 +392,14 @@ class OpenRouterProvider(AIProvider):
 
                         retry_budget = expanded_output_token_limit(token_budget)
                         if attempt == 0 and retry_budget > token_budget:
+                            if deadline - time.monotonic() < 3.5:
+                                truncation_error = RuntimeError(
+                                    "response was truncated and no retry "
+                                    "budget remained"
+                                )
+                                self._cooldown_model(model, truncation_error)
+                                failures.append(f"{model} -> {truncation_error}")
+                                break
                             logger.warning(
                                 "OpenRouter response from %s reached %s tokens; retrying with %s",
                                 model,
@@ -395,10 +436,13 @@ class OpenRouterProvider(AIProvider):
 
     def stream_response(self, prompt: str) -> Iterator[str]:
         """Stream a response only from the verified free candidate list."""
+        deadline = self._generation_deadline()
         token_budget = get_output_token_limit("OPENROUTER_MAX_OUTPUT_TOKENS")
         failures: list[str] = []
 
         for model in self._free_model_candidates():
+            if deadline - time.monotonic() < 2.5:
+                break
             emitted = False
             try:
                 response = self.session.post(
@@ -410,7 +454,7 @@ class OpenRouterProvider(AIProvider):
                         "temperature": 0.7,
                         "stream": True,
                     },
-                    timeout=self._request_timeout(),
+                    timeout=self._request_timeout(deadline - time.monotonic()),
                     stream=True,
                 )
                 try:
@@ -459,6 +503,8 @@ class OpenRouterProvider(AIProvider):
                     raise
                 failures.append(f"{model}: {exc}")
 
+        if time.monotonic() >= deadline - 0.5:
+            failures.append("provider attempt budget exhausted")
         raise RuntimeError(
             "All verified free OpenRouter streams failed"
             + (": " + failures[-1] if failures else "")
