@@ -222,7 +222,11 @@ class OpenRouterProvider(AIProvider):
             duration = 45
         elif any(
             marker in error_text
-            for marker in ("empty response", "no completion choices", "stream contained no text")
+            for marker in (
+                "empty response",
+                "no completion choices",
+                "stream contained no text",
+            )
         ):
             duration = 120
         elif "still reached the" in error_text:
@@ -390,7 +394,8 @@ class OpenRouterProvider(AIProvider):
                         if attempt == 0 and retry_budget > token_budget:
                             if deadline - time.monotonic() < 3.5:
                                 truncation_error = RuntimeError(
-                                    "response was truncated and no retry budget remained"
+                                    "response was truncated and no retry "
+                                    "budget remained"
                                 )
                                 self._cooldown_model(model, truncation_error)
                                 failures.append(f"{model} -> {truncation_error}")
