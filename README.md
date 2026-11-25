@@ -109,7 +109,13 @@ See [docs/MULTIUSER_DEPLOYMENT.md](docs/MULTIUSER_DEPLOYMENT.md) and [docs/FINAN
 
 ## AI providers
 
-AI is optional. The current implementation supports OmniRoute, OpenCode Zen, and OpenRouter-compatible providers. Configure provider credentials only on the backend (for example, in Render environment variables). Never put AI provider keys or database credentials in PWA build variables.
+AI is optional. The provider chain supports NVIDIA NIM, Groq Free, and OpenRouter. Configure provider credentials only on the backend (for example, in Render environment variables). Never put AI provider keys or database credentials in PWA build variables.
+
+- **Groq:** FinanceAI allows only `openai/gpt-oss-120b` and `openai/gpt-oss-20b` from Groq's free chat-model set. Keep the Groq account on the Free plan; upgrading to the Developer plan switches to usage-based billing.
+- **NVIDIA NIM:** the hosted NVIDIA Developer Program endpoints are for prototyping, development and testing. FinanceAI blocks NIM in production unless `NVIDIA_NIM_PRODUCTION_LICENSED=true` is explicitly set for a production-eligible license.
+- **OpenRouter:** `openrouter/free` is tried first, followed only by models whose published input and output prices are both zero.
+
+OpenCode and OmniRoute are no longer part of provider discovery.
 
 ## Testing
 
