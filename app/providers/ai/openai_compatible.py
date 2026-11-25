@@ -280,13 +280,16 @@ class OpenAICompatibleProvider(AIProvider):
             try:
                 response = self._post(model, prompt, deadline, stream=True)
                 self._check_response(response)
-                for raw_line in response.iter_lines(decode_unicode=True):
+                # SSE is UTF-8 by specification. requests may otherwise
+                # guess ISO-8859-1 for text/event-stream responses without a
+                # charset parameter, corrupting ₹ and other non-ASCII text.
+                for raw_line in response.iter_lines(decode_unicode=False):
                     if time.monotonic() >= deadline:
                         raise TimeoutError(
                             "AI provider stream exceeded its wall-clock deadline"
                         )
                     line = (
-                        raw_line.decode("utf-8")
+                        raw_line.decode("utf-8", errors="replace")
                         if isinstance(raw_line, bytes)
                         else raw_line
                     )

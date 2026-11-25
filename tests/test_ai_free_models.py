@@ -160,6 +160,41 @@ def test_groq_uses_only_free_models_and_falls_back_after_rate_limit(monkeypatch)
     )
 
 
+def test_groq_stream_preserves_utf8_currency_and_dash_characters(monkeypatch):
+    from app.providers.ai.groq import GROQ_FREE_MODELS
+
+    expected = "Income: ₹1,158,000.00; unbudgeted: —; long-term savings."
+    payload = json.dumps({
+        "choices": [{
+            "delta": {"content": expected},
+            "finish_reason": None,
+        }]
+    }, ensure_ascii=False).encode("utf-8")
+
+    class Utf8SseResponse:
+        status_code = 200
+        ok = True
+        headers = {}
+
+        def iter_lines(self, decode_unicode=False):
+            assert decode_unicode is False
+            yield b"data: " + payload
+            yield b"data: [DONE]"
+
+        def close(self):
+            return None
+
+    monkeypatch.setenv("GROQ_MODEL", GROQ_FREE_MODELS[0])
+    provider = GroqProvider("test-key")
+    provider.session = SequenceSession([Utf8SseResponse()])
+
+    actual = "".join(provider.stream_response("Summarize my cash flow."))
+
+    assert actual == expected
+    assert "â‚¹" not in actual
+    assert "â€”" not in actual
+
+
 def test_groq_streams_with_the_free_model_and_no_token_cap(monkeypatch):
     from app.providers.ai.groq import GROQ_FREE_MODELS
 
