@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from collections.abc import Iterator
+from datetime import timezone
 
 import requests
 
@@ -140,7 +141,7 @@ class OpenRouterProvider(AIProvider):
             try:
                 retry_at = email.utils.parsedate_to_datetime(retry_after)
                 if retry_at.tzinfo is None:
-                    retry_at = retry_at.replace(tzinfo=time.timezone)
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
                 return max(0, int(retry_at.timestamp() - time.time()))
             except (TypeError, ValueError, OverflowError):
                 return None
@@ -244,7 +245,7 @@ class OpenRouterProvider(AIProvider):
             verified_free = self.available_models or []
             catalogue_candidates = [
                 model for model in verified_free if model != configured_model
-            ][: self._max_free_fallbacks()]
+            ]
             return self._order_free_candidates(
                 [configured_model, *catalogue_candidates],
                 primary=configured_model,
