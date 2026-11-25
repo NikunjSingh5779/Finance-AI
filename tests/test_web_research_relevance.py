@@ -133,3 +133,49 @@ def test_fetched_page_with_unrelated_content_is_not_cited():
 
     assert results == []
     assert pages == []
+
+
+def test_search_and_fetch_uses_rss_when_duckduckgo_results_are_unrelated():
+    class FakeSearcher:
+        async def search(self, query, max_results=10, region="wt-wt", timelimit=None):
+            return [
+                SearchResult(
+                    "Graphics cards and AI accelerators",
+                    "https://www.example.com/gpu-news",
+                    "A product update about GPUs and accelerators.",
+                )
+            ]
+
+        async def _search_google_news_rss(self, query, max_results=10):
+            return [
+                SearchResult(
+                    "Anthropic prices its initial public offering",
+                    "https://www.anthropic.com/news/anthropic-prices-initial-public-offering",
+                    "Anthropic PBC priced its initial public offering. "
+                    "The shares are expected to trade on Nasdaq under ticker ANT.",
+                    source="google_news",
+                )
+            ]
+
+        async def _search_bing_news_rss(self, query, max_results=10):
+            return []
+
+    async def run():
+        service = WebResearchService(searcher=FakeSearcher())
+
+        async def no_page(url, title=""):
+            return None
+
+        service.fetch = no_page
+        return await service.search_and_fetch(
+            "Anthropic IPO official announcement SEC S-1 prospectus listing date",
+            max_results=8,
+            fetch_count=2,
+        )
+
+    results, pages = asyncio.run(run())
+
+    assert len(results) == 1
+    assert "anthropic.com" in results[0].url
+    assert results[0].source == "google_news"
+    assert pages == []
