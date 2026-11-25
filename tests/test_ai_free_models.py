@@ -6,12 +6,27 @@ from app.providers.ai.opencode import OpenCodeProvider
 from app.providers.ai.openrouter import OpenRouterProvider
 
 
+@pytest.fixture(autouse=True)
+def reset_openrouter_runtime_state():
+    from app.providers.ai import openrouter as openrouter_module
+
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    previous_rotation = openrouter_module._FREE_MODEL_ROTATION_INDEX
+    openrouter_module._FREE_MODEL_ROTATION_INDEX = 0
+    yield
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    openrouter_module._FREE_MODEL_ROTATION_INDEX = previous_rotation
+
+
 class FakeResponse:
-    def __init__(self, payload, *, status_code=200, text=""):
+    def __init__(self, payload, *, status_code=200, text="", headers=None):
         self._payload = payload
         self.status_code = status_code
         self.ok = 200 <= status_code < 300
         self.text = text
+        self.headers = headers or {}
 
     def json(self):
         return self._payload
@@ -196,3 +211,96 @@ def test_openrouter_free_router_streams_with_verified_free_catalogue_fallback(mo
     provider.session = session
     assert "".join(provider.stream_response("Explain savings.")) == "Free response"
     assert session.get_calls == 1
+
+
+def test_openrouter_rotates_a_larger_catalogue_of_verified_free_fallbacks(monkeypatch):
+    from app.providers.ai import openrouter as openrouter_module
+
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.setenv("OPENROUTER_MAX_FREE_FALLBACKS", "6")
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    monkeypatch.setattr(openrouter_module, "_FREE_MODEL_ROTATION_INDEX", 0)
+
+    models = [
+        {"id": f"verified/free-{index}", "pricing": {"prompt": "0", "completion": "0"}}
+        for index in range(1, 9)
+    ]
+    models.append({
+        "id": "paid/model",
+        "pricing": {"prompt": "0.001", "completion": "0"},
+    })
+    provider = OpenRouterProvider("test-key")
+    provider.session = RouterSession(models)
+
+    first = provider._free_model_candidates()
+    second = provider._free_model_candidates()
+
+    assert len(first) == 7  # official router plus six catalogue fallbacks
+    assert "verified/free-6" in first
+    assert "paid/model" not in first
+    assert first[1:] != second[1:]
+    assert all(model.startswith("verified/free-") or model == "openrouter/free"
+               for model in first)
+
+
+def test_openrouter_rate_limited_router_is_cooled_down_for_the_next_request(monkeypatch):
+    from app.providers.ai import openrouter as openrouter_module
+
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    monkeypatch.delenv("OPENROUTER_MAX_FREE_FALLBACKS", raising=False)
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        openrouter_module._FREE_MODEL_COOLDOWNS.clear()
+    monkeypatch.setattr(openrouter_module, "_FREE_MODEL_ROTATION_INDEX", 0)
+
+    models = [
+        {"id": "verified/free-a", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "verified/free-b", "pricing": {"prompt": "0", "completion": "0"}},
+    ]
+
+    class ThrottledRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__(models)
+            self.attempted_models = []
+
+        def post(self, url, json, timeout, **kwargs):
+            model = json["model"]
+            self.attempted_models.append(model)
+            if model == "openrouter/free":
+                return FakeResponse(
+                    {},
+                    status_code=429,
+                    text="rate limited",
+                    headers={"Retry-After": "120"},
+                )
+            return FakeResponse({
+                "choices": [{
+                    "message": {"content": "A verified free response."},
+                    "finish_reason": "stop",
+                }]
+            })
+
+    session = ThrottledRouterSession()
+    first_provider = OpenRouterProvider("test-key")
+    first_provider.session = session
+    assert first_provider.generate_response("Explain savings.") == (
+        "A verified free response."
+    )
+    assert session.attempted_models[:2] == ["openrouter/free", "verified/free-a"]
+
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        cooldown_left = (
+            openrouter_module._FREE_MODEL_COOLDOWNS["openrouter/free"]
+            - __import__("time").monotonic()
+        )
+    assert 110 <= cooldown_left <= 120
+
+    attempted_before_second_request = len(session.attempted_models)
+    second_provider = OpenRouterProvider("test-key")
+    second_provider.session = session
+    assert second_provider.generate_response("Explain an emergency fund.") == (
+        "A verified free response."
+    )
+    second_attempts = session.attempted_models[attempted_before_second_request:]
+    assert second_attempts
+    assert "openrouter/free" not in second_attempts
