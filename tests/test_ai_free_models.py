@@ -304,3 +304,65 @@ def test_openrouter_rate_limited_router_is_cooled_down_for_the_next_request(monk
     second_attempts = session.attempted_models[attempted_before_second_request:]
     assert second_attempts
     assert "openrouter/free" not in second_attempts
+
+
+
+def test_openrouter_request_timeout_respects_remaining_attempt_budget(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "60")
+
+    connect_timeout, read_timeout = OpenRouterProvider._request_timeout(4.0)
+
+    assert connect_timeout >= 1
+    assert read_timeout <= 10
+    assert connect_timeout + read_timeout < 4.0
+    with pytest.raises(TimeoutError, match="attempt budget exhausted"):
+        OpenRouterProvider._request_timeout(2.0)
+
+
+def test_openrouter_empty_router_response_is_cooled_down_across_requests(monkeypatch):
+    from app.providers.ai import openrouter as openrouter_module
+    import time
+
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+    models = [
+        {"id": "verified/free", "pricing": {"prompt": "0", "completion": "0"}},
+    ]
+
+    class EmptyRouterSession(RouterSession):
+        def __init__(self):
+            super().__init__(models)
+            self.attempted = []
+
+        def post(self, url, json, timeout, **kwargs):
+            self.attempted.append(json["model"])
+            if json["model"] == "openrouter/free":
+                return FakeResponse({"choices": [{"message": {"content": ""}}]})
+            return FakeResponse({
+                "choices": [{
+                    "message": {"content": "A working free response."},
+                    "finish_reason": "stop",
+                }]
+            })
+
+    session = EmptyRouterSession()
+    first = OpenRouterProvider("test-key")
+    first.session = session
+    assert first.generate_response("Explain a monthly budget.") == (
+        "A working free response."
+    )
+    assert session.attempted[:2] == ["openrouter/free", "verified/free"]
+
+    with openrouter_module._FREE_MODEL_STATE_LOCK:
+        remaining = (
+            openrouter_module._FREE_MODEL_COOLDOWNS["openrouter/free"]
+            - time.monotonic()
+        )
+    assert 110 <= remaining <= 120
+
+    before = len(session.attempted)
+    second = OpenRouterProvider("test-key")
+    second.session = session
+    assert second.generate_response("Explain an emergency fund.") == (
+        "A working free response."
+    )
+    assert "openrouter/free" not in session.attempted[before:]
