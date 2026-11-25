@@ -313,6 +313,47 @@ class WebResearchService:
                 result.url,
             )
         ]
+
+        # DDGS can return unrelated results without reporting an error. In
+        # that case, query the independent keyless news feeds before declaring
+        # that no matching sources exist.
+        if results and not relevant:
+            fallback_batches = []
+            for method_name in (
+                "_search_google_news_rss",
+                "_search_bing_news_rss",
+            ):
+                method = getattr(self.searcher, method_name, None)
+                if callable(method):
+                    fallback_batches.append(method(query, max_results))
+            if fallback_batches:
+                batches = await asyncio.gather(
+                    *fallback_batches,
+                    return_exceptions=True,
+                )
+                known_urls = {
+                    item.url.strip().lower()
+                    for item in results
+                    if item.url
+                }
+                for batch in batches:
+                    if isinstance(batch, Exception):
+                        continue
+                    for item in batch:
+                        key = item.url.strip().lower()
+                        if key and key not in known_urls:
+                            results.append(item)
+                            known_urls.add(key)
+                relevant = [
+                    result
+                    for result in results
+                    if _is_relevant_text(
+                        query,
+                        result.title,
+                        result.snippet,
+                        result.url,
+                    )
+                ]
         ranked = sorted(
             relevant,
             key=lambda item: _score_result(item, query, preferred_domains),
