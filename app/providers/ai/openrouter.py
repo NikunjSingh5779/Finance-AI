@@ -467,6 +467,10 @@ class OpenRouterProvider(AIProvider):
                         )
 
                     for raw_line in response.iter_lines(decode_unicode=True):
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError(
+                                "OpenRouter stream exceeded its wall-clock deadline"
+                            )
                         line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
                         if not line or not line.startswith("data:"):
                             continue
