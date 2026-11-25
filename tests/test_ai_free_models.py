@@ -406,30 +406,3 @@ def test_openrouter_json_body_reader_enforces_wall_clock_deadline():
     deadline = time.monotonic() + 0.01
     with pytest.raises(TimeoutError, match="wall-clock deadline"):
         OpenRouterProvider._read_json_response(SlowBodyResponse(), deadline)
-
-def test_openrouter_completion_has_no_application_token_cap(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_MODEL", "verified/free")
-    session = RouterSession([
-        {
-            "id": "verified/free",
-            "pricing": {"prompt": "0", "completion": "0"},
-        }
-    ])
-    provider = OpenRouterProvider("test-key")
-    provider.session = session
-
-    assert provider.generate_response("Explain savings.") == "Verified free reply."
-    _, request_body, request_kwargs = session.posts[0]
-    assert "max_tokens" not in request_body
-    assert request_kwargs.get("stream") is True
-
-
-def test_openrouter_json_body_reader_enforces_wall_clock_deadline():
-    class SlowBodyResponse:
-        def iter_content(self, chunk_size=1024):
-            time.sleep(0.02)
-            yield b'{"choices": []}'
-
-    deadline = time.monotonic() + 0.01
-    with pytest.raises(TimeoutError, match="wall-clock deadline"):
-        OpenRouterProvider._read_json_response(SlowBodyResponse(), deadline)
