@@ -1419,9 +1419,14 @@ class AIService:
             issuer = re.sub(r"\b20\d{2}\b", " ", issuer)
             issuer = re.sub(r"\s+", " ", issuer).strip(" ?.,-")
             if issuer:
+                query_suffix = (
+                    "listing date ticker current share price market quote"
+                    if AIService._is_current_price_request(ipo_research_text)
+                    else "listing date ticker issue price"
+                )
                 return (
                     f"{issuer} IPO official announcement SEC S-1 prospectus "
-                    f"listing date issue price ticker {year_text}"
+                    f"{query_suffix} {year_text}"
                 )
 
         travel_question = AIService._is_travel_planning_query(text)
