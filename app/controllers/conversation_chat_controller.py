@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -105,9 +106,13 @@ async def _prepare_ai_request(
 
 
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
+    # Repository responses include datetime values (for example message and
+    # conversation timestamps). Convert nested Pydantic/Python values before
+    # JSON encoding so the final SSE "done" event cannot fail after generation.
+    encoded_payload = jsonable_encoder(payload)
     return (
         f"event: {event}\n"
-        f"data: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        f"data: {json.dumps(encoded_payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
     )
 
 
