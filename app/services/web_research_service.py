@@ -150,7 +150,7 @@ _RESEARCH_STOP_WORDS = {
     "ipo", "drhp", "sebi", "prospectus", "listing", "listed", "public",
     "issue", "filing", "share", "stock", "company", "market",
     "value", "worth", "valuation", "official", "announcement", "announces",
-    "initial", "offering", "ticker", "nasdaq", "sec", "s-1", "s1",
+    "initial", "offering", "ticker", "nasdaq", "sec", "s-1", "s1", "quote",
     "final", "band", "november", "december", "january", "february",
     "march", "april", "june", "july", "august", "september", "october",
 }
