@@ -362,6 +362,7 @@ class OpenRouterProvider(AIProvider):
         deadline = self._generation_deadline()
         models = self._free_model_candidates()
         failures: list[str] = []
+
         def request_model(model: str) -> tuple[str, bool]:
             response = self.session.post(
                 f"{self.base_url}/chat/completions",
