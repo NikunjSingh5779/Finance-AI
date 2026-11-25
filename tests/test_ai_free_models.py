@@ -307,6 +307,7 @@ def test_openrouter_rate_limited_router_is_cooled_down_for_the_next_request(monk
     assert second_attempts
     assert "openrouter/free" not in second_attempts
 
+
 def test_openrouter_request_timeout_respects_remaining_attempt_budget(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER_ATTEMPT_TIMEOUT_SECONDS", "60")
 
