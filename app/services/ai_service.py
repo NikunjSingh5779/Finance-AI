@@ -495,17 +495,23 @@ class AIService:
         market_type = AIService._market_type(question)
         if market_type:
             symbol = AIService._market_symbol(question, market_type)
+            market_asset_names = (
+                "nvidia", "nvda", "apple", "aapl", "microsoft", "msft",
+                "tesla", "tsla", "amazon", "amzn", "google", "alphabet",
+                "meta", "jio platforms", "jio", "jpl", "anthropic", "reliance",
+                "tcs", "infosys", "bitcoin", "btc", "ethereum", "eth",
+                "solana", "sol", "gold", "silver", "copper", "platinum",
+                "palladium", "aluminium", "aluminum", "nickel", "zinc",
+                "crude oil", "oil", "natural gas",
+            )
+            asset_pattern = "|".join(
+                re.escape(name)
+                for name in sorted(market_asset_names, key=len, reverse=True)
+            )
             entity_only = bool(
                 symbol
                 and re.fullmatch(
-                    r"(?:what is |who is |and |the )?"
-                    r"[a-z0-9 .'-]+[?!., ]*",
-                    lowered,
-                )
-                and len(lowered.split()) <= 4
-                and not re.search(
-                    r"\b(why|how|explain|conducts|electrical|wiring|uses|used for|"
-                    r"manufacture|manufacturing|chemistry|chemical|properties)\b",
+                    rf"(?:what is |who is |and |the )?(?:{asset_pattern})[?!., ]*",
                     lowered,
                 )
             )
@@ -580,7 +586,7 @@ class AIService:
             return "personal_finance"
 
         if not AIService._is_finance_related(question, conversation):
-            return "general_knowledge"
+            return "out_of_scope"
 
         return "finance_education"
 
@@ -1757,16 +1763,8 @@ class AIService:
                 "content": content,
             })
         history_messages.reverse()
-        if intent in {"general_knowledge", "general_research"}:
-            # A prior assistant reply can repeat private figures without finance
-            # keywords, so discard the recent history if any turn is financial.
-            financial_history = any(
-                self._contains_financial_topic(str(message.get("content", "")))
-                or self._needs_personal_context(str(message.get("content", "")))
-                for message in history_messages
-            )
-            if financial_history:
-                history_messages = []
+        if intent == "out_of_scope":
+            history_messages = []
         history_text = "\n".join(
             f"{'Assistant' if message.get('role') == 'assistant' else 'User'}: "
             f"{message.get('content', '')}"
@@ -1908,9 +1906,6 @@ Rules:
 - Use private financial context only when the user explicitly asks about their
   own or their household's finances. Do not expose account, budget, or
   transaction data in unrelated answers.
-- For travel planning, give practical route options and a transparent budget
-  breakdown. When the destination or travel dates are unclear, state reasonable
-  assumptions and give a useful starter itinerary instead of refusing.
 - Do not invent train schedules, seat availability, fares, opening hours,
   current prices, rules, or other time-sensitive facts. Use supplied sources
   for current details; label estimates and say what still needs verification.
@@ -1945,8 +1940,11 @@ Rules:
 - Only use web pages and search results that clearly match the named entity and requested topic.
 - Never repeat, cite, or append a source that does not support the user's exact question.
 - If relevant evidence is unavailable, clearly say what could not be verified; do not fill the gap with guesses.
-- For market explainers, explain the company/security in plain language.
-  Do not claim listing status, a current ticker, or a price without supplied evidence.
+- For market explainers, explain the instrument/company as a financial
+  asset: what it represents, how it trades, its market, relevant valuation or
+  price drivers, and material investment risks. Do not switch into unrelated
+  engineering, chemistry, travel, or general encyclopaedia explanations.
+  Do not claim listing status, a current ticker, or a price without evidence.
 - Answer directly first and explain the important context and why it matters.
 - Keep the tone natural and conversational; write in a natural conversation style.
 - Use complete sentences. Keep paragraphs concise and avoid repeating the question.
