@@ -223,6 +223,13 @@ class OpenAICompatibleProvider(AIProvider):
             stream=True,
         )
 
+    def is_available(self) -> bool:
+        return bool(
+            self.api_key
+            and self.model
+            and self.model in self.allowed_models
+        )
+
     def generate_response(self, prompt: str) -> str:
         deadline = self._deadline()
         failures: list[str] = []
