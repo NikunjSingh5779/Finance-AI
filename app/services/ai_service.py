@@ -554,6 +554,9 @@ class AIService:
                     return "market_fact"
             return "market_research"
 
+        if AIService._needs_personal_context(question):
+            return "personal_finance"
+
         if not AIService._is_finance_related(question, conversation):
             return "out_of_scope"
 
@@ -581,12 +584,6 @@ class AIService:
         )
         if any(term in lowered for term in regulated_finance_terms):
             return "web_research"
-
-        if AIService._needs_personal_context(question):
-            return "personal_finance"
-
-        if not AIService._is_finance_related(question, conversation):
-            return "out_of_scope"
 
         return "finance_education"
 
