@@ -901,3 +901,37 @@ def test_ipo_retry_fallback_never_mentions_an_unrelated_issuer(monkeypatch):
 
     assert "Jio" not in reply
     assert "search-provider limitation" in reply
+
+
+def test_short_greetings_and_acknowledgements_work_without_an_ai_provider(monkeypatch):
+    monkeypatch.setattr("app.services.ai_service.get_ai_providers", lambda: [])
+    service = AIService()
+
+    for question in ("yo", "hi there", "ok", "thanks", "bye"):
+        reply = asyncio.run(
+            service.get_financial_advice(
+                question,
+                financial_context={},
+                conversation=[],
+            )
+        )
+        assert reply.strip()
+        assert "[object Object]" not in reply
+
+    assert "What would you like help with today?" in asyncio.run(
+        service.get_financial_advice("yo", financial_context={}, conversation=[])
+    )
+    assert AIService._query_intent("yo") == "general_knowledge"
+
+
+def test_chat_turn_accepts_short_nonempty_messages_and_rejects_blank_messages():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.controllers.conversation_chat_controller import ChatTurn
+
+    assert ChatTurn(question="yo").question == "yo"
+    assert ChatTurn(question=" ok ").question == "ok"
+
+    with pytest.raises(ValidationError):
+        ChatTurn(question="   ")

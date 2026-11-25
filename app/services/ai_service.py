@@ -257,12 +257,22 @@ class AIService:
         )
 
     @staticmethod
+    def _normalized_short_message(question: str) -> str:
+        """Normalize short conversational messages without changing their meaning."""
+        lowered = re.sub(r"[^a-z0-9 ]", " ", question.lower())
+        return " ".join(lowered.split())
+
+    @staticmethod
     def _is_greeting_or_finance_help(question: str) -> bool:
-        lowered = re.sub(r"[^a-z ]", " ", question.lower())
-        lowered = " ".join(lowered.split())
+        lowered = AIService._normalized_short_message(question)
         greetings = {
-            "hi", "hello", "hey", "good morning", "good afternoon",
-            "good evening", "thanks", "thank you",
+            "hi", "hello", "hey", "yo", "sup", "hiya", "heya",
+            "hi there", "hello there", "hey there",
+            "good morning", "good afternoon", "good evening",
+            "morning", "afternoon", "evening",
+            "thanks", "thank you", "thx", "ty",
+            "bye", "goodbye", "good night", "see you", "see ya",
+            "ok", "okay", "got it", "cool", "great",
         }
         help_requests = {
             "help", "help me", "what can you do", "what can financeai do",
@@ -270,6 +280,33 @@ class AIService:
             "what finance topics can you help me with",
         }
         return lowered in greetings or lowered in help_requests
+
+    @staticmethod
+    def _simple_conversation_reply(question: str) -> str | None:
+        """Answer tiny social turns directly without spending an AI-provider request."""
+        lowered = AIService._normalized_short_message(question)
+        greetings = {
+            "hi", "hello", "hey", "yo", "sup", "hiya", "heya",
+            "hi there", "hello there", "hey there",
+            "good morning", "good afternoon", "good evening",
+            "morning", "afternoon", "evening",
+        }
+        acknowledgements = {"ok", "okay", "got it", "cool", "great"}
+        thanks = {"thanks", "thank you", "thx", "ty"}
+        farewells = {"bye", "goodbye", "good night", "see you", "see ya"}
+
+        if lowered in greetings:
+            return (
+                "Hey! 👋 What would you like help with today? I can help with "
+                "personal finance, investing, technology, travel, or general questions."
+            )
+        if lowered in thanks:
+            return "You're welcome! 😊 What would you like to explore next?"
+        if lowered in acknowledgements:
+            return "Got it. What would you like to work on next?"
+        if lowered in farewells:
+            return "See you! 👋 Come back whenever you need a hand."
+        return None
 
     @staticmethod
     def _is_contextual_finance_follow_up(
@@ -437,6 +474,8 @@ class AIService:
         conversation: list[dict[str, str]] | None = None,
     ) -> str:
         lowered = question.lower()
+        if AIService._is_greeting_or_finance_help(question):
+            return "general_knowledge"
         ipo_terms = (
             "ipo", "drhp", "prospectus", "sebi filing",
             "listing date", "ipo date", "public issue",
@@ -813,6 +852,9 @@ class AIService:
         on_delta: DeltaCallback | None = None,
     ) -> str:
         question = question.strip()
+        simple_reply = self._simple_conversation_reply(question)
+        if simple_reply:
+            return await self._deliver_reply(simple_reply, on_delta)
         intent = self._query_intent(question, conversation)
         market_data = None
         market_evidence = ""

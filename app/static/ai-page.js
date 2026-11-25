@@ -1,3 +1,30 @@
+export function readableApiError(value, fallback = "AI is unavailable. Please retry shortly.") {
+  const visit = (candidate, depth = 0) => {
+    if (depth > 5 || candidate == null) return "";
+    if (typeof candidate === "string") {
+      const message = candidate.trim();
+      return message === "[object Object]" ? "" : message;
+    }
+    if (Array.isArray(candidate)) {
+      return candidate
+        .map(item => visit(item, depth + 1))
+        .filter(Boolean)
+        .join(" ");
+    }
+    if (typeof candidate === "object") {
+      for (const key of ["message", "msg", "detail", "error", "reason", "errors"]) {
+        if (Object.prototype.hasOwnProperty.call(candidate, key)) {
+          const message = visit(candidate[key], depth + 1);
+          if (message) return message;
+        }
+      }
+    }
+    return "";
+  };
+
+  return visit(value) || fallback;
+}
+
 function latexToPlainText(value) {
   let text = String(value ?? "");
   text = text.replace(/\\text\s*\{([^{}]*)\}/g, "$1");
@@ -397,7 +424,10 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
     if (!response.ok) {
       let payload = {};
       try { payload = await response.json(); } catch (_) {}
-      const error = new Error(payload.detail || response.statusText || "AI is unavailable.");
+      const error = new Error(readableApiError(
+        payload.detail ?? payload.message ?? payload,
+        response.statusText || "AI is unavailable.",
+      ));
       error.status = response.status;
       throw error;
     }
@@ -426,7 +456,7 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
       } else if (eventName === "done") {
         donePayload = payload;
       } else if (eventName === "error") {
-        throw new Error(payload.detail || "AI is unavailable.");
+        throw new Error(readableApiError(payload.detail ?? payload));
       }
     };
 
@@ -490,12 +520,11 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
       }
       let reply = "";
       let animationFrame = 0;
+      bubble.setAttribute("role", "status");
+      bubble.setAttribute("aria-live", "polite");
       const renderStream = () => {
         animationFrame = 0;
-        const wordCount = reply.trim() ? reply.trim().split(/\s+/).length : 0;
-        bubble.textContent = wordCount
-          ? `Preparing a formatted answer… ${wordCount} words received`
-          : "Preparing a formatted answer…";
+        bubble.textContent = "Writing your answer…";
         chat.scrollTop = chat.scrollHeight;
       };
       const appendDelta = delta => {
@@ -534,7 +563,10 @@ export function createAIPage({ $, apiFetch, apiResponse, showToast }) {
     } catch (error) {
       typing.remove();
       if (generation === aiChatGeneration) {
-        appendSavedChatMessage("ai", "⚠️ " + (error instanceof Error ? error.message : "AI is unavailable."));
+        appendSavedChatMessage(
+          "ai",
+          "⚠️ " + readableApiError(error instanceof Error ? error.message : error),
+        );
       }
     } finally {
       aiSending = false;
