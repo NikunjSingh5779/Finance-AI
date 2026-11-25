@@ -1,8 +1,11 @@
+import json
 import re
+from datetime import datetime, timezone
 
 import pytest
 
 from app.controllers.ai_controller import ChatRequest
+from app.controllers.conversation_chat_controller import _sse_event
 from app.core import auth, rate_limiter
 from app.core.database import POSTGRES_SCHEMA
 from app.core.exceptions import RateLimitError
@@ -146,3 +149,21 @@ def test_shared_rate_limit_checks_user_quota_across_client_addresses(monkeypatch
     assert all(scope.startswith(("user:", "ip:")) for scope in connection.inserted_scopes)
     assert not any("203.0.113." in scope for scope in connection.inserted_scopes)
     assert connection.rollbacks == 1
+
+
+
+def test_sse_event_serializes_nested_datetime_values():
+    created_at = datetime(2026, 11, 25, 9, 38, 0, tzinfo=timezone.utc)
+    event = _sse_event(
+        "done",
+        {
+            "message": {"id": 42, "created_at": created_at},
+            "conversation": {"updated_at": created_at},
+        },
+    )
+
+    assert event.startswith("event: done\n")
+    payload_line = next(line for line in event.splitlines() if line.startswith("data: "))
+    payload = json.loads(payload_line[6:])
+    assert payload["message"]["created_at"] == "2026-11-25T09:38:00Z"
+    assert payload["conversation"]["updated_at"] == "2026-11-25T09:38:00Z"
