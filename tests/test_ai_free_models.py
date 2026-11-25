@@ -380,7 +380,6 @@ def test_openrouter_empty_router_response_is_cooled_down_across_requests(monkeyp
     assert "openrouter/free" not in session.attempted[before:]
 
 
-
 def test_openrouter_completion_has_no_application_token_cap(monkeypatch):
     monkeypatch.setenv("OPENROUTER_MODEL", "verified/free")
     session = RouterSession([
