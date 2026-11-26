@@ -305,6 +305,7 @@ def test_auth_unauthorized_response_includes_cors_headers(v3_client, monkeypatch
 
     assert response.status_code == 401
     assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_login_sets_localhost_http_only_session_cookies(v3_client, monkeypatch):
