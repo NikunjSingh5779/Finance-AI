@@ -305,3 +305,28 @@ def test_auth_unauthorized_response_includes_cors_headers(v3_client, monkeypatch
 
     assert response.status_code == 401
     assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_login_sets_localhost_http_only_session_cookies(v3_client, monkeypatch):
+    async def successful_login(_email, _password):
+        return {
+            "user": {"email": "person@example.com"},
+            "access_token": "access-token",
+            "refresh_token": "r" * 32,
+            "expires_in": 3600,
+        }
+
+    monkeypatch.setattr("app.controllers.auth_controller.sign_in", successful_login)
+    response = v3_client.post(
+        "/auth/login",
+        headers={"Origin": "http://localhost:3000"},
+        json={"email": "person@example.com", "password": "password"},
+    )
+
+    assert response.status_code == 200
+    cookies = response.headers.get_list("set-cookie")
+    assert len(cookies) == 2
+    assert all("HttpOnly" in cookie for cookie in cookies)
+    assert all("Max-Age=604800" in cookie for cookie in cookies)
+    assert any("financeai_access_token=" in cookie for cookie in cookies)
+    assert any("financeai_refresh_token=" in cookie for cookie in cookies)
