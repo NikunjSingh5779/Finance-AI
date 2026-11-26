@@ -2917,6 +2917,7 @@
   $("auth-forgot")?.addEventListener("click", requestPasswordRecovery);
   $("auth-google")?.addEventListener("click", signInWithGoogle);
   $("logout-btn")?.addEventListener("click", logout);
+  $("sidebar-logout-btn")?.addEventListener("click", logout);
   setAuthMode("login");
 
   window.addEventListener("DOMContentLoaded", initAuth);
