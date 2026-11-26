@@ -193,14 +193,19 @@ def verify_access_token(token: str) -> dict[str, Any]:
         raise ValueError("Invalid or expired authentication token") from exc
 
 
-def user_id_from_request(request: Request) -> str:
+def access_token_from_request(request: Request) -> str:
     authorization = request.headers.get("authorization", "")
-    if not authorization.lower().startswith("bearer "):
+    if authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip()
+    return request.cookies.get("financeai_access_token", "").strip()
+
+
+def user_id_from_request(request: Request) -> str:
+    token = access_token_from_request(request)
+    if not token:
         if auth_required():
             raise HTTPException(status_code=401, detail="Authentication required")
         return _dev_user_id()
-
-    token = authorization.split(" ", 1)[1].strip()
     try:
         claims = verify_access_token(token)
         return str(uuid.UUID(str(claims["sub"])))
