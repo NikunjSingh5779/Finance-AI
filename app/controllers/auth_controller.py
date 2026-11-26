@@ -5,6 +5,7 @@ import os
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.auth import (
@@ -21,6 +22,7 @@ from app.core.auth import (
     verify_email_token,
     update_user_password,
     user_id_from_request,
+    access_token_from_request,
 )
 from app.core.rate_limiter import check_rate_limit
 
@@ -55,7 +57,7 @@ class SignInRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=20, max_length=4096)
+    refresh_token: str | None = Field(default=None, min_length=20, max_length=4096)
 
 
 class PasswordRecoveryRequest(BaseModel):
@@ -105,6 +107,41 @@ def auth_config() -> dict:
             )
         ),
     }
+
+
+_LOCAL_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+_ACCESS_COOKIE = "financeai_access_token"
+_REFRESH_COOKIE = "financeai_refresh_token"
+
+
+def _is_localhost_cookie_request(request: Request) -> bool:
+    origin = urlsplit(request.headers.get("origin", ""))
+    hostname = origin.hostname or request.url.hostname
+    return hostname in {"localhost", "127.0.0.1"}
+
+
+def _session_response(payload: dict, session: dict, request: Request) -> JSONResponse:
+    response = JSONResponse(payload)
+    if not _is_localhost_cookie_request(request):
+        return response
+    for name, value in ((_ACCESS_COOKIE, session.get("access_token")), (_REFRESH_COOKIE, session.get("refresh_token"))):
+        if isinstance(value, str) and value:
+            response.set_cookie(
+                key=name,
+                value=value,
+                max_age=_LOCAL_COOKIE_MAX_AGE_SECONDS,
+                httponly=True,
+                secure=False,
+                samesite="lax",
+                path="/",
+            )
+    return response
+
+
+def _clear_localhost_session_cookies(response: JSONResponse, request: Request) -> None:
+    if _is_localhost_cookie_request(request):
+        response.delete_cookie(_ACCESS_COOKIE, path="/", httponly=True, secure=False, samesite="lax")
+        response.delete_cookie(_REFRESH_COOKIE, path="/", httponly=True, secure=False, samesite="lax")
 
 
 @router.post("/google/start")
@@ -189,49 +226,61 @@ async def signup(request: SignUpRequest, raw_request: Request) -> dict:
 
 
 @router.post("/login")
-async def login(request: SignInRequest, raw_request: Request) -> dict:
+async def login(request: SignInRequest, raw_request: Request) -> JSONResponse:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         result = await sign_in(request.email, request.password)
         session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        return _session_response(
+            {
+                "user": result.get("user"),
+                "access_token": session.get("access_token"),
+                "refresh_token": session.get("refresh_token"),
+                "expires_in": session.get("expires_in"),
+            },
+            session,
+            raw_request,
+        )
     except AuthProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/refresh")
-async def refresh(request: RefreshRequest, raw_request: Request) -> dict:
+async def refresh(request: RefreshRequest, raw_request: Request) -> JSONResponse:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
+    refresh_token = request.refresh_token or raw_request.cookies.get(_REFRESH_COOKIE, "")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
-        result = await refresh_session(request.refresh_token)
+        result = await refresh_session(refresh_token)
         session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        return _session_response(
+            {
+                "user": result.get("user"),
+                "access_token": session.get("access_token"),
+                "refresh_token": session.get("refresh_token"),
+                "expires_in": session.get("expires_in"),
+            },
+            session,
+            raw_request,
+        )
     except AuthProviderError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @router.post("/logout")
-async def logout(raw_request: Request) -> dict:
-    authorization = raw_request.headers.get("authorization", "")
-    token = authorization.split(" ", 1)[1].strip() if authorization.lower().startswith("bearer ") else ""
+async def logout(raw_request: Request) -> JSONResponse:
+    token = access_token_from_request(raw_request)
     if token and auth_required():
         try:
             await sign_out(token)
         except AuthProviderError:
             pass
-    return {"success": True}
+    response = JSONResponse({"success": True})
+    _clear_localhost_session_cookies(response, raw_request)
+    return response
 
 
 @router.post("/logout-all")
