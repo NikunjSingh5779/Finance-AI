@@ -401,6 +401,7 @@
     const response = await fetch(API + path, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -513,7 +514,7 @@
       headers.Authorization = "Bearer " + authSession.access_token;
     }
 
-    const response = await fetch(API + path, { ...options, headers });
+    const response = await fetch(API + path, { ...options, headers, credentials: "include" });
     const canRefresh = !path.startsWith("/auth/") || path === "/auth/me";
     if (response.status === 401 && retryOnUnauthorized && canRefresh && authSession?.refresh_token) {
       const refreshed = await refreshAuthSession();
@@ -609,6 +610,7 @@
         await fetch(API + "/auth/logout", {
           method: "POST",
           headers: { Accept: "application/json", Authorization: "Bearer " + authSession.access_token },
+          credentials: "include",
         });
       }
     } catch (_) {}
@@ -803,6 +805,18 @@
         showAppShell();
         init();
         return;
+      }
+
+      try {
+        const restored = await authRequest("/auth/refresh", {});
+        if (hasUsableAuthSession(restored)) {
+          setAuthSession(restored);
+          showAppShell();
+          init();
+          return;
+        }
+      } catch (_) {
+        // No localhost session cookie is available; show the normal sign-in form.
       }
 
       showAuthScreen();
