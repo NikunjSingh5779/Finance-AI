@@ -2503,3 +2503,8 @@ textarea:focus-visible {
 .recurring-archive-toggle:hover{border-color:var(--green);color:var(--green)}
 .recurring-card.is-archived{border-style:dashed;opacity:.78}
 @media(max-width:600px){.recurring-list-toolbar{align-items:flex-start}.recurring-archive-toggle{flex-shrink:0}}
+
+
+.sidebar-signout { color: var(--red); }
+.sidebar-signout:hover { color: var(--red); background: var(--red-bg); }
+.sidebar-signout .nav-icon { color: var(--red); }
