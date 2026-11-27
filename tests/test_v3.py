@@ -42,12 +42,13 @@ def test_v3_password_policy_requires_length_number_and_special_character():
 
 def test_v3_refresh_provider_errors_return_401(v3_client, monkeypatch):
     async def fail_refresh(_token):
-        raise AuthProviderError("Refresh token expired")
+        raise AuthProviderError("Refresh token expired", status_code=400)
 
     monkeypatch.setattr("app.controllers.auth_controller.refresh_session", fail_refresh)
     response = v3_client.post(
         "/auth/refresh",
         json={"refresh_token": "r" * 32},
+        headers={"Origin": "http://localhost:3000"},
     )
     assert response.status_code == 401
     assert "Refresh token expired" in response.json()["detail"]

@@ -2,9 +2,12 @@
 
 import asyncio
 import os
+import re
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, Request
+import httpx
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.auth import (
@@ -23,9 +26,85 @@ from app.core.auth import (
     user_id_from_request,
 )
 from app.core.rate_limiter import check_rate_limit
+from app.core.session_cookie import (
+    SESSION_COOKIE_NAME,
+    cookie_kwargs,
+    decode_refresh_cookie,
+    encode_refresh_cookie,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _origin_allowed(origin: str) -> bool:
+    """Whether ``origin`` is on the CORS allow-list used by the API."""
+    # Imported lazily: app.main imports this module while building the app.
+    from app.main import origin_regex, origins
+
+    parsed = urlsplit(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    if parsed.path or parsed.query or parsed.fragment:
+        return False
+    if origin in {item.rstrip("/") for item in origins}:
+        return True
+    return bool(origin_regex and re.fullmatch(origin_regex, origin))
+
+
+def _require_allowed_origin(request: Request) -> None:
+    """CSRF guard for endpoints that act on the ambient session cookie.
+
+    Browsers always send ``Origin`` on cross-site and same-origin POSTs, so a
+    missing or unlisted origin is refused.
+    """
+    origin = request.headers.get("origin", "").strip().rstrip("/")
+    if not origin or not _origin_allowed(origin):
+        raise HTTPException(status_code=403, detail="This app origin is not allowed.")
+
+
+def _clear_session_cookie(response: Response) -> None:
+    options = cookie_kwargs()
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path=options["path"],
+        secure=options["secure"],
+        httponly=options["httponly"],
+        samesite=options["samesite"],
+    )
+
+
+def _session_response(
+    result: dict,
+    response: Response,
+    *,
+    issued_at: int | None = None,
+) -> dict:
+    """Move the refresh token into the cookie; return only the access token.
+
+    ``issued_at`` pins the login time so refresh rotation never extends the
+    7-day cap. Every endpoint that used to return ``refresh_token`` goes here.
+    """
+    session = result.get("session") or result
+    refresh_token = session.get("refresh_token")
+    if refresh_token:
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            encode_refresh_cookie(refresh_token, issued_at),
+            **cookie_kwargs(),
+        )
+    return {
+        "user": result.get("user"),
+        "access_token": session.get("access_token"),
+        "expires_in": session.get("expires_in"),
+    }
+
+
+def _auth_failure(status_code: int, detail: str, *, clear_cookie: bool) -> JSONResponse:
+    failure = JSONResponse(status_code=status_code, content={"detail": detail})
+    if clear_cookie:
+        _clear_session_cookie(failure)
+    return failure
 
 
 def _validate_password_value(password: str) -> str:
@@ -150,6 +229,7 @@ async def google_oauth_start(
 async def google_oauth_exchange(
     request: GoogleOAuthExchangeRequest,
     raw_request: Request,
+    response: Response,
 ) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
@@ -158,72 +238,95 @@ async def google_oauth_exchange(
             request.auth_code,
             request.code_verifier,
         )
-        session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        return _session_response(result, response)
     except AuthProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/signup")
-async def signup(request: SignUpRequest, raw_request: Request) -> dict:
+async def signup(
+    request: SignUpRequest,
+    raw_request: Request,
+    response: Response,
+) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         redirect_to = _allowed_redirect_origin(raw_request)
         result = await sign_up(request.email, request.password, request.name, redirect_to)
         session = result.get("session") or {}
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-            "requires_email_confirmation": not bool(session.get("access_token")),
-        }
+        body = _session_response(
+            {"user": result.get("user"), "session": session}, response
+        )
+        body["requires_email_confirmation"] = not bool(session.get("access_token"))
+        return body
     except AuthProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/login")
-async def login(request: SignInRequest, raw_request: Request) -> dict:
+async def login(
+    request: SignInRequest,
+    raw_request: Request,
+    response: Response,
+) -> dict:
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
     try:
         result = await sign_in(request.email, request.password)
-        session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        return _session_response(result, response)
     except AuthProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/refresh")
-async def refresh(request: RefreshRequest, raw_request: Request) -> dict:
+async def refresh(
+    raw_request: Request,
+    response: Response,
+    body: RefreshRequest | None = None,
+):
+    """Exchange the session cookie for a fresh short-lived access token.
+
+    The cookie is re-issued with its original ``issued_at`` so rotation never
+    extends the absolute 7-day session. A body ``refresh_token`` is accepted
+    only as a one-time migration path for sessions that predate the cookie.
+    Only a definitive rejection clears the cookie; cold starts, rate limits and
+    network errors answer 429/503 and leave the session intact.
+    """
+    _require_allowed_origin(raw_request)
     client_ip = raw_request.client.host if raw_request.client else "unknown"
     await asyncio.to_thread(check_rate_limit, client_ip)
+
+    issued_at: int | None = None
+    cookie_value = raw_request.cookies.get(SESSION_COOKIE_NAME)
+    if cookie_value:
+        try:
+            refresh_token, issued_at = decode_refresh_cookie(cookie_value)
+        except ValueError:
+            return _auth_failure(401, "Session expired. Please sign in again.", clear_cookie=True)
+    elif body is not None:
+        refresh_token = body.refresh_token
+    else:
+        return _auth_failure(401, "Authentication required", clear_cookie=True)
+
     try:
-        result = await refresh_session(request.refresh_token)
-        session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        result = await refresh_session(refresh_token)
     except AuthProviderError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        status = exc.status_code
+        if status == 429:
+            return _auth_failure(429, "Too many requests. Please retry shortly.", clear_cookie=False)
+        if status is None or status >= 500:
+            return _auth_failure(503, "Authentication service is temporarily unavailable.", clear_cookie=False)
+        return _auth_failure(401, str(exc), clear_cookie=True)
+    except httpx.HTTPError:
+        return _auth_failure(503, "Authentication service is temporarily unavailable.", clear_cookie=False)
+
+    return _session_response(result, response, issued_at=issued_at)
 
 
 @router.post("/logout")
-async def logout(raw_request: Request) -> dict:
+async def logout(raw_request: Request, response: Response) -> dict:
+    _require_allowed_origin(raw_request)
     authorization = raw_request.headers.get("authorization", "")
     token = authorization.split(" ", 1)[1].strip() if authorization.lower().startswith("bearer ") else ""
     if token and auth_required():
@@ -231,11 +334,13 @@ async def logout(raw_request: Request) -> dict:
             await sign_out(token)
         except AuthProviderError:
             pass
+    _clear_session_cookie(response)
     return {"success": True}
 
 
 @router.post("/logout-all")
-async def logout_all(raw_request: Request) -> dict:
+async def logout_all(raw_request: Request, response: Response) -> dict:
+    _require_allowed_origin(raw_request)
     authorization = raw_request.headers.get("authorization", "")
     token = authorization.split(" ", 1)[1].strip() if authorization.lower().startswith("bearer ") else ""
     if not token or not auth_required():
@@ -244,6 +349,7 @@ async def logout_all(raw_request: Request) -> dict:
         await sign_out_all(token)
     except AuthProviderError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    _clear_session_cookie(response)
     return {"success": True}
 
 
@@ -279,20 +385,18 @@ async def password_recovery(
 
 
 @router.post("/email/verify")
-async def verify_email(request: VerifyEmailRequest, raw_request: Request) -> dict:
+async def verify_email(
+    request: VerifyEmailRequest,
+    raw_request: Request,
+    response: Response,
+) -> dict:
     await asyncio.to_thread(
         check_rate_limit,
         raw_request.client.host if raw_request.client else "unknown",
     )
     try:
         result = await verify_email_token(request.token_hash, request.type)
-        session = result.get("session") or result
-        return {
-            "user": result.get("user"),
-            "access_token": session.get("access_token"),
-            "refresh_token": session.get("refresh_token"),
-            "expires_in": session.get("expires_in"),
-        }
+        return _session_response(result, response)
     except AuthProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

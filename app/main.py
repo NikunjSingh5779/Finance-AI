@@ -157,6 +157,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_origin_regex=origin_regex,
+    # The session cookie is sent on credentialed requests, so the browser needs
+    # Access-Control-Allow-Credentials. Origins stay an explicit allow-list.
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

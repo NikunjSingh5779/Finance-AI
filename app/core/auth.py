@@ -22,7 +22,15 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 class AuthProviderError(RuntimeError):
-    """Raised when Supabase Auth cannot complete an operation."""
+    """Raised when Supabase Auth cannot complete an operation.
+
+    ``status_code`` is the HTTP status Supabase answered with, when known, so
+    callers can tell a rejected credential (4xx) from a transient failure.
+    """
+
+    def __init__(self, message: str = "", status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def is_production() -> bool:
@@ -251,7 +259,7 @@ async def _supabase_request(
             or body.get("error")
             or "Supabase Auth request failed"
         )
-        raise AuthProviderError(str(message))
+        raise AuthProviderError(str(message), status_code=response.status_code)
 
     return body
 
