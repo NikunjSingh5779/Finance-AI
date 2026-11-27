@@ -7,6 +7,17 @@
   PYTHON_VERSION = "3.12"
   FINANCEAI_API_URL = "https://finance-ai-u9bo.onrender.com"
 
+# Optional same-origin proxy for the session cookie. It only takes effect when
+# the build runs with FINANCEAI_PROXY=1 (the frontend then calls its own
+# origin). Netlify's default build above keeps calling the Render API
+# directly, where the session cookie would be third-party; Cloudflare Pages
+# (functions/[[path]].js) is the deployment that proxies every API route.
+[[redirects]]
+  from = "/auth/*"
+  to = "https://finance-ai-u9bo.onrender.com/auth/:splat"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]

@@ -18,7 +18,11 @@ index = index
   .replace(/src="\/static\/([^"]+)"/g, 'src="/$1"');
 
 let app = fs.readFileSync(appPath, "utf8");
-const apiUrl = process.env.FINANCEAI_API_URL || "";
+// With FINANCEAI_PROXY=1 the browser talks only to the site's own origin and
+// functions/[[path]].js forwards API calls to Render. That keeps the session
+// cookie first-party, so the API base must be empty.
+const proxyMode = process.env.FINANCEAI_PROXY === "1";
+const apiUrl = proxyMode ? "" : process.env.FINANCEAI_API_URL || "";
 app = app.replace(
   'const API = window.FINANCEAI_API_URL || "";',
   `const API = ${JSON.stringify(apiUrl)};`
@@ -53,9 +57,32 @@ fs.writeFileSync(
   "utf8"
 );
 
+// Cloudflare Pages: only API paths invoke functions/[[path]].js, so static
+// assets are served directly (and do not count against Functions quotas).
+// Keep in sync with PROXIED_PREFIXES in functions/[[path]].js.
+const proxiedPrefixes = [
+  "/auth", "/api", "/transactions", "/budgets", "/accounts", "/goals",
+  "/ai", "/summary", "/recurring", "/predict-expense", "/health",
+];
+fs.writeFileSync(
+  path.join(output, "_routes.json"),
+  JSON.stringify(
+    {
+      version: 1,
+      include: proxiedPrefixes.flatMap((prefix) => [prefix, prefix + "/*"]),
+      exclude: [],
+    },
+    null,
+    2
+  ) + "\n",
+  "utf8"
+);
+
 console.log("FinanceAI static site prepared.");
 console.log(
-  apiUrl
-    ? "Frontend API URL configured for: " + apiUrl
-    : "No FINANCEAI_API_URL supplied; frontend API remains same-origin."
+  proxyMode
+    ? "Proxy mode: frontend calls the site's own origin; Pages Functions forward API requests."
+    : apiUrl
+      ? "Frontend API URL configured for: " + apiUrl
+      : "No FINANCEAI_API_URL supplied; frontend API remains same-origin."
 );

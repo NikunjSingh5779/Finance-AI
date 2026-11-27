@@ -7,6 +7,7 @@ on:
       - fix/realtime-market-data-chat-format
     paths:
       - "app/static/**"
+      - "functions/**"
       - "scripts/build-netlify.mjs"
       - ".github/workflows/cloudflare-pages.yml"
   workflow_dispatch:
@@ -37,6 +38,10 @@ jobs:
         run: node scripts/build-netlify.mjs
         env:
           FINANCEAI_API_URL: https://finance-ai-u9bo.onrender.com
+          # Same-origin mode: the browser talks to the Pages origin and
+          # functions/[[path]].js forwards API calls to Render, which keeps the
+          # HttpOnly session cookie first-party.
+          FINANCEAI_PROXY: "1"
 
       - name: Verify static output
         shell: bash
@@ -45,6 +50,9 @@ jobs:
           test -f netlify-dist/app.js
           test -f netlify-dist/style.css
           test -f netlify-dist/_headers
+          test -f netlify-dist/_routes.json
+          test -f 'functions/[[path]].js'
+          node scripts/test-auth-proxy.mjs
           test -s netlify-dist/manifest.webmanifest
           test -s netlify-dist/sw.js
           test -s netlify-dist/pwa.js
