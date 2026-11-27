@@ -88,6 +88,10 @@ def validate_runtime_configuration() -> None:
     elif not database_url.lower().startswith(("postgres://", "postgresql://")):
         errors.append("DATABASE_URL must use a PostgreSQL connection URL")
 
+    session_secret = os.getenv("SESSION_COOKIE_SECRET", "").strip()
+    if len(session_secret) < 32:
+        errors.append("SESSION_COOKIE_SECRET (32+ characters) is required")
+
     if errors:
         raise RuntimeError(
             "Production configuration is unsafe: " + "; ".join(errors)
