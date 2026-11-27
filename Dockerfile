@@ -23,4 +23,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Render (and the Cloudflare Pages proxy in front of it) terminate the client
+# connection, so trust X-Forwarded-For from the platform proxy. Without
+# --forwarded-allow-ips uvicorn ignores it and every user shares one
+# per-IP rate-limit bucket on /auth/*. The container is only reachable
+# through the platform proxy, so trusting any peer is acceptable here.
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
