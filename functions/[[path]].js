@@ -5,7 +5,7 @@
 // Chrome's third-party cookie blocking drop. Serving the API under the Pages
 // origin makes the session cookie first-party.
 //
-// Only the prefixes below are forwarded. scripts/build-netlify.mjs emits a
+// Only the prefixes below are forwarded. scripts/build-pages.mjs emits a
 // matching _routes.json so static assets never invoke this function; keep the
 // two lists in sync (scripts/test-auth-proxy.mjs checks that they are).
 const API_ORIGIN = "https://finance-ai-u9bo.onrender.com";

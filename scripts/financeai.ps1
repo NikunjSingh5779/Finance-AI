@@ -4,9 +4,7 @@ param(
     "web",
     "docker",
     "docker-build",
-    "test",
-    "netlify-preview",
-    "netlify-production"
+    "test"
   )]
   [string]$Action = "setup",
   [string]$ApiUrl = ""
@@ -40,12 +38,6 @@ switch ($Action) {
     node --check app/static/app.js
     node --check app/static/pwa.js
     node --check app/static/sw.js
-    node scripts/build-netlify.mjs
-  }
-  "netlify-preview" {
-    & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -ApiUrl $ApiUrl
-  }
-  "netlify-production" {
-    & (Join-Path $PSScriptRoot "deploy-netlify.ps1") -Production -ApiUrl $ApiUrl
+    node scripts/build-pages.mjs
   }
 }

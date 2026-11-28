@@ -96,7 +96,7 @@ of one bucket shared behind Render's proxy.
 | Render | existing vars (`CORS_ORIGINS`, Supabase, `DATABASE_URL`, ...) | unchanged |
 | Supabase → Authentication → Sessions | JWT expiry | `900` seconds |
 | Supabase → Authentication → Sessions | Refresh token rotation | on; reuse interval 10 s (default) |
-| Supabase → Authentication → URL configuration | Redirect URLs | the Pages and Netlify origins |
+| Supabase → Authentication → URL configuration | Redirect URLs | the Pages origin (`https://finance-ai-61h.pages.dev`); remove any Netlify URL |
 | GitHub Actions | `FINANCEAI_PROXY=1` | already set in `.github/workflows/cloudflare-pages.yml` |
 
 Generate the secret with
@@ -116,18 +116,13 @@ Production startup now fails closed without `SESSION_COOKIE_SECRET`, so:
 3. Confirm the Pages project name used by the workflow (`finance-ai`) is the live
    project; the CORS regex references `finance-ai-61h.pages.dev`.
 
-### Known limitation: Netlify (decision needed)
+### Netlify retired
 
-The Netlify build still calls Render directly, so there the `SameSite=Lax`
-cookie is dropped on cross-site requests. Users on the Netlify URL stay signed
-in only until the access token needs its first refresh (about 14 minutes, or the
-first `401`), then land on the login screen. A Netlify user holding an old
-`localStorage` session is migrated on first load, but the browser discards the
-cookie, so they are signed out on the next refresh. The `/auth/*` rewrite in
-`netlify.toml` is inert unless the build sets `FINANCEAI_PROXY=1`, which also
-needs rewrites for every API route (and Netlify proxies time out around 26 s,
-which would break AI streaming). Cloudflare Pages is the supported deployment;
-**retire the Netlify frontend or accept this.**
+The Netlify frontend was removed. It called Render directly, so the `SameSite=Lax`
+cookie was dropped cross-site and its users were signed out. Cloudflare Pages is
+the only supported frontend; the Render root URL redirects there
+(`PUBLIC_APP_URL` overrides the target). Delete the Netlify site and its
+Supabase redirect URL.
 
 ## Rollback
 

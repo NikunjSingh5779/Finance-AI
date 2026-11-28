@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const source = path.join(root, "app", "static");
-const output = path.join(root, "netlify-dist");
+const output = path.join(root, "pages-dist");
 
 fs.rmSync(output, { recursive: true, force: true });
 fs.mkdirSync(output, { recursive: true });
@@ -38,8 +38,8 @@ let serviceWorker = fs.readFileSync(serviceWorkerPath, "utf8");
 serviceWorker = serviceWorker.replaceAll('"/static/', '"/');
 fs.writeFileSync(serviceWorkerPath, serviceWorker, "utf8");
 
-// Netlify reads security headers from netlify.toml. Cloudflare Pages uses
-// a static _headers file, so emit the equivalent rules into the build output.
+// Cloudflare Pages reads security headers from a static _headers file, so
+// emit the rules into the build output.
 const headersPath = path.join(output, "_headers");
 fs.writeFileSync(
   headersPath,

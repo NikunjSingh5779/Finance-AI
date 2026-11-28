@@ -90,7 +90,7 @@ The migration assigns the existing records to the selected Supabase Auth user.
 
 ## Cloudflare Pages PWA
 
-The GitHub Actions workflow builds the static PWA into `netlify-dist/` and deploys it to Cloudflare Pages. Configure these GitHub Actions secrets:
+The GitHub Actions workflow builds the static PWA into `pages-dist/` and deploys it to Cloudflare Pages. Configure these GitHub Actions secrets:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`

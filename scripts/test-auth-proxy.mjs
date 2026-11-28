@@ -210,16 +210,16 @@ function buildInTempCopy(env) {
   fs.mkdirSync(path.join(dir, "scripts"));
   fs.cpSync(path.join(repo, "app", "static"), path.join(dir, "app", "static"), { recursive: true });
   fs.copyFileSync(
-    path.join(repo, "scripts", "build-netlify.mjs"),
-    path.join(dir, "scripts", "build-netlify.mjs"),
+    path.join(repo, "scripts", "build-pages.mjs"),
+    path.join(dir, "scripts", "build-pages.mjs"),
   );
-  const result = spawnSync(process.execPath, ["scripts/build-netlify.mjs"], {
+  const result = spawnSync(process.execPath, ["scripts/build-pages.mjs"], {
     cwd: dir,
     env: { PATH: process.env.PATH, ...env },
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
-  return path.join(dir, "netlify-dist");
+  return path.join(dir, "pages-dist");
 }
 
 await test("FINANCEAI_PROXY=1 makes the frontend API base same-origin", async () => {

@@ -61,7 +61,7 @@ app/
   static/             # PWA UI, manifest, service worker and icons
   main.py
 scripts/
-  build-netlify.mjs   # static build used by Cloudflare Pages
+  build-pages.mjs   # static build used by Cloudflare Pages
   financeai.ps1
   run.ps1
   setup.ps1
@@ -92,10 +92,10 @@ Open http://127.0.0.1:8000. API documentation is available at http://127.0.0.1:8
 ## PWA build
 
 ```bash
-node scripts/build-netlify.mjs
+node scripts/build-pages.mjs
 ```
 
-The build writes the static site to `netlify-dist/`. The Cloudflare Pages workflow builds this directory and deploys it to the `finance-ai` Pages project. It injects the public `FINANCEAI_API_URL` value at build time.
+The build writes the static site to `pages-dist/`. The Cloudflare Pages workflow builds this directory and deploys it to the `finance-ai` Pages project. It injects the public `FINANCEAI_API_URL` value at build time.
 
 ## Authentication and data isolation
 
@@ -125,7 +125,7 @@ flake8 app tests
 node --check app/static/app.js
 node --check app/static/pwa.js
 node --check app/static/sw.js
-node scripts/build-netlify.mjs
+node scripts/build-pages.mjs
 ```
 
 ## Docker
