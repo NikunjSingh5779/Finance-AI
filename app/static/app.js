@@ -475,7 +475,7 @@
         });
         // The recovery link created a real session (and cookie); end it so the
         // user signs in with the new password instead of being restored.
-        await serverSignOut();
+        await Auth.signOut();
         clearAuthSession();
         $("auth-password").value = "";
         setAuthMode("login");
@@ -507,25 +507,15 @@
     }
   }
 
-  // Revokes this device's Supabase session and makes the API expire the
-  // HttpOnly cookie. Best effort: signing out locally must never be blocked.
-  async function serverSignOut() {
-    try {
-      const token = Auth.getAccessToken();
-      await fetch(API + "/auth/logout", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          Accept: "application/json",
-          ...(token ? { Authorization: "Bearer " + token } : {}),
-        },
-      });
-    } catch (_) {}
-  }
-
   async function logout() {
-    await serverSignOut();
-    clearAuthSession();
+    // The HttpOnly cookie can only be deleted by the server, so a failed
+    // request must not look like a sign-out: the next load would restore the
+    // session. Stay signed in and say so.
+    if (!(await Auth.signOut())) {
+      showToast("Could not sign you out. Check your connection and try again.", "error");
+      return;
+    }
+    updateUserUI();
     window.location.reload();
   }
 

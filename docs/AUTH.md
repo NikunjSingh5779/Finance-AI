@@ -44,6 +44,7 @@ future-dated or older-than-7-days cookie is rejected with `401` and cleared.
 | Situation | Response | Cookie |
 |---|---|---|
 | Valid cookie | `200` new access token | re-issued, same `issued_at` |
+| Body `refresh_token` (confirmation/recovery link, legacy migration) | uses the body token, **even if a cookie is present**; `200` | issued with `issued_at = now` |
 | Missing / tampered / expired cookie | `401` | cleared |
 | Supabase rejects the token (revoked, reused, expired) | `401` | cleared |
 | Supabase rate limit | `429` | kept |
@@ -67,6 +68,9 @@ out. `/auth/refresh`, `/auth/logout` and `/auth/logout-all` require an allowed
   `navigator.locks` plus a `BroadcastChannel("financeai-auth")` make tabs adopt
   one tab's new token instead of racing on the rotating refresh token. Logout in
   one tab signs out the others.
+* **Logout is confirmed by the server.** The cookie is HttpOnly, so only the
+  server's `Set-Cookie` can delete it. If `/auth/logout` cannot be reached the
+  app stays signed in and says so, instead of reloading into a restored session.
 * A `401` from the API refreshes once and retries once, then shows login (no
   loop).
 * Nothing session-related is written to `localStorage`/`sessionStorage`. The only
@@ -112,12 +116,18 @@ Production startup now fails closed without `SESSION_COOKIE_SECRET`, so:
 3. Confirm the Pages project name used by the workflow (`finance-ai`) is the live
    project; the CORS regex references `finance-ai-61h.pages.dev`.
 
-### Known limitation: Netlify
+### Known limitation: Netlify (decision needed)
 
-The Netlify build still calls Render directly, so there the cookie is a
-third-party cookie and sessions will not survive a reload. Either retire the
-Netlify frontend or accept that limitation; Cloudflare Pages is the supported
-deployment for persistent sessions.
+The Netlify build still calls Render directly, so there the `SameSite=Lax`
+cookie is dropped on cross-site requests. Users on the Netlify URL stay signed
+in only until the access token needs its first refresh (about 14 minutes, or the
+first `401`), then land on the login screen. A Netlify user holding an old
+`localStorage` session is migrated on first load, but the browser discards the
+cookie, so they are signed out on the next refresh. The `/auth/*` rewrite in
+`netlify.toml` is inert unless the build sets `FINANCEAI_PROXY=1`, which also
+needs rewrites for every API route (and Netlify proxies time out around 26 s,
+which would break AI streaming). Cloudflare Pages is the supported deployment;
+**retire the Netlify frontend or accept this.**
 
 ## Rollback
 

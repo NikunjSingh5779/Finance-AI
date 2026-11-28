@@ -585,6 +585,56 @@ await test("clearSession wipes memory, the hint and cancels the refresh timer", 
   assert.equal(tab.calls.length, 1, "timer must not fire after sign-out");
 });
 
+// ---- signOut ----------------------------------------------------------------
+
+await test("signOut posts /auth/logout with credentials and the bearer token, then clears everything", async () => {
+  const world = makeWorld();
+  const tabA = makeTab(world, [reply(200, sessionBody("access-1")), reply(200, { success: true })]);
+  const tabB = makeTab(world, []);
+  await tabA.auth.restoreSession();
+  await flush();
+
+  const done = await tabA.auth.signOut();
+  await flush();
+
+  assert.equal(done, true);
+  assert.equal(tabA.calls[1].url, "https://api.example/auth/logout");
+  assert.equal(tabA.calls[1].init.method, "POST");
+  assert.equal(tabA.calls[1].init.credentials, "include");
+  assert.equal(tabA.calls[1].init.headers.Authorization, "Bearer access-1");
+  assert.equal(tabA.auth.getAccessToken(), null);
+  assert.equal(world.storage.getItem(HINT_KEY), null);
+  assert.equal(tabB.auth.getAccessToken(), null, "other tabs are signed out too");
+});
+
+for (const [label, outcome] of [
+  ["a 503", reply(503)],
+  ["a 403 (origin refused)", reply(403)],
+  ["a network failure", new TypeError("Failed to fetch")],
+]) {
+  await test(`signOut reports failure and keeps the session when the server gives ${label}`, async () => {
+    const world = makeWorld();
+    const tab = makeTab(world, [reply(200, sessionBody("access-1")), outcome]);
+    await tab.auth.restoreSession();
+
+    const done = await tab.auth.signOut();
+
+    assert.equal(done, false, "the HttpOnly cookie is still alive, so this is not a logout");
+    assert.equal(tab.auth.getAccessToken(), "access-1");
+    assert.equal(tab.events.some((event) => event.type === "signed-out"), false);
+  });
+}
+
+await test("signOut works without an access token (cookie-only session)", async () => {
+  const world = makeWorld();
+  const tab = makeTab(world, [reply(200, { success: true })]);
+
+  const done = await tab.auth.signOut();
+
+  assert.equal(done, true);
+  assert.equal("Authorization" in tab.calls[0].init.headers, false);
+});
+
 // ---- cold-start retry -------------------------------------------------------
 
 function sleeper(world) {

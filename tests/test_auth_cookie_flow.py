@@ -321,16 +321,62 @@ def test_legacy_body_refresh_token_is_accepted_once_for_migration(client, calls)
     assert before <= issued_at <= int(time.time()) + 1
 
 
-def test_cookie_takes_precedence_over_a_body_token(client, calls):
-    cookie = encode_refresh_cookie(OLD_REFRESH)
+def test_body_token_wins_over_a_stale_cookie_for_fragment_and_migration_flows(
+    client, calls, monkeypatch
+):
+    """A stale/revoked cookie must not block a fresh confirmation or recovery token."""
+    import time
+
+    async def only_the_fresh_token_works(refresh_token):
+        calls.refresh.append(refresh_token)
+        if refresh_token != "b" * 40:
+            raise AuthProviderError("Invalid Refresh Token: Already Used", status_code=400)
+        return _session("f" * 40)
+
+    monkeypatch.setattr(auth_controller, "refresh_session", only_the_fresh_token_works)
+    stale = encode_refresh_cookie(OLD_REFRESH, issued_at=int(time.time()) - 6 * 86400)
+    before = int(time.time())
+
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "b" * 40},
+        headers={**ORIGIN, **_cookie_header(stale)},
+    )
+
+    assert response.status_code == 200
+    assert calls.refresh == ["b" * 40]
+    token, issued_at = decode_refresh_cookie(_fa_rt_value(response))
+    assert token == "f" * 40
+    assert issued_at >= before, "a body token starts a fresh login window"
+
+
+def test_body_token_wins_over_an_expired_cookie(client, calls):
+    import time
+
+    expired = encode_refresh_cookie(OLD_REFRESH, issued_at=int(time.time()) - 8 * 86400)
+
+    response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": "b" * 40},
+        headers={**ORIGIN, **_cookie_header(expired)},
+    )
+
+    assert response.status_code == 200
+    assert calls.refresh == ["b" * 40]
+
+
+def test_body_token_for_another_account_is_not_replaced_by_the_cookie_account(
+    client, calls
+):
+    cookie_for_account_a = encode_refresh_cookie(OLD_REFRESH)
 
     client.post(
         "/auth/refresh",
         json={"refresh_token": "b" * 40},
-        headers={**ORIGIN, **_cookie_header(cookie)},
+        headers={**ORIGIN, **_cookie_header(cookie_for_account_a)},
     )
 
-    assert calls.refresh == [OLD_REFRESH]
+    assert OLD_REFRESH not in calls.refresh
 
 
 def test_logout_clears_cookie_and_signs_out_the_device(client, calls):

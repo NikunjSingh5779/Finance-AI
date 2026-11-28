@@ -364,6 +364,31 @@ export function createAuthSession(options = {}) {
   }
 
   /**
+   * Sign out of this browser for real. The refresh cookie is HttpOnly, so only
+   * the server's Set-Cookie can delete it: the local state is cleared only
+   * after the server confirms. Resolves false when it could not be reached,
+   * because clearing memory alone would be undone by the next page load.
+   */
+  async function signOut(fetchImpl = fetchFn) {
+    let response;
+    try {
+      response = await fetchImpl(apiBase + "/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          ...(accessToken ? { Authorization: "Bearer " + accessToken } : {}),
+        },
+      });
+    } catch (_) {
+      return false;
+    }
+    if (!response.ok) return false;
+    clearSession();
+    return true;
+  }
+
+  /**
    * Run `fn` and, while it fails with NetworkError (server asleep, offline),
    * keep retrying with backoff for about 90 seconds. Other errors propagate.
    */
@@ -397,6 +422,7 @@ export function createAuthSession(options = {}) {
     hasSignInHint: () => storeGet(SIGN_IN_HINT_KEY) === "1",
     setSession,
     clearSession,
+    signOut,
     restoreSession,
     refreshSession,
     migrateLegacySession,

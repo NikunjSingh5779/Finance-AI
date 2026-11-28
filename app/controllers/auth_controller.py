@@ -288,8 +288,9 @@ async def refresh(
     """Exchange the session cookie for a fresh short-lived access token.
 
     The cookie is re-issued with its original ``issued_at`` so rotation never
-    extends the absolute 7-day session. A body ``refresh_token`` is accepted
-    only as a one-time migration path for sessions that predate the cookie.
+    extends the absolute 7-day session. A body ``refresh_token`` takes
+    precedence and is used by e-mail confirmation/recovery links and the
+    one-time migration of sessions that predate the cookie.
     Only a definitive rejection clears the cookie; cold starts, rate limits and
     network errors answer 429/503 and leave the session intact.
     """
@@ -299,13 +300,17 @@ async def refresh(
 
     issued_at: int | None = None
     cookie_value = raw_request.cookies.get(SESSION_COOKIE_NAME)
-    if cookie_value:
+    if body is not None:
+        # An explicit token always wins over the ambient cookie. It comes from a
+        # confirmation/recovery link or the one-time legacy migration, and a
+        # stale or other-account cookie must neither block nor replace it.
+        # It starts a fresh login window (issued_at = now).
+        refresh_token = body.refresh_token
+    elif cookie_value:
         try:
             refresh_token, issued_at = decode_refresh_cookie(cookie_value)
         except ValueError:
             return _auth_failure(401, "Session expired. Please sign in again.", clear_cookie=True)
-    elif body is not None:
-        refresh_token = body.refresh_token
     else:
         return _auth_failure(401, "Authentication required", clear_cookie=True)
 
