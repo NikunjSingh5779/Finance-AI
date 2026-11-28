@@ -3,7 +3,7 @@
  * Authentication, financial API responses and personal data are never cached.
  */
 const CACHE_PREFIX = "financeai-shell-";
-const CACHE_NAME = CACHE_PREFIX + "v11";
+const CACHE_NAME = CACHE_PREFIX + "v12";
 const SHELL_URLS = [
   "/",
   "/static/offline.html",
@@ -12,6 +12,7 @@ const SHELL_URLS = [
   "/static/pwa.js",
   "/static/style.css",
   "/static/app.js",
+  "/static/auth-session.js",
   "/static/favicon.svg",
   "/static/icons/financeai-logo.png",
   "/static/icons/icon.svg",

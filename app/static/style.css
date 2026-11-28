@@ -2503,3 +2503,52 @@ textarea:focus-visible {
 .recurring-archive-toggle:hover{border-color:var(--green);color:var(--green)}
 .recurring-card.is-archived{border-style:dashed;opacity:.78}
 @media(max-width:600px){.recurring-list-toolbar{align-items:flex-start}.recurring-archive-toggle{flex-shrink:0}}
+
+/* Shown on every load until the session has been restored from its cookie, so
+   a refresh never lands on a blank page (and a cold server never on a login form). */
+.boot-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #0b0b0d);
+  color: var(--text, #f0f0f2);
+}
+.boot-splash[hidden] { display: none; }
+.boot-splash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 320px;
+  text-align: center;
+}
+.boot-splash-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border2, #303035);
+  border-top-color: var(--green, #22c55e);
+  border-radius: 50%;
+  animation: boot-spin .9s linear infinite;
+}
+.boot-splash--stalled .boot-splash-spinner { display: none; }
+.boot-splash-message { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text2, #9191a0); }
+.boot-splash-retry {
+  padding: 9px 20px;
+  border: 1px solid var(--border2, #303035);
+  border-radius: var(--radius, 10px);
+  background: var(--bg3, #1c1c1f);
+  color: var(--text, #f0f0f2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.boot-splash-retry:hover { background: var(--bg4, #242428); }
+.boot-splash-retry:focus-visible { outline: 2px solid var(--green, #22c55e); outline-offset: 2px; }
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .boot-splash-spinner { animation: none; border-top-color: var(--border2, #303035); border-right-color: var(--green, #22c55e); }
+}

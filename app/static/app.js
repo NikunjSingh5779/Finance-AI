@@ -25,8 +25,12 @@
   const APP_VERSION = new URL(APP_SCRIPT_URL, window.location.href).searchParams.get("v");
   let chartModulePromise = null;
   let chartWarningShown = false;
-  let authSession = null;
-  let authRefreshPromise = null;
+  // Session state lives in auth-session.js (window.FinanceAuth): the access
+  // token is kept in memory only and the refresh token is an HttpOnly cookie
+  // that JavaScript cannot read. Nothing session-related is written to
+  // localStorage or sessionStorage here.
+  const Auth = window.FinanceAuth;
+  Auth.configure({ apiBase: API });
   let authMode = "login";
   const CAT_COLORS = [
     "#22c55e", "#f59e0b", "#3b82f6", "#ef4444",
@@ -202,52 +206,33 @@
     return "₹" + decimalNumberFormatter.format(Number.isFinite(n) ? n : 0);
   }
 
-  function hasUsableAuthSession(session) {
-    return Boolean(
-      session &&
-      typeof session.access_token === "string" &&
-      session.access_token.trim().length > 0 &&
-      typeof session.refresh_token === "string" &&
-      session.refresh_token.trim().length >= 20
-    );
-  }
-
   function setAuthSession(session) {
-    authSession = session;
-    if (session) {
-      localStorage.setItem("financeai.auth.session", JSON.stringify(session));
-    } else {
-      localStorage.removeItem("financeai.auth.session");
-    }
+    Auth.setSession(session);
     updateUserUI();
   }
 
   function clearAuthSession() {
-    setAuthSession(null);
+    Auth.clearSession();
+    updateUserUI();
   }
 
-  // Keep the in-memory session aligned with the rotating refresh token stored
-  // by another FinanceAI tab or installed PWA window.
-  window.addEventListener("storage", event => {
-    if (event.key !== "financeai.auth.session") return;
-    if (!event.newValue) {
-      authSession = null;
+  // Other tabs and the proactive refresh timer report through this listener.
+  Auth.subscribe(event => {
+    if (event.type === "session") {
       updateUserUI();
       return;
     }
-    try {
-      const nextSession = JSON.parse(event.newValue);
-      if (hasUsableAuthSession(nextSession)) {
-        authSession = nextSession;
-        updateUserUI();
-      }
-    } catch (_) {
-      // Ignore malformed cross-tab updates; startup validation handles storage.
-    }
+    if (event.type !== "signed-out") return;
+    updateUserUI();
+    // This tab's own sign-out reloads the page; only react to the rest.
+    if (event.reason === "logout" && event.source === "local") return;
+    showAuthScreen(event.reason === "expired"
+      ? "Your session has expired. Please sign in again."
+      : "You were signed out in another tab.");
   });
 
   function updateUserUI() {
-    const user = authSession?.user || {};
+    const user = Auth.getUser() || {};
     const metadata = user.user_metadata || {};
     const name = metadata.full_name || metadata.name || user.email || "Finance User";
     const email = user.email || "Private workspace";
@@ -369,6 +354,7 @@
   }
 
   function showAuthScreen(message = "") {
+    hideBootSplash();
     $("app-shell")?.setAttribute("hidden", "");
     $("auth-screen")?.removeAttribute("hidden");
     if (message) showAuthError(message);
@@ -376,6 +362,7 @@
   }
 
   function showAppShell() {
+    hideBootSplash();
     $("auth-screen")?.setAttribute("hidden", "");
     $("app-shell")?.removeAttribute("hidden");
     updateUserUI();
@@ -400,6 +387,8 @@
   async function authRequest(path, payload) {
     const response = await fetch(API + path, {
       method: "POST",
+      // The API answers with a Set-Cookie holding the refresh token.
+      credentials: "include",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -414,94 +403,10 @@
   }
 
   async function refreshAuthSession() {
-    if (authRefreshPromise) return authRefreshPromise;
-    authRefreshPromise = (async () => {
-      const refreshWithLatestStoredSession = async () => {
-        // Another tab may already have rotated the refresh token. Always prefer
-        // the newest persisted session before attempting a refresh.
-        let latest = authSession;
-        try {
-          const stored = localStorage.getItem("financeai.auth.session");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (hasUsableAuthSession(parsed)) latest = parsed;
-          }
-        } catch (_) {
-          // Fall back to the validated in-memory session.
-        }
-        if (latest && latest.refresh_token !== authSession?.refresh_token) {
-          authSession = latest;
-          updateUserUI();
-        }
-        const refreshToken = typeof latest?.refresh_token === "string"
-          ? latest.refresh_token.trim()
-          : "";
-        if (refreshToken.length < 20) {
-          clearAuthSession();
-          return false;
-        }
-
-        let response;
-        try {
-          response = await fetch(API + "/auth/refresh", {
-            method: "POST",
-            headers: { Accept: "application/json", "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: refreshToken }),
-          });
-        } catch (_) {
-          const error = new Error("FinanceAI is temporarily unreachable. Your saved session has been kept.");
-          error.status = 0;
-          throw error;
-        }
-
-        if (response.status === 400 || response.status === 401 || response.status === 422) {
-          // Do not erase a newer token written by another tab while this request
-          // was in flight.
-          let storedToken = "";
-          try {
-            storedToken = JSON.parse(localStorage.getItem("financeai.auth.session") || "{}").refresh_token || "";
-          } catch (_) {}
-          if (storedToken && storedToken !== refreshToken) {
-            const newer = JSON.parse(localStorage.getItem("financeai.auth.session"));
-            if (hasUsableAuthSession(newer)) {
-              authSession = newer;
-              updateUserUI();
-              return true;
-            }
-          }
-          clearAuthSession();
-          return false;
-        }
-        if (!response.ok) {
-          let data = {};
-          try { data = await response.json(); } catch (_) {}
-          const error = new Error(readableAuthError(data, response.statusText || "Could not refresh your session."));
-          error.status = response.status;
-          throw error;
-        }
-
-        const next = await response.json();
-        if (!next.access_token || !next.refresh_token) {
-          const error = new Error("The session refresh response was incomplete.");
-          error.status = 502;
-          throw error;
-        }
-        setAuthSession(next);
-        return true;
-      };
-
-      // Web Locks serialize refresh-token rotation across same-origin PWA tabs.
-      if (navigator.locks?.request) {
-        return navigator.locks.request("financeai-auth-refresh", refreshWithLatestStoredSession);
-      }
-      return refreshWithLatestStoredSession();
-    })();
-
-    try {
-      return await authRefreshPromise;
-    } finally {
-      authRefreshPromise = null;
-    }
+    // Resolves true when a fresh access token is held, false when the server
+    // says the session is over. An outage throws a NetworkError and keeps the
+    // user signed in.
+    return Boolean(await Auth.refreshSession());
   }
 
   async function apiResponse(path, options = {}, retryOnUnauthorized = true) {
@@ -509,15 +414,11 @@
       Accept: "application/json",
       ...(options.headers || {}),
     };
-    if (authSession?.access_token) {
-      headers.Authorization = "Bearer " + authSession.access_token;
-    }
-
-    const response = await fetch(API + path, { ...options, headers });
-    const canRefresh = !path.startsWith("/auth/") || path === "/auth/me";
-    if (response.status === 401 && retryOnUnauthorized && canRefresh && authSession?.refresh_token) {
-      const refreshed = await refreshAuthSession();
-      if (refreshed) return apiResponse(path, options, false);
+    const canRefresh = retryOnUnauthorized && (!path.startsWith("/auth/") || path === "/auth/me");
+    // fetchWithAuth adds the bearer token and, on a 401, refreshes once
+    // (shared with every other in-flight request and tab) and retries once.
+    const response = await Auth.fetchWithAuth(API + path, { ...options, headers }, { canRefresh });
+    if (response.status === 401 && canRefresh && !Auth.getAccessToken()) {
       showAuthScreen("Your session has expired. Please sign in again.");
       const error = new Error("Authentication required");
       error.status = 401;
@@ -572,6 +473,9 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ password }),
         });
+        // The recovery link created a real session (and cookie); end it so the
+        // user signs in with the new password instead of being restored.
+        await serverSignOut();
         clearAuthSession();
         $("auth-password").value = "";
         setAuthMode("login");
@@ -583,7 +487,7 @@
         authMode === "signup" ? { email, password, name } : { email, password },
       );
 
-      if (!result.access_token || !result.refresh_token) {
+      if (!result.access_token) {
         setAuthMode("login");
         showAuthSuccess("Account created. Check your email to confirm it, then sign in.");
         $("auth-password").value = "";
@@ -603,15 +507,24 @@
     }
   }
 
-  async function logout() {
+  // Revokes this device's Supabase session and makes the API expire the
+  // HttpOnly cookie. Best effort: signing out locally must never be blocked.
+  async function serverSignOut() {
     try {
-      if (authSession?.access_token) {
-        await fetch(API + "/auth/logout", {
-          method: "POST",
-          headers: { Accept: "application/json", Authorization: "Bearer " + authSession.access_token },
-        });
-      }
+      const token = Auth.getAccessToken();
+      await fetch(API + "/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          ...(token ? { Authorization: "Bearer " + token } : {}),
+        },
+      });
     } catch (_) {}
+  }
+
+  async function logout() {
+    await serverSignOut();
     clearAuthSession();
     window.location.reload();
   }
@@ -683,11 +596,11 @@
         const result = await authRequest("/auth/refresh", {
           refresh_token: fragmentRefreshToken,
         });
-        if (!result.access_token || !result.refresh_token) {
+        if (!result.access_token) {
           throw new Error("Email confirmation did not create an active session.");
         }
         if (fragmentType === "recovery") {
-          authSession = result;
+          Auth.setSession(result);
           setAuthMode("recovery");
           showAuthScreen();
           showAuthSuccess("Your recovery link is verified. Choose a new password.");
@@ -710,11 +623,11 @@
         });
         if (verificationType === "recovery") {
           if (!result.access_token) throw new Error("The recovery link did not create a reset session.");
-          authSession = result;
+          Auth.setSession(result);
           setAuthMode("recovery");
           showAuthScreen();
           showAuthSuccess("Email verified. Choose a new password below.");
-        } else if (result.access_token && result.refresh_token) {
+        } else if (result.access_token) {
           setAuthSession(result);
           showAppShell();
           init();
@@ -740,7 +653,7 @@
         auth_code: oauthCode,
         code_verifier: verifier,
       });
-      if (!result.access_token || !result.refresh_token) {
+      if (!result.access_token) {
         throw new Error("Google sign-in completed without a FinanceAI session.");
       }
       setAuthSession(result);
@@ -752,70 +665,102 @@
     return true;
   }
 
+  // ---- boot splash ----------------------------------------------------------
+  // index.html renders #boot-splash visible, so a refresh shows "Loading" instead
+  // of a blank page while the session is restored from the cookie.
+  function showBootSplash(message = "Loading FinanceAI…") {
+    const splash = $("boot-splash");
+    if (!splash) return;
+    splash.removeAttribute("hidden");
+    splash.classList.remove("boot-splash--stalled");
+    const text = $("boot-splash-message");
+    if (text) text.textContent = message;
+    const retry = $("boot-retry");
+    if (retry) retry.hidden = true;
+  }
+
+  function showBootRetry(message) {
+    const splash = $("boot-splash");
+    if (!splash) return;
+    splash.removeAttribute("hidden");
+    splash.classList.add("boot-splash--stalled");
+    const text = $("boot-splash-message");
+    if (text) text.textContent = message;
+    const retry = $("boot-retry");
+    if (retry) {
+      retry.hidden = false;
+      retry.focus({ preventScroll: true });
+    }
+  }
+
+  function hideBootSplash() {
+    $("boot-splash")?.setAttribute("hidden", "");
+  }
+
+  async function loadAuthConfig() {
+    let response;
+    try {
+      response = await fetch(API + "/auth/config");
+    } catch (_) {
+      throw new Auth.NetworkError("FinanceAI could not be reached.");
+    }
+    if (!response.ok) {
+      throw new Auth.NetworkError("Cannot load authentication configuration.", response.status);
+    }
+    return response.json();
+  }
+
+  let bootRetryBound = false;
+
   async function initAuth() {
     if (await handleGoogleOAuthCallback()) return;
 
+    if (!bootRetryBound) {
+      bootRetryBound = true;
+      $("boot-retry")?.addEventListener("click", () => initAuth());
+      // Offline PWA launches resume on their own once the network is back.
+      window.addEventListener("online", () => {
+        if ($("boot-splash")?.classList.contains("boot-splash--stalled")) initAuth();
+      });
+    }
+
+    showBootSplash();
+    // A cold Render instance takes 30-60 s to answer. Keep the splash up (never
+    // the login form) and reassure the user while it wakes.
+    const onWaiting = ({ attempt }) => {
+      if (attempt >= 2) showBootSplash("Waking the server… this can take up to a minute.");
+    };
+
     try {
-      let invalidStoredSession = false;
-      const storedAtStartup = localStorage.getItem("financeai.auth.session");
-      if (storedAtStartup) {
-        try {
-          const savedSession = JSON.parse(storedAtStartup);
-          if (hasUsableAuthSession(savedSession)) {
-            authSession = savedSession;
-          } else {
-            clearAuthSession();
-            invalidStoredSession = true;
-          }
-        } catch (_) {
-          clearAuthSession();
-          invalidStoredSession = true;
-        }
-      }
-
-      const response = await fetch(API + "/auth/config");
-      if (!response.ok) throw new Error("Cannot load authentication configuration.");
-      const config = await response.json();
-
+      const config = await Auth.withColdStartRetry(loadAuthConfig, { onWaiting });
       if (!config.required) {
         showAppShell();
         init();
         return;
       }
 
-      if (invalidStoredSession) {
-        showAuthScreen("Your saved sign-in is incomplete or invalid. Please sign in again.");
-        return;
-      }
+      const hadSession = Auth.hasSignInHint();
+      // Legacy localStorage sessions are traded for the cookie once; everyone
+      // else restores straight from the cookie. The URL is left untouched, so
+      // a refresh stays on the same route.
+      const session = await Auth.withColdStartRetry(
+        async () => (await Auth.migrateLegacySession()) || Auth.restoreSession(),
+        { onWaiting },
+      );
 
-      if (authSession) {
-        try {
-          await apiFetch("/auth/me");
-        } catch (error) {
-          if (error.status === 401) {
-            clearAuthSession();
-            showAuthScreen("Your session has expired. Please sign in again.");
-            return;
-          }
-          // Keep a well-formed saved session during temporary API outages.
-        }
-        updateUserUI();
+      if (session) {
         showAppShell();
         init();
         return;
       }
-
-      showAuthScreen();
+      showAuthScreen(hadSession ? "Your session has expired. Please sign in again." : "");
     } catch (error) {
-      if (authSession?.refresh_token) {
-        // Do not turn a temporary backend outage into an apparent logout.
-        updateUserUI();
-        showAppShell();
-        init();
-        showToast("FinanceAI is offline. Your saved session is still available.", "error");
-      } else {
-        showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
+      if (error?.name === "NetworkError") {
+        // Not a logout: the session is intact, the server just is not reachable.
+        showBootRetry("FinanceAI can't be reached right now. You are still signed in; try again.");
+        return;
       }
+      showAuthScreen(error instanceof Error ? error.message : "Cannot connect to FinanceAI.");
     }
   }
 

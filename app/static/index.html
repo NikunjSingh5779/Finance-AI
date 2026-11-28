@@ -18,6 +18,13 @@
 </head>
 <body>
 <button class="pwa-install-fab" id="pwa-install-button" type="button" hidden aria-label="Install FinanceAI"><span aria-hidden="true">⇩</span><span>Install FinanceAI</span></button>
+<div id="boot-splash" class="boot-splash" role="status" aria-live="polite">
+  <div class="boot-splash-card">
+    <div class="boot-splash-spinner" aria-hidden="true"></div>
+    <p class="boot-splash-message" id="boot-splash-message">Loading FinanceAI…</p>
+    <button class="boot-splash-retry" id="boot-retry" type="button" hidden>Try again</button>
+  </div>
+</div>
 <div id="auth-screen" class="auth-screen" hidden>
   <div class="auth-card">
     <div class="auth-brand"><div class="logo-icon" aria-hidden="true"><img src="/static/icons/financeai-logo.png?v=20261105-brand" alt=""></div><div><div class="logo-text">FinanceAI</div><div class="logo-sub">Personal Finance</div></div></div>
@@ -460,6 +467,9 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=2026-11-25-chat-error-fix" defer></script>
+<!-- Module scripts run in document order with deferred scripts, so the session
+     manager (window.FinanceAuth) is ready before app.js starts. -->
+<script type="module" src="/static/auth-session.js?v=2026-11-28-persistent-auth"></script>
+<script src="/static/app.js?v=2026-11-28-persistent-auth" defer></script>
 </body>
 </html>
